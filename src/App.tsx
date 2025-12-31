@@ -30,7 +30,7 @@ function AppContent() {
 
   // UI state
   const [mode, setMode] = useState<ViewMode>("preview");
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
+  const [cursorPosition] = useState({ line: 1, col: 1 });
 
   // Derived state
   const isDirty = content !== originalContent;

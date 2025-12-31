@@ -61,10 +61,6 @@ export function WelcomeScreen({ onOpenFile, onFileDrop }: WelcomeScreenProps) {
                 </p>
             </div>
 
-            {/* Version */}
-            <div className="absolute bottom-6 text-center">
-                <p className="text-[var(--text-muted)] text-xs font-mono">v0.1.0</p>
-            </div>
         </main>
     );
 }

@@ -12,10 +12,6 @@ interface MarkdownPreviewProps {
 
 export function MarkdownPreview({
     content,
-    fileName,
-    lineCount,
-    fileSize,
-    onEditClick,
 }: MarkdownPreviewProps) {
     return (
         <main className="flex-1 overflow-y-auto bg-[var(--bg-primary)] transition-colors">
