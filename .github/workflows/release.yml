@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -39,14 +42,19 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
-      - name: Build Tauri app
+      - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'MarkLite ${{ github.ref_name }}'
-          releaseBody: 'See the CHANGELOG.md for details.'
+          releaseBody: |
+            ## What's Changed
+            See the [CHANGELOG.md](https://github.com/Razee4315/MarkLite/blob/main/CHANGELOG.md) for details.
+            
+            ## Installation
+            Download the appropriate installer for your platform below.
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          includeUpdaterJson: true
