@@ -1,17 +1,39 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Window } from "@tauri-apps/api/window";
 
 interface TitleBarProps {
     fileName?: string;
     isDirty?: boolean;
     filePath?: string;
+    onOpenFile?: () => void;
 }
 
-const appWindow = getCurrentWindow();
+export function TitleBar({ fileName, isDirty, filePath, onOpenFile }: TitleBarProps) {
+    const handleMinimize = async () => {
+        try {
+            const appWindow = Window.getCurrent();
+            await appWindow.minimize();
+        } catch (e) {
+            console.error("Minimize failed:", e);
+        }
+    };
 
-export function TitleBar({ fileName, isDirty, filePath }: TitleBarProps) {
-    const handleMinimize = () => appWindow.minimize();
-    const handleMaximize = () => appWindow.toggleMaximize();
-    const handleClose = () => appWindow.close();
+    const handleMaximize = async () => {
+        try {
+            const appWindow = Window.getCurrent();
+            await appWindow.toggleMaximize();
+        } catch (e) {
+            console.error("Maximize failed:", e);
+        }
+    };
+
+    const handleClose = async () => {
+        try {
+            const appWindow = Window.getCurrent();
+            await appWindow.close();
+        } catch (e) {
+            console.error("Close failed:", e);
+        }
+    };
 
     // Extract parent folder from path for breadcrumb
     const getPathBreadcrumb = () => {
@@ -24,6 +46,7 @@ export function TitleBar({ fileName, isDirty, filePath }: TitleBarProps) {
     };
 
     const parentFolder = getPathBreadcrumb();
+    const hasFile = !!fileName;
 
     return (
         <header className="h-12 shrink-0 flex items-center justify-between px-4 bg-[#191a21] border-b border-[#44475a] no-select drag-region">
@@ -45,6 +68,21 @@ export function TitleBar({ fileName, isDirty, filePath }: TitleBarProps) {
                         <span className="text-[#ffb86c] ml-1 italic text-xs">— Edited</span>
                     )}
                 </div>
+
+                {/* Open File Button - shown when a file is already open */}
+                {hasFile && onOpenFile && (
+                    <>
+                        <div className="w-[1px] h-4 bg-[#44475a] ml-2"></div>
+                        <button
+                            onClick={onOpenFile}
+                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[#44475a] text-[#6272a4] hover:text-[#f8f8f2] transition-colors text-xs"
+                            title="Open File (Ctrl+O)"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">folder_open</span>
+                            <span>Open</span>
+                        </button>
+                    </>
+                )}
             </div>
 
             {/* Right: Window Controls */}

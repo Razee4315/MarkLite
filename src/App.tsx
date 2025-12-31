@@ -153,7 +153,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-[#21222c] overflow-hidden">
-      <TitleBar fileName={fileName ?? undefined} isDirty={isDirty} filePath={filePath ?? undefined} />
+      <TitleBar fileName={fileName ?? undefined} isDirty={isDirty} filePath={filePath ?? undefined} onOpenFile={handleOpenFile} />
 
       {!hasFile ? (
         <WelcomeScreen onOpenFile={handleOpenFile} onFileDrop={handleFileDrop} />
