@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useCallback } from "react";
 
 interface CodeEditorProps {
     content: string;
@@ -7,40 +7,34 @@ interface CodeEditorProps {
 
 export function CodeEditor({ content, onChange }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
+    const gutterRef = useRef<HTMLDivElement>(null);
+    const highlightRef = useRef<HTMLDivElement>(null);
 
     // Calculate line numbers
     const lines = content.split("\n");
     const lineCount = lines.length;
 
-    const updateCursorPosition = useCallback(() => {
-        if (!textareaRef.current) return;
-        const { selectionStart } = textareaRef.current;
-        const textBeforeCursor = content.substring(0, selectionStart);
-        const linesBeforeCursor = textBeforeCursor.split("\n");
-        const line = linesBeforeCursor.length;
-        const col = linesBeforeCursor[linesBeforeCursor.length - 1].length + 1;
-        setCursorPosition({ line, col });
-    }, [content]);
-
-    useEffect(() => {
-        updateCursorPosition();
-    }, [content, updateCursorPosition]);
-
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onChange(e.target.value);
     };
 
-    const handleKeyUp = () => {
-        updateCursorPosition();
-    };
+    // Sync scroll between textarea, gutter, and highlight layer
+    const handleScroll = useCallback(() => {
+        if (!textareaRef.current) return;
+        const scrollTop = textareaRef.current.scrollTop;
+        const scrollLeft = textareaRef.current.scrollLeft;
 
-    const handleClick = () => {
-        updateCursorPosition();
-    };
+        if (gutterRef.current) {
+            gutterRef.current.scrollTop = scrollTop;
+        }
+        if (highlightRef.current) {
+            highlightRef.current.scrollTop = scrollTop;
+            highlightRef.current.scrollLeft = scrollLeft;
+        }
+    }, []);
 
     // Syntax highlighting for markdown
-    const highlightLine = (line: string, index: number): React.ReactNode => {
+    const highlightLine = (line: string): React.ReactNode => {
         // H1 headers
         if (line.startsWith("# ")) {
             return <span className="text-[#bd93f9] font-bold">{line}</span>;
@@ -59,20 +53,24 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
         }
         // List items
         if (line.match(/^[\s]*[-*+]\s/)) {
+            const marker = line.match(/^[\s]*[-*+]/)?.[0] || "";
+            const rest = line.slice(marker.length);
             return (
                 <>
-                    <span className="text-[#ff79c6]">{line.match(/^[\s]*[-*+]/)?.[0]}</span>
-                    <span>{line.replace(/^[\s]*[-*+]/, "")}</span>
+                    <span className="text-[#ff79c6]">{marker}</span>
+                    <span>{rest}</span>
                 </>
             );
         }
         // Numbered lists
         if (line.match(/^[\s]*\d+\.\s/)) {
             const match = line.match(/^([\s]*\d+\.)/);
+            const marker = match?.[0] || "";
+            const rest = line.slice(marker.length);
             return (
                 <>
-                    <span className="text-[#ffb86c]">{match?.[0]}</span>
-                    <span>{line.replace(/^[\s]*\d+\./, "")}</span>
+                    <span className="text-[#ffb86c]">{marker}</span>
+                    <span>{rest}</span>
                 </>
             );
         }
@@ -80,20 +78,51 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
         if (line.startsWith(">")) {
             return <span className="text-[#6272a4] italic">{line}</span>;
         }
-        // Regular text - check for inline elements
-        return highlightInline(line);
+        // Links [text](url)
+        if (line.includes("[") && line.includes("](")) {
+            return highlightLinks(line);
+        }
+        // Bold **text**
+        if (line.includes("**")) {
+            return highlightBold(line);
+        }
+        // Regular text
+        return <span>{line || "\u00A0"}</span>;
     };
 
-    const highlightInline = (text: string): React.ReactNode => {
-        // Simple inline highlighting for bold and links
+    const highlightLinks = (text: string): React.ReactNode => {
         const parts: React.ReactNode[] = [];
-        let remaining = text;
+        const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+        let lastIndex = 0;
+        let match;
         let key = 0;
 
-        // Bold **text**
+        while ((match = linkRegex.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+            }
+            parts.push(
+                <span key={key++} className="text-[#8be9fd]">
+                    [{match[1]}]
+                    <span className="text-[#6272a4]">({match[2]})</span>
+                </span>
+            );
+            lastIndex = match.index + match[0].length;
+        }
+
+        if (lastIndex < text.length) {
+            parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+        }
+
+        return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
+    };
+
+    const highlightBold = (text: string): React.ReactNode => {
+        const parts: React.ReactNode[] = [];
         const boldRegex = /\*\*([^*]+)\*\*/g;
         let lastIndex = 0;
         let match;
+        let key = 0;
 
         while ((match = boldRegex.exec(text)) !== null) {
             if (match.index > lastIndex) {
@@ -107,66 +136,62 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
             lastIndex = match.index + match[0].length;
         }
 
-        if (parts.length === 0) {
-            return <span>{text}</span>;
-        }
-
         if (lastIndex < text.length) {
             parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
         }
 
-        return <>{parts}</>;
+        return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
     };
 
     return (
         <main className="flex-1 flex overflow-hidden relative">
             {/* Line Numbers Gutter */}
-            <div className="w-14 shrink-0 bg-[#111a22] border-r border-[#233648] flex flex-col items-end py-4 pr-3 no-select text-xs font-mono text-[#465a6e] overflow-hidden">
-                {Array.from({ length: lineCount }, (_, i) => (
-                    <div
-                        key={i}
-                        className={`leading-6 h-6 ${cursorPosition.line === i + 1
-                                ? "text-[#f8f8f2] font-bold bg-[#137fec]/10 rounded px-1 -mr-1"
-                                : ""
-                            }`}
-                    >
-                        {i + 1}
-                    </div>
-                ))}
+            <div
+                ref={gutterRef}
+                className="w-14 shrink-0 bg-[#111a22] border-r border-[#233648] py-4 pr-3 no-select text-xs font-mono text-[#465a6e] overflow-hidden"
+            >
+                <div className="flex flex-col items-end">
+                    {Array.from({ length: lineCount }, (_, i) => (
+                        <div key={i} className="leading-6 h-6">
+                            {i + 1}
+                        </div>
+                    ))}
+                </div>
             </div>
 
-            {/* Editor Area */}
-            <div className="flex-1 relative bg-[#0d141c] overflow-hidden">
-                {/* Highlighted Preview Layer */}
-                <div className="absolute inset-0 p-4 font-mono text-sm leading-6 text-[#c9d1d9] pointer-events-none overflow-auto whitespace-pre-wrap break-words">
+            {/* Editor Container */}
+            <div className="flex-1 relative bg-[#0d141c]">
+                {/* Syntax Highlighted Layer (visual only) */}
+                <div
+                    ref={highlightRef}
+                    className="absolute inset-0 p-4 font-mono text-sm leading-6 text-[#c9d1d9] pointer-events-none overflow-hidden whitespace-pre"
+                    aria-hidden="true"
+                >
                     {lines.map((line, i) => (
-                        <div key={i} className="min-h-[24px]">
-                            {highlightLine(line, i)}
+                        <div key={i} className="h-6">
+                            {highlightLine(line)}
                         </div>
                     ))}
                 </div>
 
-                {/* Actual Textarea */}
+                {/* Actual Editable Textarea */}
                 <textarea
                     ref={textareaRef}
                     value={content}
                     onChange={handleChange}
-                    onKeyUp={handleKeyUp}
-                    onClick={handleClick}
+                    onScroll={handleScroll}
                     spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                     className="absolute inset-0 w-full h-full p-4 font-mono text-sm leading-6 bg-transparent text-transparent caret-[#bd93f9] resize-none outline-none overflow-auto"
-                    style={{ caretColor: "#bd93f9" }}
+                    style={{
+                        caretColor: "#bd93f9",
+                        whiteSpace: "pre",
+                        wordWrap: "normal",
+                    }}
                 />
             </div>
         </main>
     );
-}
-
-export function getCursorPosition(content: string, selectionStart: number) {
-    const textBeforeCursor = content.substring(0, selectionStart);
-    const linesBeforeCursor = textBeforeCursor.split("\n");
-    return {
-        line: linesBeforeCursor.length,
-        col: linesBeforeCursor[linesBeforeCursor.length - 1].length + 1,
-    };
 }
