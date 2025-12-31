@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
+import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { MarkdownPreview } from "./components/MarkdownPreview";
@@ -19,7 +20,7 @@ interface FileData {
 
 type ViewMode = "preview" | "code";
 
-function App() {
+function AppContent() {
   // File state
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -152,7 +153,7 @@ function App() {
   }, [handleOpenFile, handleSaveFile, handleToggleMode, hasFile, content]);
 
   return (
-    <div className="h-screen flex flex-col bg-[#21222c] overflow-hidden">
+    <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
       <TitleBar fileName={fileName ?? undefined} isDirty={isDirty} filePath={filePath ?? undefined} onOpenFile={handleOpenFile} />
 
       {!hasFile ? (
@@ -180,6 +181,14 @@ function App() {
         </>
       )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 

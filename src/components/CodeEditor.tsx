@@ -37,19 +37,19 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
     const highlightLine = (line: string): React.ReactNode => {
         // H1 headers
         if (line.startsWith("# ")) {
-            return <span className="text-[#bd93f9] font-bold">{line}</span>;
+            return <span className="text-[var(--syntax-h1)] font-bold">{line}</span>;
         }
         // H2 headers
         if (line.startsWith("## ")) {
-            return <span className="text-[#ff79c6] font-bold">{line}</span>;
+            return <span className="text-[var(--syntax-h2)] font-bold">{line}</span>;
         }
         // H3+ headers
         if (line.startsWith("### ") || line.startsWith("#### ")) {
-            return <span className="text-[#8be9fd] font-semibold">{line}</span>;
+            return <span className="text-[var(--syntax-h3)] font-semibold">{line}</span>;
         }
         // Code fence
         if (line.startsWith("```")) {
-            return <span className="text-[#6272a4]">{line}</span>;
+            return <span className="text-[var(--syntax-code)]">{line}</span>;
         }
         // List items
         if (line.match(/^[\s]*[-*+]\s/)) {
@@ -57,7 +57,7 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
             const rest = line.slice(marker.length);
             return (
                 <>
-                    <span className="text-[#ff79c6]">{marker}</span>
+                    <span className="text-[var(--syntax-list)]">{marker}</span>
                     <span>{rest}</span>
                 </>
             );
@@ -69,14 +69,14 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
             const rest = line.slice(marker.length);
             return (
                 <>
-                    <span className="text-[#ffb86c]">{marker}</span>
+                    <span className="text-[var(--syntax-number)]">{marker}</span>
                     <span>{rest}</span>
                 </>
             );
         }
         // Blockquote
         if (line.startsWith(">")) {
-            return <span className="text-[#6272a4] italic">{line}</span>;
+            return <span className="text-[var(--syntax-quote)] italic">{line}</span>;
         }
         // Links [text](url)
         if (line.includes("[") && line.includes("](")) {
@@ -102,9 +102,9 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
                 parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
             }
             parts.push(
-                <span key={key++} className="text-[#8be9fd]">
+                <span key={key++} className="text-[var(--syntax-link)]">
                     [{match[1]}]
-                    <span className="text-[#6272a4]">({match[2]})</span>
+                    <span className="text-[var(--syntax-code)]">({match[2]})</span>
                 </span>
             );
             lastIndex = match.index + match[0].length;
@@ -129,7 +129,7 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
                 parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
             }
             parts.push(
-                <span key={key++} className="text-[#ffb86c] font-bold">
+                <span key={key++} className="text-[var(--syntax-bold)] font-bold">
                     {match[0]}
                 </span>
             );
@@ -148,7 +148,7 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
             {/* Line Numbers Gutter */}
             <div
                 ref={gutterRef}
-                className="w-14 shrink-0 bg-[#111a22] border-r border-[#233648] py-4 pr-3 no-select text-xs font-mono text-[#465a6e] overflow-hidden"
+                className="w-14 shrink-0 bg-[var(--bg-gutter)] border-r border-[var(--border-subtle)] py-4 pr-3 no-select text-xs font-mono text-[var(--text-muted)] overflow-hidden transition-colors"
             >
                 <div className="flex flex-col items-end">
                     {Array.from({ length: lineCount }, (_, i) => (
@@ -160,11 +160,11 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
             </div>
 
             {/* Editor Container */}
-            <div className="flex-1 relative bg-[#0d141c]">
+            <div className="flex-1 relative bg-[var(--bg-editor)] transition-colors">
                 {/* Syntax Highlighted Layer (visual only) */}
                 <div
                     ref={highlightRef}
-                    className="absolute inset-0 p-4 font-mono text-sm leading-6 text-[#c9d1d9] pointer-events-none overflow-hidden whitespace-pre"
+                    className="absolute inset-0 p-4 font-mono text-sm leading-6 text-[var(--text-primary)] pointer-events-none overflow-hidden whitespace-pre"
                     aria-hidden="true"
                 >
                     {lines.map((line, i) => (
@@ -184,9 +184,9 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="off"
-                    className="absolute inset-0 w-full h-full p-4 font-mono text-sm leading-6 bg-transparent text-transparent caret-[#bd93f9] resize-none outline-none overflow-auto"
+                    className="absolute inset-0 w-full h-full p-4 font-mono text-sm leading-6 bg-transparent text-transparent caret-[var(--accent)] resize-none outline-none overflow-auto"
                     style={{
-                        caretColor: "#bd93f9",
+                        caretColor: "var(--accent)",
                         whiteSpace: "pre",
                         wordWrap: "normal",
                     }}

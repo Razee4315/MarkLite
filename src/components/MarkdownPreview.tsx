@@ -18,8 +18,7 @@ export function MarkdownPreview({
     onEditClick,
 }: MarkdownPreviewProps) {
     return (
-        <main className="flex-1 overflow-y-auto bg-[#21222c]">
-            {/* Clean, Typora-style markdown content - no box */}
+        <main className="flex-1 overflow-y-auto bg-[var(--bg-primary)] transition-colors">
             <div className="max-w-[800px] mx-auto px-8 py-12">
                 <div className="markdown-body">
                     <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
