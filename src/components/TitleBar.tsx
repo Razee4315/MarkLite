@@ -53,8 +53,8 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile }: TitleBarPr
         <header className="h-12 shrink-0 flex items-center justify-between px-4 bg-[var(--bg-titlebar)] border-b border-[var(--border)] no-select drag-region transition-colors">
             {/* Left: Icon & Title */}
             <div className="flex items-center gap-3 no-drag">
-                <div className="text-[var(--accent)] flex items-center justify-center">
-                    <span className="material-symbols-outlined text-xl">markdown</span>
+                <div className="flex items-center justify-center w-5 h-5">
+                    <img src="/icon.svg" alt="MarkLite" className="w-full h-full" />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                     {parentFolder && (

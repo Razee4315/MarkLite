@@ -43,13 +43,22 @@ async function generateIcons() {
         console.log(`Generated: ${name}`);
     }
 
-    // Generate ICO (Windows) - using 256x256 as the largest size
-    const icoSizes = [16, 32, 48, 64, 128, 256];
+    // Generate ICO (Windows) - use thick strokes for small sizes
+    const icoSizes = [16, 20, 24, 32, 48, 64, 128, 256];
+    const thickSvgPath = path.join(__dirname, 'logo_thick.svg');
+    const thickSvgBuffer = fs.readFileSync(thickSvgPath);
+
     const icoImages = await Promise.all(
         icoSizes.map(async (size) => {
-            return await sharp(svgBuffer)
-                .resize(size, size)
-                .png()
+            // Use thick stroke version for small icons
+            const svgToUse = size <= 48 ? thickSvgBuffer : svgBuffer;
+            return await sharp(svgToUse, { density: 400 })
+                .resize(size, size, {
+                    kernel: sharp.kernel.lanczos3,
+                    fit: 'contain',
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
+                })
+                .png({ compressionLevel: 9 })
                 .toBuffer();
         })
     );
