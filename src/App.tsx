@@ -202,20 +202,24 @@ function AppContent() {
       ) : (
         <>
           {mode === "preview" ? (
-            <MarkdownPreview
-              content={content}
-              fileName={fileName || ""}
-              lineCount={lineCount}
-              fileSize={fileSize}
-              onEditClick={handleToggleMode}
-              onLineChange={(line) => setPreviewLine(line)}
-            />
+            <div key="preview" className="flex-1 flex flex-col animate-fade-in">
+              <MarkdownPreview
+                content={content}
+                fileName={fileName || ""}
+                lineCount={lineCount}
+                fileSize={fileSize}
+                onEditClick={handleToggleMode}
+                onLineChange={(line) => setPreviewLine(line)}
+              />
+            </div>
           ) : (
-            <CodeEditor
-              content={content}
-              onChange={handleContentChange}
-              onCursorChange={(line, col) => setCursorPosition({ line, col })}
-            />
+            <div key="code" className="flex-1 flex flex-col animate-fade-in">
+              <CodeEditor
+                content={content}
+                onChange={handleContentChange}
+                onCursorChange={(line, col) => setCursorPosition({ line, col })}
+              />
+            </div>
           )}
 
           <ModeToggle mode={mode} onToggle={handleToggleMode} />
