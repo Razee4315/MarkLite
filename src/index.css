@@ -294,6 +294,197 @@ body {
   animation: blink 1s step-end infinite;
 }
 
+/* ===== Micro-Animations ===== */
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fade in and slide up */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade in and slide down */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scale in animation */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Gentle pulse for status indicators */
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+
+/* Glow pulse for active states */
+@keyframes glowPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 4px currentColor;
+  }
+
+  50% {
+    box-shadow: 0 0 8px currentColor, 0 0 12px currentColor;
+  }
+}
+
+/* Staggered list item animation */
+@keyframes listItemIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Animation utility classes */
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.3s ease-out forwards;
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.2s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out forwards;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+/* Button press effect */
+.btn-press {
+  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+}
+
+.btn-press:active {
+  transform: scale(0.95);
+}
+
+/* Smooth content transitions */
+.content-fade {
+  transition: opacity 0.15s ease-out;
+}
+
+/* Status dot animations */
+.status-dot-saved {
+  animation: none;
+}
+
+.status-dot-unsaved {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Staggered list items */
+.stagger-item {
+  opacity: 0;
+  animation: listItemIn 0.2s ease-out forwards;
+}
+
+.stagger-item:nth-child(1) {
+  animation-delay: 0.02s;
+}
+
+.stagger-item:nth-child(2) {
+  animation-delay: 0.04s;
+}
+
+.stagger-item:nth-child(3) {
+  animation-delay: 0.06s;
+}
+
+.stagger-item:nth-child(4) {
+  animation-delay: 0.08s;
+}
+
+.stagger-item:nth-child(5) {
+  animation-delay: 0.10s;
+}
+
+.stagger-item:nth-child(6) {
+  animation-delay: 0.12s;
+}
+
+.stagger-item:nth-child(7) {
+  animation-delay: 0.14s;
+}
+
+.stagger-item:nth-child(8) {
+  animation-delay: 0.16s;
+}
+
+.stagger-item:nth-child(9) {
+  animation-delay: 0.18s;
+}
+
+.stagger-item:nth-child(10) {
+  animation-delay: 0.20s;
+}
+
+.stagger-item:nth-child(n+11) {
+  animation-delay: 0.22s;
+}
+
 /* ===== Markdown Preview Styles ===== */
 .markdown-body {
   line-height: var(--line-height);

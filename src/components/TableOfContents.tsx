@@ -135,12 +135,12 @@ export function TableOfContents({
                     ) : (
                         <ul className="py-2">
                             {headings.map((heading, index) => (
-                                <li key={`${heading.id}-${index}`}>
+                                <li key={`${heading.id}-${index}`} className="stagger-item" style={{ animationDelay: `${index * 0.03}s` }}>
                                     <button
                                         onClick={() =>
                                             handleHeadingClick(heading.text, heading.level)
                                         }
-                                        className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${getIndent(
+                                        className={`btn-press w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${getIndent(
                                             heading.level
                                         )}`}
                                     >

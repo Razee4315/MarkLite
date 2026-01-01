@@ -2,7 +2,6 @@ interface StatusBarProps {
     isSaved: boolean;
     lineNumber: number;
     columnNumber: number;
-    totalLines?: number;
     mode?: "preview" | "code";
     showFileExplorer?: boolean;
     showTOC?: boolean;
@@ -14,7 +13,6 @@ export function StatusBar({
     isSaved,
     lineNumber,
     columnNumber,
-    totalLines,
     mode = "preview",
     showFileExplorer = false,
     showTOC = false,
@@ -28,7 +26,7 @@ export function StatusBar({
                 <button
                     onClick={onToggleFileExplorer}
                     title="Files (Ctrl+Shift+E)"
-                    className={`flex items-center justify-center w-6 h-5 rounded transition-colors ${showFileExplorer
+                    className={`btn-press flex items-center justify-center w-6 h-5 rounded transition-colors ${showFileExplorer
                         ? "bg-[var(--accent)] text-[var(--accent-text)]"
                         : "hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                         }`}
@@ -42,7 +40,7 @@ export function StatusBar({
                 <button
                     onClick={onToggleTOC}
                     title="Table of Contents (Ctrl+Shift+O)"
-                    className={`flex items-center justify-center w-6 h-5 rounded transition-colors ${showTOC
+                    className={`btn-press flex items-center justify-center w-6 h-5 rounded transition-colors ${showTOC
                         ? "bg-[var(--accent)] text-[var(--accent-text)]"
                         : "hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                         }`}
@@ -55,12 +53,12 @@ export function StatusBar({
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
                     <span
-                        className={`w-2 h-2 rounded-full ${isSaved
+                        className={`w-2 h-2 rounded-full transition-all ${isSaved
                             ? "bg-[var(--status-saved)] shadow-[0_0_4px_rgba(80,250,123,0.4)]"
-                            : "bg-[var(--status-unsaved)] shadow-[0_0_4px_rgba(255,184,108,0.4)]"
+                            : "bg-[var(--status-unsaved)] shadow-[0_0_4px_rgba(255,184,108,0.4)] status-dot-unsaved"
                             }`}
                     ></span>
-                    <span>{isSaved ? "Saved" : "Unsaved"}</span>
+                    <span className="transition-colors">{isSaved ? "Saved" : "Unsaved"}</span>
                 </div>
                 {mode === "code" && (
                     <div className="hover:text-[var(--text-primary)] cursor-default transition-colors">
