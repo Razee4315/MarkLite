@@ -83,7 +83,7 @@ export function FileExplorer({
                     </div>
                     <button
                         onClick={onClose}
-                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                        className="btn-press flex items-center justify-center w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     >
                         <span className="material-symbols-outlined text-[18px]">
                             close
@@ -107,13 +107,13 @@ export function FileExplorer({
                         </div>
                     ) : (
                         <ul className="py-2">
-                            {files.map((file) => {
+                            {files.map((file, index) => {
                                 const isActive = file.path === currentFilePath;
                                 return (
-                                    <li key={file.path}>
+                                    <li key={file.path} className="stagger-item" style={{ animationDelay: `${index * 0.03}s` }}>
                                         <button
                                             onClick={() => handleFileClick(file.path)}
-                                            className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors ${isActive
+                                            className={`btn-press w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors ${isActive
                                                 ? "bg-[var(--accent)] text-[var(--accent-text)]"
                                                 : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                                                 }`}

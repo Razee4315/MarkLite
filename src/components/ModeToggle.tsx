@@ -6,11 +6,11 @@ interface ModeToggleProps {
 export function ModeToggle({ mode, onToggle }: ModeToggleProps) {
     return (
         <div className="fixed bottom-8 right-8 z-50">
-            <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-full p-1.5 flex items-center shadow-2xl backdrop-blur-sm transition-colors">
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-full p-1.5 flex items-center shadow-2xl backdrop-blur-sm transition-colors animate-fade-in">
                 {/* Preview/Reader Button */}
                 <button
                     onClick={mode === "code" ? onToggle : undefined}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-200 ${mode === "preview"
+                    className={`btn-press flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-200 ${mode === "preview"
                         ? "bg-[var(--accent)] text-[var(--accent-text)] shadow-md"
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                         }`}
@@ -22,7 +22,7 @@ export function ModeToggle({ mode, onToggle }: ModeToggleProps) {
                 {/* Code/Edit Button */}
                 <button
                     onClick={mode === "preview" ? onToggle : undefined}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-200 group ${mode === "code"
+                    className={`btn-press flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-200 group ${mode === "code"
                         ? "bg-[var(--accent)] text-[var(--accent-text)] shadow-md"
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                         }`}

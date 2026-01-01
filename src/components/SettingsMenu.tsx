@@ -46,7 +46,7 @@ export function SettingsMenu() {
             {/* Settings Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                className="btn-press flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 title="Settings"
             >
                 <span className="material-symbols-outlined text-[18px]">settings</span>
@@ -54,7 +54,7 @@ export function SettingsMenu() {
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50">
+                <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50 animate-fade-in-down">
                     {/* Theme Section */}
                     <div className="p-4 border-b border-[var(--border)]">
                         <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
@@ -66,8 +66,8 @@ export function SettingsMenu() {
                                     key={t.id}
                                     onClick={() => setTheme(t.id)}
                                     className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${theme === t.id
-                                            ? 'ring-2 ring-[var(--accent)] bg-[var(--bg-hover)]'
-                                            : 'hover:bg-[var(--bg-hover)]'
+                                        ? 'ring-2 ring-[var(--accent)] bg-[var(--bg-hover)]'
+                                        : 'hover:bg-[var(--bg-hover)]'
                                         }`}
                                     title={t.name}
                                 >
@@ -101,8 +101,8 @@ export function SettingsMenu() {
                                     key={f.id}
                                     onClick={() => setFont(f.id)}
                                     className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${font === f.id
-                                            ? 'bg-[var(--accent)] text-[var(--accent-text)] font-medium'
-                                            : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                                        ? 'bg-[var(--accent)] text-[var(--accent-text)] font-medium'
+                                        : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                                         }`}
                                     style={{ fontFamily: f.family }}
                                 >
@@ -123,8 +123,8 @@ export function SettingsMenu() {
                                     key={s.id}
                                     onClick={() => setFontSize(s.id)}
                                     className={`flex-1 px-3 py-2 rounded-lg transition-all text-sm text-center ${fontSize === s.id
-                                            ? 'bg-[var(--accent)] text-[var(--accent-text)] font-medium'
-                                            : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                                        ? 'bg-[var(--accent)] text-[var(--accent-text)] font-medium'
+                                        : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                                         }`}
                                 >
                                     {s.name}

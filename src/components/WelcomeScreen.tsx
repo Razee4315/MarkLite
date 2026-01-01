@@ -30,7 +30,7 @@ export function WelcomeScreen({ onOpenFile, onFileDrop }: WelcomeScreenProps) {
             onDrop={handleDrop}
             className="flex-1 flex flex-col items-center justify-center p-6 no-select"
         >
-            <div className="flex flex-col items-center gap-8 max-w-sm text-center">
+            <div className="flex flex-col items-center gap-8 max-w-sm text-center animate-fade-in-up">
                 {/* Logo */}
                 <div className="flex items-center justify-center w-20 h-20">
                     <img src="/icon.svg" alt="MarkLite" className="w-full h-full" />
@@ -49,7 +49,7 @@ export function WelcomeScreen({ onOpenFile, onFileDrop }: WelcomeScreenProps) {
                 {/* Action */}
                 <button
                     onClick={onOpenFile}
-                    className="flex items-center gap-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] font-medium text-sm px-6 py-2.5 rounded-lg transition-all duration-200 active:scale-95"
+                    className="btn-press flex items-center gap-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] font-medium text-sm px-6 py-2.5 rounded-lg transition-all duration-200"
                 >
                     <span className="material-symbols-outlined text-[20px]">folder_open</span>
                     <span>Open File</span>
