@@ -2,7 +2,6 @@ interface StatusBarProps {
     isSaved: boolean;
     lineNumber: number;
     columnNumber: number;
-    totalLines?: number;
     mode?: "preview" | "code";
     showFileExplorer?: boolean;
     showTOC?: boolean;
@@ -14,7 +13,6 @@ export function StatusBar({
     isSaved,
     lineNumber,
     columnNumber,
-    totalLines,
     mode = "preview",
     showFileExplorer = false,
     showTOC = false,

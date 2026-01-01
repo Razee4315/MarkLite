@@ -241,7 +241,6 @@ function AppContent() {
             isSaved={!isDirty}
             lineNumber={mode === "preview" ? previewLine : cursorPosition.line}
             columnNumber={cursorPosition.col}
-            totalLines={lineCount}
             mode={mode}
             showFileExplorer={showFileExplorer}
             showTOC={showTOC}
