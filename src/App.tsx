@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { listen, TauriEvent } from "@tauri-apps/api/event";
 
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
@@ -60,6 +61,35 @@ function AppContent() {
       console.error("Failed to load file:", err);
     }
   }, []);
+
+  // Listen for Tauri drag-drop events
+  useEffect(() => {
+    const setupDragDrop = async () => {
+      const unlisten = await listen<{ paths: string[] }>(TauriEvent.DRAG_DROP, async (event) => {
+        const paths = event.payload.paths;
+        if (paths && paths.length > 0) {
+          const firstPath = paths[0];
+          // Only load markdown files
+          if (firstPath.endsWith('.md') || firstPath.endsWith('.markdown')) {
+            await loadFile(firstPath);
+          }
+        }
+      });
+
+      return unlisten;
+    };
+
+    let unlisten: (() => void) | undefined;
+    setupDragDrop().then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [loadFile]);
 
   // Open file dialog
   const handleOpenFile = useCallback(async () => {
