@@ -1,4 +1,7 @@
-# MarkLite
+<p align="center">
+  <img src="public/icon.svg" width="80" alt="MarkLite Logo">
+  <h1 align="center">MarkLite</h1>
+</p>
 
 A minimal, distraction-free markdown editor built with Tauri, React, and TypeScript.
 
