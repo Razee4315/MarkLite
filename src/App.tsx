@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
@@ -114,6 +115,31 @@ function AppContent() {
       }
     }
   }, [filePath, content]);
+
+  // Listen for file open from CLI (when app is opened with a file by double-click)
+  useEffect(() => {
+    const setupCliFileOpen = async () => {
+      const unlisten = await listen<string>("file-open-from-cli", async (event) => {
+        const filePath = event.payload;
+        if (filePath) {
+          await loadFile(filePath);
+        }
+      });
+
+      return unlisten;
+    };
+
+    let unlisten: (() => void) | undefined;
+    setupCliFileOpen().then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [loadFile]);
 
   // Toggle mode
   const handleToggleMode = useCallback(() => {
