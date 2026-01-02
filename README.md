@@ -8,6 +8,40 @@ As a developer, I frequently work with markdown files for documentation, notes, 
 
 I wanted a simple, lightweight solution that renders markdown beautifully while still giving me quick access to the raw code when I need to edit. No bloated features, no complex setup, just a clean interface that lets me focus on my content.
 
+## Screenshots
+
+### Themes
+
+| Dark Theme | Light Theme |
+|:----------:|:-----------:|
+| <img src="images/black-theme.png" width="400" alt="Dark Theme"> | <img src="images/white-theme.png" width="400" alt="Light Theme"> |
+
+<p align="center">
+  <img src="images/paper-theme.png" width="500" alt="Paper Theme">
+  <br>
+  <em>Paper Theme</em>
+</p>
+
+### Features in Action
+
+<p align="center">
+  <img src="images/code-mode.png" width="600" alt="Code Mode">
+  <br>
+  <em>Code Mode with Syntax Highlighting</em>
+</p>
+
+<p align="center">
+  <img src="images/folder-with-reader-mode.png" width="600" alt="File Explorer">
+  <br>
+  <em>File Explorer Panel</em>
+</p>
+
+<p align="center">
+  <img src="images/table-of-content-with-reader-mode.png" width="600" alt="Table of Contents">
+  <br>
+  <em>Table of Contents Panel</em>
+</p>
+
 ## Features
 
 - **Clean Interface** - Minimal UI that stays out of your way
@@ -16,6 +50,8 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 - **Three Themes** - Dark, Light, and Paper themes to match your preference
 - **Five Fonts** - Inter, Merriweather, Lora, Source Serif, Fira Sans
 - **Adjustable Font Size** - Small, Medium, and Large options
+- **File Explorer** - Quick access to markdown files in the current directory
+- **Table of Contents** - Navigate large documents easily
 - **Native Performance** - Built with Tauri for a lightweight, fast experience
 - **Cross-Platform** - Windows, macOS, and Linux support
 
