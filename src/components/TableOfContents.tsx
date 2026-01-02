@@ -21,12 +21,16 @@ export function TableOfContents({
     const headings = useMemo((): TocItem[] => {
         if (!content) return [];
 
-        const lines = content.split("\n");
+        // Normalize line endings (handle Windows \r\n)
+        const normalizedContent = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const lines = normalizedContent.split("\n");
         const items: TocItem[] = [];
 
         lines.forEach((line, index) => {
             // Match markdown headings (# to ######)
-            const match = line.match(/^(#{1,6})\s+(.+)$/);
+            // Use [\s\S]* to match any character including Unicode
+            const trimmedLine = line.trim();
+            const match = trimmedLine.match(/^(#{1,6})\s+(.+)$/);
             if (match) {
                 const level = match[1].length;
                 const text = match[2].trim();
@@ -43,21 +47,42 @@ export function TableOfContents({
         return items;
     }, [content]);
 
-    const handleHeadingClick = (text: string) => {
-        // Find the heading in the preview by searching for matching text
+    const handleHeadingClick = (text: string, level: number) => {
+        // Find the scrollable container
+        const scrollContainer = document.querySelector("main.overflow-y-auto");
         const previewContainer = document.querySelector(".markdown-body");
-        if (previewContainer) {
-            const headingElements = previewContainer.querySelectorAll(
-                "h1, h2, h3, h4, h5, h6"
-            );
+
+        if (previewContainer && scrollContainer) {
+            // Get the appropriate heading tag
+            const headingTag = `h${level}`;
+            const headingElements = previewContainer.querySelectorAll(headingTag);
+
+            // Clean text for comparison (remove markdown formatting)
+            const cleanText = text
+                .replace(/\*\*(.+?)\*\*/g, "$1")  // Remove **bold**
+                .replace(/\*(.+?)\*/g, "$1")       // Remove *italic*
+                .replace(/_(.+?)_/g, "$1")         // Remove _italic_
+                .replace(/`(.+?)`/g, "$1")         // Remove `code`
+                .replace(/\[(.+?)\]\(.+?\)/g, "$1") // Remove [link](url)
+                .trim();
+
             for (const el of headingElements) {
-                if (el.textContent?.trim() === text) {
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                const elText = el.textContent?.trim() || "";
+                // Match if text is equal or if cleaned text matches
+                if (elText === text || elText === cleanText || elText.includes(cleanText)) {
+                    // Scroll with offset for better visibility
+                    const elementTop = el.getBoundingClientRect().top;
+                    const containerTop = scrollContainer.getBoundingClientRect().top;
+                    const offset = elementTop - containerTop + scrollContainer.scrollTop - 20;
+
+                    scrollContainer.scrollTo({
+                        top: offset,
+                        behavior: "smooth"
+                    });
                     break;
                 }
             }
         }
-        onClose();
     };
 
     // Get indentation based on heading level
@@ -110,12 +135,12 @@ export function TableOfContents({
                     ) : (
                         <ul className="py-2">
                             {headings.map((heading, index) => (
-                                <li key={`${heading.id}-${index}`}>
+                                <li key={`${heading.id}-${index}`} className="stagger-item" style={{ animationDelay: `${index * 0.03}s` }}>
                                     <button
                                         onClick={() =>
-                                            handleHeadingClick(heading.text)
+                                            handleHeadingClick(heading.text, heading.level)
                                         }
-                                        className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${getIndent(
+                                        className={`btn-press w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${getIndent(
                                             heading.level
                                         )}`}
                                     >

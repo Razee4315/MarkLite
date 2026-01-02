@@ -1,11 +1,12 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 
 interface CodeEditorProps {
     content: string;
     onChange: (content: string) => void;
+    onCursorChange?: (line: number, column: number) => void;
 }
 
-export function CodeEditor({ content, onChange }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -17,6 +18,41 @@ export function CodeEditor({ content, onChange }: CodeEditorProps) {
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onChange(e.target.value);
     };
+
+    // Calculate cursor position (line and column)
+    const updateCursorPosition = useCallback(() => {
+        if (!textareaRef.current || !onCursorChange) return;
+
+        const textarea = textareaRef.current;
+        const cursorPos = textarea.selectionStart;
+        const textBeforeCursor = textarea.value.substring(0, cursorPos);
+        const linesBeforeCursor = textBeforeCursor.split("\n");
+        const line = linesBeforeCursor.length;
+        const column = linesBeforeCursor[linesBeforeCursor.length - 1].length + 1;
+
+        onCursorChange(line, column);
+    }, [onCursorChange]);
+
+    // Track cursor position on various events
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const handleSelectionChange = () => updateCursorPosition();
+
+        textarea.addEventListener("keyup", handleSelectionChange);
+        textarea.addEventListener("click", handleSelectionChange);
+        textarea.addEventListener("select", handleSelectionChange);
+
+        // Initial position
+        updateCursorPosition();
+
+        return () => {
+            textarea.removeEventListener("keyup", handleSelectionChange);
+            textarea.removeEventListener("click", handleSelectionChange);
+            textarea.removeEventListener("select", handleSelectionChange);
+        };
+    }, [updateCursorPosition, content]);
 
     // Sync scroll between textarea, gutter, and highlight layer
     const handleScroll = useCallback(() => {

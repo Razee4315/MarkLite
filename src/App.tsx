@@ -32,11 +32,14 @@ function AppContent() {
 
   // UI state
   const [mode, setMode] = useState<ViewMode>("preview");
-  const [cursorPosition] = useState({ line: 1, col: 1 });
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
   // Sidebar panel state
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
+
+  // Preview scroll position
+  const [previewLine, setPreviewLine] = useState(1);
 
   // Derived state
   const isDirty = content !== originalContent;
@@ -199,15 +202,24 @@ function AppContent() {
       ) : (
         <>
           {mode === "preview" ? (
-            <MarkdownPreview
-              content={content}
-              fileName={fileName || ""}
-              lineCount={lineCount}
-              fileSize={fileSize}
-              onEditClick={handleToggleMode}
-            />
+            <div key="preview" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
+              <MarkdownPreview
+                content={content}
+                fileName={fileName || ""}
+                lineCount={lineCount}
+                fileSize={fileSize}
+                onEditClick={handleToggleMode}
+                onLineChange={(line) => setPreviewLine(line)}
+              />
+            </div>
           ) : (
-            <CodeEditor content={content} onChange={handleContentChange} />
+            <div key="code" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
+              <CodeEditor
+                content={content}
+                onChange={handleContentChange}
+                onCursorChange={(line, col) => setCursorPosition({ line, col })}
+              />
+            </div>
           )}
 
           <ModeToggle mode={mode} onToggle={handleToggleMode} />
@@ -227,8 +239,9 @@ function AppContent() {
 
           <StatusBar
             isSaved={!isDirty}
-            lineNumber={cursorPosition.line}
+            lineNumber={mode === "preview" ? previewLine : cursorPosition.line}
             columnNumber={cursorPosition.col}
+            mode={mode}
             showFileExplorer={showFileExplorer}
             showTOC={showTOC}
             onToggleFileExplorer={handleToggleFileExplorer}
