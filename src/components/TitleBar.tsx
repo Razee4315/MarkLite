@@ -1,4 +1,5 @@
 import { Window } from "@tauri-apps/api/window";
+import { message } from "@tauri-apps/plugin-dialog";
 import { SettingsMenu } from "./SettingsMenu";
 
 interface TitleBarProps {
@@ -6,9 +7,10 @@ interface TitleBarProps {
     isDirty?: boolean;
     filePath?: string;
     onOpenFile?: () => void;
+    onSaveFile?: () => Promise<void>;
 }
 
-export function TitleBar({ fileName, isDirty, filePath, onOpenFile }: TitleBarProps) {
+export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile }: TitleBarProps) {
     const handleMinimize = async () => {
         try {
             const appWindow = Window.getCurrent();
@@ -30,7 +32,43 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile }: TitleBarPr
     const handleClose = async () => {
         try {
             const appWindow = Window.getCurrent();
-            await appWindow.close();
+            
+            // If there are unsaved changes, ask the user what to do
+            if (isDirty) {
+                const result = await message(
+                    "Do you want to save changes before closing?",
+                    {
+                        title: "Unsaved Changes",
+                        kind: "warning",
+                        buttons: {
+                            yes: "Save",
+                            no: "Don't Save",
+                            cancel: "Cancel"
+                        }
+                    }
+                );
+                
+                if (result === "Save") {
+                    // Save the file first, then close only if save succeeds
+                    if (onSaveFile) {
+                        try {
+                            await onSaveFile();
+                            await appWindow.close();
+                        } catch (saveError) {
+                            console.error("Save failed:", saveError);
+                            // Don't close if save failed
+                        }
+                    } else {
+                        await appWindow.close();
+                    }
+                } else if (result === "Don't Save") {
+                    // Close without saving
+                    await appWindow.close();
+                }
+                // If Cancel, do nothing (don't close)
+            } else {
+                await appWindow.close();
+            }
         } catch (e) {
             console.error("Close failed:", e);
         }
