@@ -48,21 +48,27 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile }
                     }
                 );
                 
-                if (result === "Save" || result === "yes") {
-                    // Save the file first, then close
+                if (result === "Save") {
+                    // Save the file first, then close only if save succeeds
                     if (onSaveFile) {
-                        await onSaveFile();
+                        try {
+                            await onSaveFile();
+                            await appWindow.close();
+                        } catch (saveError) {
+                            console.error("Save failed:", saveError);
+                            // Don't close if save failed
+                        }
+                    } else {
+                        await appWindow.close();
                     }
-                    await appWindow.close();
-                } else if (result === "Don't Save" || result === "no") {
+                } else if (result === "Don't Save") {
                     // Close without saving
                     await appWindow.close();
                 }
                 // If Cancel, do nothing (don't close)
-                return;
+            } else {
+                await appWindow.close();
             }
-            
-            await appWindow.close();
         } catch (e) {
             console.error("Close failed:", e);
         }
