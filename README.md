@@ -115,7 +115,6 @@ Contributions are welcome. Please read the [Contributing Guidelines](CONTRIBUTIN
 **Saqlain Abbas**  
 Email: saqlainrazee@gmail.com  
 GitHub: [@Razee4315](https://github.com/Razee4315)
-
 Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
 
 ## License
