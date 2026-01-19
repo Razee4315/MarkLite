@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { listen } from "@tauri-apps/api/event";
+import { listen, TauriEvent } from "@tauri-apps/api/event";
 
 
 import { ThemeProvider } from "./context/ThemeContext";
@@ -251,7 +251,7 @@ function AppContent() {
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
-      <TitleBar fileName={fileName ?? undefined} isDirty={isDirty} filePath={filePath ?? undefined} onOpenFile={handleOpenFile} />
+      <TitleBar fileName={fileName ?? undefined} isDirty={isDirty} filePath={filePath ?? undefined} onOpenFile={handleOpenFile} onSaveFile={handleSaveFile} />
 
       {!hasFile ? (
         <WelcomeScreen onOpenFile={handleOpenFile} onFileDrop={handleFileDrop} />
