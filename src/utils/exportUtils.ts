@@ -1,6 +1,7 @@
 import { Theme, FontFamily, FontSize } from '../context/ThemeContext';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
+import { jsPDF } from 'jspdf';
 
 // Theme color definitions for export
 const themeColors: Record<Theme, Record<string, string>> = {
@@ -339,95 +340,331 @@ export async function exportToHTML(
     }
 }
 
-// Export to PDF using html2pdf.js
+// PDF font size mappings
+const pdfFontSizes: Record<FontSize, { base: number; h1: number; h2: number; h3: number; code: number; lineHeight: number }> = {
+    small: { base: 10, h1: 20, h2: 16, h3: 12, code: 9, lineHeight: 1.4 },
+    medium: { base: 11, h1: 22, h2: 18, h3: 14, code: 10, lineHeight: 1.5 },
+    large: { base: 12, h1: 24, h2: 20, h3: 16, code: 11, lineHeight: 1.6 },
+};
+
+// Parse HTML and extract structured content for PDF
+interface PDFElement {
+    type: 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'code' | 'blockquote' | 'hr' | 'pre';
+    text: string;
+    indent?: number;
+    ordered?: boolean;
+    index?: number;
+}
+
+function parseHTMLForPDF(htmlContent: string): PDFElement[] {
+    const elements: PDFElement[] = [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${htmlContent}</div>`, 'text/html');
+    const container = doc.body.firstChild as HTMLElement;
+
+    function processNode(node: Node, listIndent: number = 0, orderedList: boolean = false, listIndex: number = 0): void {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent?.trim();
+            if (text) {
+                // Text node outside of elements - treat as paragraph
+                elements.push({ type: 'p', text });
+            }
+            return;
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+        const el = node as HTMLElement;
+        const tagName = el.tagName.toLowerCase();
+
+        switch (tagName) {
+            case 'h1':
+                elements.push({ type: 'h1', text: el.textContent || '' });
+                break;
+            case 'h2':
+                elements.push({ type: 'h2', text: el.textContent || '' });
+                break;
+            case 'h3':
+            case 'h4':
+            case 'h5':
+            case 'h6':
+                elements.push({ type: 'h3', text: el.textContent || '' });
+                break;
+            case 'p':
+                elements.push({ type: 'p', text: el.textContent || '' });
+                break;
+            case 'pre':
+                const codeEl = el.querySelector('code');
+                elements.push({ type: 'pre', text: codeEl?.textContent || el.textContent || '' });
+                break;
+            case 'blockquote':
+                elements.push({ type: 'blockquote', text: el.textContent || '' });
+                break;
+            case 'hr':
+                elements.push({ type: 'hr', text: '' });
+                break;
+            case 'ul':
+                let ulIndex = 0;
+                el.childNodes.forEach(child => {
+                    if ((child as HTMLElement).tagName?.toLowerCase() === 'li') {
+                        ulIndex++;
+                        processNode(child, listIndent + 1, false, ulIndex);
+                    }
+                });
+                break;
+            case 'ol':
+                let olIndex = 0;
+                el.childNodes.forEach(child => {
+                    if ((child as HTMLElement).tagName?.toLowerCase() === 'li') {
+                        olIndex++;
+                        processNode(child, listIndent + 1, true, olIndex);
+                    }
+                });
+                break;
+            case 'li':
+                elements.push({
+                    type: 'li',
+                    text: el.textContent || '',
+                    indent: listIndent,
+                    ordered: orderedList,
+                    index: listIndex
+                });
+                // Check for nested lists
+                el.childNodes.forEach(child => {
+                    const childTag = (child as HTMLElement).tagName?.toLowerCase();
+                    if (childTag === 'ul' || childTag === 'ol') {
+                        processNode(child, listIndent, childTag === 'ol', 0);
+                    }
+                });
+                break;
+            default:
+                // Process children for other elements (div, article, etc.)
+                el.childNodes.forEach(child => processNode(child, listIndent, orderedList, listIndex));
+        }
+    }
+
+    if (container) {
+        container.childNodes.forEach(child => processNode(child));
+    }
+
+    return elements;
+}
+
+// Export to PDF with real selectable text using jsPDF
 export async function exportToPDF(
     htmlContent: string,
     fileName: string,
-    theme: Theme,
-    font: FontFamily,
+    _theme: Theme,
+    _font: FontFamily,
     fontSize: FontSize
 ): Promise<void> {
     const title = fileName.replace(/\.(md|markdown)$/i, '');
-    const colors = themeColors[theme];
-    const fontFamily = fontFamilies[font];
-    const sizes = fontSizes[fontSize];
 
-    // Get save path first
+    if (!htmlContent || htmlContent.trim() === '') {
+        console.error('No HTML content to export!');
+        return;
+    }
+
+    // Parse HTML into structured elements
+    const elements = parseHTMLForPDF(htmlContent);
+    const sizes = pdfFontSizes[fontSize];
+
+    // Create PDF document (A4 size)
+    const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 20;
+    const maxWidth = pageWidth - margin * 2;
+    let y = margin;
+
+    // Helper to add new page if needed
+    const checkPageBreak = (height: number) => {
+        if (y + height > pageHeight - margin) {
+            pdf.addPage();
+            y = margin;
+            return true;
+        }
+        return false;
+    };
+
+    // Helper to wrap text and return lines
+    const wrapText = (text: string, maxW: number, fontSizePt: number): string[] => {
+        pdf.setFontSize(fontSizePt);
+        return pdf.splitTextToSize(text, maxW);
+    };
+
+    // Render each element
+    for (const element of elements) {
+        switch (element.type) {
+            case 'h1': {
+                checkPageBreak(15);
+                y += 8; // Space before heading
+                pdf.setFontSize(sizes.h1);
+                pdf.setFont('helvetica', 'bold');
+                const lines = wrapText(element.text, maxWidth, sizes.h1);
+                pdf.text(lines, margin, y);
+                y += lines.length * (sizes.h1 * 0.4) + 3;
+                // Draw underline
+                pdf.setDrawColor(200, 200, 200);
+                pdf.setLineWidth(0.5);
+                pdf.line(margin, y, pageWidth - margin, y);
+                y += 5;
+                break;
+            }
+
+            case 'h2': {
+                checkPageBreak(12);
+                y += 6;
+                pdf.setFontSize(sizes.h2);
+                pdf.setFont('helvetica', 'bold');
+                const lines = wrapText(element.text, maxWidth, sizes.h2);
+                pdf.text(lines, margin, y);
+                y += lines.length * (sizes.h2 * 0.4) + 2;
+                pdf.setDrawColor(220, 220, 220);
+                pdf.setLineWidth(0.3);
+                pdf.line(margin, y, pageWidth - margin, y);
+                y += 4;
+                break;
+            }
+
+            case 'h3': {
+                checkPageBreak(10);
+                y += 4;
+                pdf.setFontSize(sizes.h3);
+                pdf.setFont('helvetica', 'bold');
+                const lines = wrapText(element.text, maxWidth, sizes.h3);
+                pdf.text(lines, margin, y);
+                y += lines.length * (sizes.h3 * 0.4) + 3;
+                break;
+            }
+
+            case 'p': {
+                const lineH = sizes.base * 0.4 * sizes.lineHeight;
+                pdf.setFontSize(sizes.base);
+                pdf.setFont('helvetica', 'normal');
+                const lines = wrapText(element.text, maxWidth, sizes.base);
+                checkPageBreak(lines.length * lineH);
+                pdf.text(lines, margin, y);
+                y += lines.length * lineH + 3;
+                break;
+            }
+
+            case 'li': {
+                const indent = (element.indent || 1) * 5;
+                const bullet = element.ordered ? `${element.index}.` : '•';
+                const lineH = sizes.base * 0.4 * sizes.lineHeight;
+                pdf.setFontSize(sizes.base);
+                pdf.setFont('helvetica', 'normal');
+
+                // Clean text - remove bullet/number if already present
+                let cleanText = element.text.trim();
+                
+                const lines = wrapText(cleanText, maxWidth - indent - 5, sizes.base);
+                checkPageBreak(lines.length * lineH);
+
+                // Draw bullet/number
+                pdf.text(bullet, margin + indent - 4, y);
+                // Draw text
+                pdf.text(lines, margin + indent + 2, y);
+                y += lines.length * lineH + 1;
+                break;
+            }
+
+            case 'pre': {
+                const codeLines = element.text.split('\n');
+                const lineH = sizes.code * 0.4;
+                const blockHeight = codeLines.length * lineH + 6;
+                checkPageBreak(blockHeight);
+
+                // Draw background
+                pdf.setFillColor(245, 245, 245);
+                pdf.roundedRect(margin, y - 2, maxWidth, blockHeight, 2, 2, 'F');
+
+                pdf.setFontSize(sizes.code);
+                pdf.setFont('courier', 'normal');
+                pdf.setTextColor(60, 60, 60);
+
+                let codeY = y + 2;
+                for (const line of codeLines) {
+                    const wrapped = wrapText(line || ' ', maxWidth - 6, sizes.code);
+                    pdf.text(wrapped, margin + 3, codeY);
+                    codeY += wrapped.length * lineH;
+                }
+
+                pdf.setTextColor(0, 0, 0);
+                y += blockHeight + 3;
+                break;
+            }
+
+            case 'blockquote': {
+                const lineH = sizes.base * 0.4 * sizes.lineHeight;
+                pdf.setFontSize(sizes.base);
+                pdf.setFont('helvetica', 'italic');
+                const lines = wrapText(element.text, maxWidth - 10, sizes.base);
+                const blockHeight = lines.length * lineH + 4;
+                checkPageBreak(blockHeight);
+
+                // Draw left border
+                pdf.setFillColor(100, 100, 100);
+                pdf.rect(margin, y - 2, 2, blockHeight, 'F');
+
+                // Draw background
+                pdf.setFillColor(250, 250, 250);
+                pdf.rect(margin + 3, y - 2, maxWidth - 3, blockHeight, 'F');
+
+                pdf.setTextColor(80, 80, 80);
+                pdf.text(lines, margin + 6, y + 2);
+                pdf.setTextColor(0, 0, 0);
+                pdf.setFont('helvetica', 'normal');
+                y += blockHeight + 3;
+                break;
+            }
+
+            case 'hr': {
+                checkPageBreak(10);
+                y += 5;
+                pdf.setDrawColor(200, 200, 200);
+                pdf.setLineWidth(0.5);
+                pdf.line(margin, y, pageWidth - margin, y);
+                y += 5;
+                break;
+            }
+        }
+    }
+
+    // Add footer
+    const pageCount = pdf.getNumberOfPages();
+    const date = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    for (let i = 1; i <= pageCount; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(150, 150, 150);
+        pdf.text(`Exported from MarkLite on ${date}`, margin, pageHeight - 10);
+        pdf.text(`Page ${i} of ${pageCount}`, pageWidth - margin - 20, pageHeight - 10);
+    }
+
+    // Get PDF as array buffer
+    const pdfBuffer = pdf.output('arraybuffer');
+
+    // Use Tauri save dialog
     const filePath = await save({
         defaultPath: `${title}.pdf`,
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
 
-    if (!filePath) return;
-
-    // Dynamically import html2pdf
-    const html2pdf = (await import('html2pdf.js')).default;
-
-    // Create a styled container directly
-    const container = document.createElement('div');
-    container.innerHTML = htmlContent;
-    container.style.cssText = `
-        font-family: ${fontFamily};
-        font-size: ${sizes.base};
-        line-height: ${sizes.lineHeight};
-        background-color: ${colors.bgPrimary};
-        color: ${colors.textPrimary};
-        padding: 40px;
-        max-width: 800px;
-        margin: 0 auto;
-    `;
-    
-    // Apply styles to elements
-    const styleElement = document.createElement('style');
-    styleElement.textContent = `
-        h1 { font-size: ${sizes.h1}; font-weight: 800; color: ${colors.syntaxH1}; margin-bottom: 1rem; padding-bottom: 0.3em; border-bottom: 1px solid ${colors.border}; }
-        h2 { font-size: ${sizes.h2}; font-weight: 700; color: ${colors.syntaxH2}; margin-top: 2rem; margin-bottom: 1rem; padding-bottom: 0.3em; border-bottom: 1px solid ${colors.border}; }
-        h3 { font-size: ${sizes.h3}; font-weight: 600; color: ${colors.syntaxH3}; margin-top: 1.5rem; margin-bottom: 0.5rem; }
-        p { margin-bottom: 1rem; }
-        a { color: ${colors.syntaxLink}; text-decoration: none; }
-        strong { font-weight: 600; color: ${colors.syntaxBold}; }
-        code { background: ${colors.codeBg}; border: 1px solid ${colors.border}; border-radius: 4px; padding: 0.1em 0.3em; font-size: 0.875em; color: ${colors.codeText}; font-family: 'JetBrains Mono', monospace; }
-        pre { background: ${colors.codeBg}; border: 1px solid ${colors.border}; border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
-        pre code { background: none; border: none; padding: 0; color: ${colors.textPrimary}; }
-        ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
-        li { margin-bottom: 0.25rem; }
-        blockquote { border-left: 4px solid ${colors.accent}; background: ${colors.blockquoteBg}; padding: 0.5rem 1rem; margin: 1rem 0; font-style: italic; color: ${colors.textSecondary}; }
-        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
-        th, td { border: 1px solid ${colors.border}; padding: 0.5rem; text-align: left; }
-        th { background: ${colors.bgSecondary}; font-weight: 600; }
-        hr { border: none; border-top: 1px solid ${colors.border}; margin: 2rem 0; }
-    `;
-    container.prepend(styleElement);
-
-    // Position off-screen for rendering
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
-    container.style.top = '0';
-    container.style.width = '800px';
-    document.body.appendChild(container);
-
-    // PDF options - output as blob
-    const opt = {
-        margin: [10, 10, 10, 10],
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-        },
-        jsPDF: {
-            unit: 'mm',
-            format: 'a4',
-            orientation: 'portrait' as const,
-        },
-    };
-
-    try {
-        // Generate PDF as blob and save to file
-        const pdfBlob = await html2pdf().set(opt).from(container).output('blob') as Blob;
-        const arrayBuffer = await pdfBlob.arrayBuffer();
-        await writeFile(filePath, new Uint8Array(arrayBuffer));
-    } finally {
-        document.body.removeChild(container);
+    if (filePath) {
+        // Write binary file
+        await writeFile(filePath, new Uint8Array(pdfBuffer));
     }
 }
