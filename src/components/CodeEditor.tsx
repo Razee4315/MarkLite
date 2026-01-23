@@ -1,12 +1,15 @@
 import { useRef, useCallback, useEffect } from "react";
+import { getImageFromClipboard, saveImageToFile, createMarkdownImage, insertAtCursor } from "../utils/imageUtils";
 
 interface CodeEditorProps {
     content: string;
     onChange: (content: string) => void;
     onCursorChange?: (line: number, column: number) => void;
+    onImagePaste?: () => void; // Callback when image is successfully pasted
+    filePath?: string | null; // Current file path for saving images
 }
 
-export function CodeEditor({ content, onChange, onCursorChange }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, filePath }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -15,9 +18,59 @@ export function CodeEditor({ content, onChange, onCursorChange }: CodeEditorProp
     const lines = content.split("\n");
     const lineCount = lines.length;
 
-    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onChange(e.target.value);
     };
+
+    // Handle paste events - check for images in clipboard
+    const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const imageFile = getImageFromClipboard(e.nativeEvent);
+        
+        if (imageFile) {
+            // Prevent default paste behavior for images
+            e.preventDefault();
+            
+            // Check if file is saved (required for image storage)
+            if (!filePath) {
+                alert('Please save your file first before pasting images.');
+                return;
+            }
+            
+            try {
+                // Save image to local file and get relative path
+                const imagePath = await saveImageToFile(imageFile, filePath);
+                const timestamp = Date.now();
+                const altText = `image-${timestamp}`;
+                const markdownImage = createMarkdownImage(imagePath, altText);
+                
+                // Get current cursor position
+                const textarea = textareaRef.current;
+                if (!textarea) return;
+                
+                const cursorPos = textarea.selectionStart;
+                
+                // Insert markdown image at cursor
+                const { newText, newCursorPosition } = insertAtCursor(content, cursorPos, markdownImage);
+                onChange(newText);
+                
+                // Restore cursor position after state update
+                requestAnimationFrame(() => {
+                    if (textareaRef.current) {
+                        textareaRef.current.selectionStart = newCursorPosition;
+                        textareaRef.current.selectionEnd = newCursorPosition;
+                        textareaRef.current.focus();
+                    }
+                });
+                
+                // Notify parent of successful paste
+                onImagePaste?.();
+            } catch (error) {
+                console.error('Failed to paste image:', error);
+                alert('Failed to save image. Please try again.');
+            }
+        }
+        // If no image, let default paste behavior handle text
+    }, [content, onChange, onImagePaste, filePath]);
 
     // Calculate cursor position (line and column)
     const updateCursorPosition = useCallback(() => {
@@ -110,9 +163,13 @@ export function CodeEditor({ content, onChange, onCursorChange }: CodeEditorProp
                 </>
             );
         }
-        // Blockquote
+// Blockquote
         if (line.startsWith(">")) {
             return <span className="text-[var(--syntax-quote)] italic">{line}</span>;
+        }
+        // Images ![alt](url) - check before links since images have ! prefix
+        if (line.includes("![") && line.includes("](")) {
+            return highlightImages(line);
         }
         // Links [text](url)
         if (line.includes("[") && line.includes("](")) {
@@ -122,8 +179,47 @@ export function CodeEditor({ content, onChange, onCursorChange }: CodeEditorProp
         if (line.includes("**")) {
             return highlightBold(line);
         }
-        // Regular text
+// Regular text
         return <span>{line || "\u00A0"}</span>;
+    };
+
+    // Highlight images ![alt](url) - shows truncated for data URLs
+    const highlightImages = (text: string): React.ReactNode => {
+        const parts: React.ReactNode[] = [];
+        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        let lastIndex = 0;
+        let match;
+        let key = 0;
+
+        while ((match = imageRegex.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+            }
+            
+            const altText = match[1];
+            const url = match[2];
+            // Truncate long data URLs for display
+            const displayUrl = url.startsWith('data:') 
+                ? `data:image/...` 
+                : url.length > 40 
+                    ? url.slice(0, 37) + '...' 
+                    : url;
+            
+            parts.push(
+                <span key={key++} className="text-[var(--syntax-link)]">
+                    <span className="text-[var(--syntax-bold)]">!</span>
+                    [{altText}]
+                    <span className="text-[var(--syntax-code)] opacity-70">({displayUrl})</span>
+                </span>
+            );
+            lastIndex = match.index + match[0].length;
+        }
+
+        if (lastIndex < text.length) {
+            parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+        }
+
+        return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
     };
 
     const highlightLinks = (text: string): React.ReactNode => {
@@ -210,11 +306,12 @@ export function CodeEditor({ content, onChange, onCursorChange }: CodeEditorProp
                     ))}
                 </div>
 
-                {/* Actual Editable Textarea */}
+{/* Actual Editable Textarea */}
                 <textarea
                     ref={textareaRef}
                     value={content}
                     onChange={handleChange}
+                    onPaste={handlePaste}
                     onScroll={handleScroll}
                     spellCheck={false}
                     autoComplete="off"

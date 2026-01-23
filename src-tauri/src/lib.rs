@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::{read_file, save_file, get_file_info, list_directory_files};
+use commands::{read_file, save_file, get_file_info, list_directory_files, save_image};
 use tauri::{Manager, Emitter};
 use std::sync::Mutex;
 
@@ -22,11 +22,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![
+.invoke_handler(tauri::generate_handler![
             read_file,
             save_file,
             get_file_info,
-            list_directory_files
+            list_directory_files,
+            save_image
         ])
         .setup(move |app| {
             // Listen for window ready event

@@ -19,11 +19,16 @@
         "minHeight": 400,
         "decorations": false,
         "transparent": false,
-        "center": true
+        "center": true,
+        "useHttpsScheme": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' https://asset.localhost asset:; img-src 'self' asset: https://asset.localhost blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     }
   },
   "bundle": {

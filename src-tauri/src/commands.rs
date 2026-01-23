@@ -162,3 +162,38 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<FileEntry>, C
     
     Ok(entries)
 }
+
+/// Save image data to a file in the images subdirectory
+/// Returns the relative path to use in markdown
+#[tauri::command]
+pub async fn save_image(
+    md_file_path: String,
+    image_data: Vec<u8>,
+    image_name: String,
+) -> Result<String, CommandError> {
+    let md_path = PathBuf::from(&md_file_path);
+    
+    // Get the directory containing the markdown file
+    let parent_dir = md_path
+        .parent()
+        .ok_or_else(|| CommandError::WriteError("Cannot determine parent directory".to_string()))?;
+    
+    // Create images subdirectory
+    let images_dir = parent_dir.join("images");
+    if !images_dir.exists() {
+        tokio::fs::create_dir_all(&images_dir)
+            .await
+            .map_err(|e| CommandError::WriteError(format!("Failed to create images directory: {}", e)))?;
+    }
+    
+    // Full path for the image
+    let image_path = images_dir.join(&image_name);
+    
+    // Write the image data
+    tokio::fs::write(&image_path, &image_data)
+        .await
+        .map_err(|e| CommandError::WriteError(format!("Failed to write image: {}", e)))?;
+    
+    // Return relative path for markdown (./images/filename.png)
+    Ok(format!("./images/{}", image_name))
+}

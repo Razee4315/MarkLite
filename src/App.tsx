@@ -15,6 +15,7 @@ import { StatusBar } from "./components/StatusBar";
 import { ModeToggle } from "./components/ModeToggle";
 import { FileExplorer } from "./components/FileExplorer";
 import { TableOfContents } from "./components/TableOfContents";
+import { Toast } from "./components/Toast";
 
 interface FileData {
   path: string;
@@ -50,6 +51,9 @@ function AppContent() {
 
   // Preview scroll position
   const [previewLine, setPreviewLine] = useState(1);
+
+  // Toast notification state
+  const [toast, setToast] = useState({ message: '', isVisible: false });
 
   // Export HTML content ref
   const exportRef = useRef<HTMLDivElement>(null);
@@ -215,9 +219,19 @@ function AppContent() {
     [loadFile]
   );
 
-  // Handle content change
+// Handle content change
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent);
+  }, []);
+
+  // Handle image paste success
+  const handleImagePaste = useCallback(() => {
+    setToast({ message: 'Image pasted successfully!', isVisible: true });
+  }, []);
+
+  // Hide toast
+  const hideToast = useCallback(() => {
+    setToast(prev => ({ ...prev, isVisible: false }));
   }, []);
 
   // Keyboard shortcuts
@@ -304,7 +318,7 @@ function AppContent() {
       ) : (
         <>
           {mode === "preview" ? (
-            <div key="preview" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
+<div key="preview" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
               <MarkdownPreview
                 content={content}
                 fileName={fileName || ""}
@@ -312,14 +326,17 @@ function AppContent() {
                 fileSize={fileSize}
                 onEditClick={handleToggleMode}
                 onLineChange={(line) => setPreviewLine(line)}
+                filePath={filePath}
               />
             </div>
           ) : (
-            <div key="code" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
+<div key="code" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
               <CodeEditor
                 content={content}
                 onChange={handleContentChange}
                 onCursorChange={(line, col) => setCursorPosition({ line, col })}
+                onImagePaste={handleImagePaste}
+                filePath={filePath}
               />
             </div>
           )}
@@ -339,7 +356,7 @@ function AppContent() {
             onClose={closeAllPanels}
           />
 
-          <StatusBar
+<StatusBar
             isSaved={!isDirty}
             lineNumber={mode === "preview" ? previewLine : cursorPosition.line}
             columnNumber={cursorPosition.col}
@@ -352,6 +369,13 @@ function AppContent() {
           />
         </>
       )}
+
+      {/* Toast notifications */}
+      <Toast 
+        message={toast.message} 
+        isVisible={toast.isVisible} 
+        onHide={hideToast} 
+      />
     </div>
   );
 }
