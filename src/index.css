@@ -144,6 +144,53 @@
   --selection-text: #faf8f3;
 }
 
+/* GitHub Theme - Matches GitHub's README rendering */
+[data-theme="github"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-titlebar: #f6f8fa;
+  --bg-editor: #ffffff;
+  --bg-gutter: #f6f8fa;
+  --bg-hover: #eaeef2;
+  --bg-input: #f6f8fa;
+
+  --text-primary: #1f2328;
+  --text-secondary: #656d76;
+  --text-muted: #8b949e;
+
+  --accent: #0969da;
+  --accent-hover: rgba(9, 105, 218, 0.9);
+  --accent-text: #ffffff;
+
+  --border: #d0d7de;
+  --border-subtle: #eaeef2;
+
+  --code-bg: rgba(175, 184, 193, 0.2);
+  --code-text: #1f2328;
+  --blockquote-bg: transparent;
+
+  --syntax-h1: #1f2328;
+  --syntax-h2: #1f2328;
+  --syntax-h3: #1f2328;
+  --syntax-link: #0969da;
+  --syntax-bold: #1f2328;
+  --syntax-list: #1f2328;
+  --syntax-number: #1f2328;
+  --syntax-quote: #656d76;
+  --syntax-code: #656d76;
+
+  --status-saved: #1a7f37;
+  --status-unsaved: #9a6700;
+  --danger: #cf222e;
+
+  --scrollbar-track: #f6f8fa;
+  --scrollbar-thumb: #d0d7de;
+  --scrollbar-hover: #afb8c1;
+
+  --selection-bg: #0969da;
+  --selection-text: #ffffff;
+}
+
 /* ===== Font Family Variables ===== */
 /* Default font - must come BEFORE attribute selectors */
 :root {

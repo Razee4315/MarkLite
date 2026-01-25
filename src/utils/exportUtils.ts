@@ -53,6 +53,22 @@ const themeColors: Record<Theme, Record<string, string>> = {
         syntaxLink: '#2d5a7b',
         syntaxBold: '#5c4033',
     },
+    github: {
+        bgPrimary: '#ffffff',
+        bgSecondary: '#f6f8fa',
+        textPrimary: '#1f2328',
+        textSecondary: '#656d76',
+        border: '#d0d7de',
+        codeBg: 'rgba(175, 184, 193, 0.2)',
+        codeText: '#1f2328',
+        blockquoteBg: 'transparent',
+        accent: '#0969da',
+        syntaxH1: '#1f2328',
+        syntaxH2: '#1f2328',
+        syntaxH3: '#1f2328',
+        syntaxLink: '#0969da',
+        syntaxBold: '#1f2328',
+    },
 };
 
 // Font family definitions
@@ -563,7 +579,7 @@ export async function exportToPDF(
 
                 // Clean text - remove bullet/number if already present
                 let cleanText = element.text.trim();
-                
+
                 const lines = wrapText(cleanText, maxWidth - indent - 5, sizes.base);
                 checkPageBreak(lines.length * lineH);
 

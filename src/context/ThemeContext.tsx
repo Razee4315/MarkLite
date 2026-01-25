@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export type Theme = 'dark' | 'light' | 'paper';
+export type Theme = 'dark' | 'light' | 'paper' | 'github';
 export type FontFamily = 'inter' | 'merriweather' | 'lora' | 'source-serif' | 'fira-sans';
 export type FontSize = 'small' | 'medium' | 'large';
 
