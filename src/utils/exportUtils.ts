@@ -1,4 +1,5 @@
 import { Theme, FontFamily, FontSize } from '../context/ThemeContext';
+import { FONT_SIZE_MAX, FONT_SIZE_MIN } from "../config/ui";
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
 import { jsPDF } from 'jspdf';
@@ -80,18 +81,30 @@ const fontFamilies: Record<FontFamily, string> = {
     'fira-sans': "'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
 };
 
-// Font size definitions
-const fontSizes: Record<FontSize, { base: string; h1: string; h2: string; h3: string; lineHeight: string }> = {
-    small: { base: '14px', h1: '1.875em', h2: '1.5em', h3: '1.125em', lineHeight: '1.6' },
-    medium: { base: '16px', h1: '2.25em', h2: '1.75em', h3: '1.25em', lineHeight: '1.7' },
-    large: { base: '18px', h1: '2.5em', h2: '2em', h3: '1.375em', lineHeight: '1.8' },
-};
+function clamp(num: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, num));
+}
+
+function getExportFontSize(fontSize: FontSize): { base: string; h1: string; h2: string; h3: string; lineHeight: string } {
+    const basePx = clamp(Math.round(Number(fontSize) || 16), FONT_SIZE_MIN, FONT_SIZE_MAX);
+    // Match app feel: 14px -> 1.6, 16px -> 1.7, 18px -> 1.8 (clamped)
+    const lineHeight = clamp(0.7 + basePx * 0.05, 1.55, 1.85).toFixed(2);
+
+    // Headings scale with base size via em.
+    return {
+        base: `${basePx}px`,
+        h1: '2.25em',
+        h2: '1.75em',
+        h3: '1.25em',
+        lineHeight,
+    };
+}
 
 // Generate CSS for export
 function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize): string {
     const colors = themeColors[theme];
     const fontFamily = fontFamilies[font];
-    const sizes = fontSizes[fontSize];
+    const sizes = getExportFontSize(fontSize);
 
     return `
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Lora:wght@400;600;700&family=Source+Serif+4:wght@400;600;700&family=Fira+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -356,12 +369,22 @@ export async function exportToHTML(
     }
 }
 
-// PDF font size mappings
-const pdfFontSizes: Record<FontSize, { base: number; h1: number; h2: number; h3: number; code: number; lineHeight: number }> = {
-    small: { base: 10, h1: 20, h2: 16, h3: 12, code: 9, lineHeight: 1.4 },
-    medium: { base: 11, h1: 22, h2: 18, h3: 14, code: 10, lineHeight: 1.5 },
-    large: { base: 12, h1: 24, h2: 20, h3: 16, code: 11, lineHeight: 1.6 },
-};
+function getPdfFontSizes(fontSize: FontSize): { base: number; h1: number; h2: number; h3: number; code: number; lineHeight: number } {
+    // Map CSS px to PDF points so 14/16/18px roughly match the old 10/11/12pt.
+    const basePx = clamp(Math.round(Number(fontSize) || 16), FONT_SIZE_MIN, FONT_SIZE_MAX);
+    const basePt = clamp(Math.round(basePx * 0.6875), 9, 14);
+
+    const lineHeight = clamp(0.7 + basePx * 0.05, 1.35, 1.65);
+
+    return {
+        base: basePt,
+        h1: Math.round(basePt * 2.0),
+        h2: Math.round(basePt * 1.65),
+        h3: Math.round(basePt * 1.27),
+        code: Math.max(8, basePt - 1),
+        lineHeight,
+    };
+}
 
 // Parse HTML and extract structured content for PDF
 interface PDFElement {
@@ -483,7 +506,7 @@ export async function exportToPDF(
 
     // Parse HTML into structured elements
     const elements = parseHTMLForPDF(htmlContent);
-    const sizes = pdfFontSizes[fontSize];
+    const sizes = getPdfFontSizes(fontSize);
 
     // Create PDF document (A4 size)
     const pdf = new jsPDF({
