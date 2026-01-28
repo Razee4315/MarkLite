@@ -15,8 +15,8 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 
 ### Themes
 
-| Dark Theme | Light Theme |
-|:----------:|:-----------:|
+|                           Dark Theme                            |                           Light Theme                            |
+| :-------------------------------------------------------------: | :--------------------------------------------------------------: |
 | <img src="images/black-theme.png" width="400" alt="Dark Theme"> | <img src="images/white-theme.png" width="400" alt="Light Theme"> |
 
 <p align="center">
@@ -47,16 +47,16 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 
 ## Features
 
-- **Clean Interface** - Minimal UI that stays out of your way
-- **Live Preview** - Switch between reader and code modes instantly with Ctrl+E
-- **Syntax Highlighting** - Full markdown syntax highlighting in the editor
-- **Three Themes** - Dark, Light, and Paper themes to match your preference
-- **Five Fonts** - Inter, Merriweather, Lora, Source Serif, Fira Sans
-- **Adjustable Font Size** - Small, Medium, and Large options
-- **File Explorer** - Quick access to markdown files in the current directory
-- **Table of Contents** - Navigate large documents easily
-- **Native Performance** - Built with Tauri for a lightweight, fast experience
-- **Cross-Platform** - Windows, macOS, and Linux support
+-  **Clean Interface** - Minimal UI that stays out of your way
+-  **Live Preview** - Switch between reader and code modes instantly with Ctrl+E
+-  **Syntax Highlighting** - Full markdown syntax highlighting in the editor
+-  **Three Themes** - Dark, Light, and Paper themes to match your preference
+-  **Five Fonts** - Inter, Merriweather, Lora, Source Serif, Fira Sans
+-  **Adjustable Font Size** - Adjust the font size to your need
+-  **File Explorer** - Quick access to markdown files in the current directory
+-  **Table of Contents** - Navigate large documents easily
+-  **Native Performance** - Built with Tauri for a lightweight, fast experience
+-  **Cross-Platform** - Windows, macOS, and Linux support
 
 ## Installation
 
@@ -64,16 +64,16 @@ Download the latest release from the [Releases](https://github.com/Razee4315/Mar
 
 ### Available Formats
 
-- **Windows**: `.msi` installer or `.exe` portable
-- **Linux**: `.deb`, `.rpm`, or `.AppImage`
+-  **Windows**: `.msi` installer or `.exe` portable
+-  **Linux**: `.deb`, `.rpm`, or `.AppImage`
 
 ## Development
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18+)
-- [Bun](https://bun.sh/) (recommended) or npm
-- [Rust](https://www.rust-lang.org/tools/install)
+-  [Node.js](https://nodejs.org/) (v18+)
+-  [Bun](https://bun.sh/) (recommended) or npm
+-  [Rust](https://www.rust-lang.org/tools/install)
 
 ### Setup
 
@@ -94,17 +94,17 @@ bun run tauri build
 
 ## Keyboard Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
-| Open File | Ctrl+O |
-| Save File | Ctrl+S |
-| Toggle Mode | Ctrl+E |
+| Action      | Shortcut |
+| ----------- | -------- |
+| Open File   | Ctrl+O   |
+| Save File   | Ctrl+S   |
+| Toggle Mode | Ctrl+E   |
 
 ## Tech Stack
 
-- **Frontend**: React, TypeScript, Tailwind CSS
-- **Backend**: Rust, Tauri v2
-- **Build**: Vite
+-  **Frontend**: React, TypeScript, Tailwind CSS
+-  **Backend**: Rust, Tauri v2
+-  **Build**: Vite
 
 ## Contributing
 
@@ -120,7 +120,8 @@ Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
 ## License
 
 This project is **source available** with restricted commercial use:
-- **Personal use** - Free to use, copy, and modify
-- **Commercial use** - Requires written permission from the author
+
+-  **Personal use** - Free to use, copy, and modify
+-  **Commercial use** - Requires written permission from the author
 
 See the [LICENSE](LICENSE) file for full details.
