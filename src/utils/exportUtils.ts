@@ -295,6 +295,15 @@ function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize): 
     `;
 }
 
+// Escape HTML entities to prevent XSS in generated HTML
+function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 // Generate standalone HTML document
 export function generateHTML(
     htmlContent: string,
@@ -305,6 +314,7 @@ export function generateHTML(
     includeFooter: boolean = true
 ): string {
     const css = generateExportCSS(theme, font, fontSize);
+    const safeTitle = escapeHtml(title);
     const date = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
@@ -322,7 +332,7 @@ export function generateHTML(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="generator" content="MarkLite">
     <meta name="date" content="${new Date().toISOString()}">
-    <title>${title}</title>
+    <title>${safeTitle}</title>
     <style>${css}</style>
 </head>
 <body>
@@ -365,11 +375,13 @@ const pdfFontSizes: Record<FontSize, { base: number; h1: number; h2: number; h3:
 
 // Parse HTML and extract structured content for PDF
 interface PDFElement {
-    type: 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'code' | 'blockquote' | 'hr' | 'pre';
+    type: 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'code' | 'blockquote' | 'hr' | 'pre' | 'table';
     text: string;
     indent?: number;
     ordered?: boolean;
     index?: number;
+    rows?: string[][];  // For table elements: array of rows, each row is array of cells
+    hasHeader?: boolean;
 }
 
 function parseHTMLForPDF(htmlContent: string): PDFElement[] {
@@ -419,6 +431,37 @@ function parseHTMLForPDF(htmlContent: string): PDFElement[] {
             case 'hr':
                 elements.push({ type: 'hr', text: '' });
                 break;
+            case 'table': {
+                const rows: string[][] = [];
+                let hasHeader = false;
+                // Process thead
+                const thead = el.querySelector('thead');
+                if (thead) {
+                    hasHeader = true;
+                    thead.querySelectorAll('tr').forEach(tr => {
+                        const cells: string[] = [];
+                        tr.querySelectorAll('th, td').forEach(cell => {
+                            cells.push(cell.textContent?.trim() || '');
+                        });
+                        rows.push(cells);
+                    });
+                }
+                // Process tbody
+                const tbody = el.querySelector('tbody') || el;
+                tbody.querySelectorAll('tr').forEach(tr => {
+                    // Skip rows already added from thead
+                    if (thead && tr.closest('thead')) return;
+                    const cells: string[] = [];
+                    tr.querySelectorAll('th, td').forEach(cell => {
+                        cells.push(cell.textContent?.trim() || '');
+                    });
+                    if (cells.length > 0) rows.push(cells);
+                });
+                if (rows.length > 0) {
+                    elements.push({ type: 'table', text: '', rows, hasHeader });
+                }
+                break;
+            }
             case 'ul':
                 let ulIndex = 0;
                 el.childNodes.forEach(child => {
@@ -466,11 +509,21 @@ function parseHTMLForPDF(htmlContent: string): PDFElement[] {
     return elements;
 }
 
+// Helper to parse hex color to RGB tuple
+function hexToRgb(hex: string): [number, number, number] {
+    const clean = hex.replace('#', '');
+    return [
+        parseInt(clean.substring(0, 2), 16),
+        parseInt(clean.substring(2, 4), 16),
+        parseInt(clean.substring(4, 6), 16),
+    ];
+}
+
 // Export to PDF with real selectable text using jsPDF
 export async function exportToPDF(
     htmlContent: string,
     fileName: string,
-    _theme: Theme,
+    theme: Theme,
     _font: FontFamily,
     fontSize: FontSize
 ): Promise<void> {
@@ -484,6 +537,15 @@ export async function exportToPDF(
     // Parse HTML into structured elements
     const elements = parseHTMLForPDF(htmlContent);
     const sizes = pdfFontSizes[fontSize];
+    const colors = themeColors[theme];
+
+    // Derive RGB values from theme
+    const textRgb = hexToRgb(colors.textPrimary);
+    const textSecondaryRgb = hexToRgb(colors.textSecondary);
+    const borderRgb = hexToRgb(colors.border);
+    const h1Rgb = hexToRgb(colors.syntaxH1);
+    const h2Rgb = hexToRgb(colors.syntaxH2);
+    const h3Rgb = hexToRgb(colors.syntaxH3);
 
     // Create PDF document (A4 size)
     const pdf = new jsPDF({
@@ -495,12 +557,13 @@ export async function exportToPDF(
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 20;
+    const footerHeight = 15;
     const maxWidth = pageWidth - margin * 2;
     let y = margin;
 
-    // Helper to add new page if needed
+    // Helper to add new page if needed (reserves space for footer)
     const checkPageBreak = (height: number) => {
-        if (y + height > pageHeight - margin) {
+        if (y + height > pageHeight - margin - footerHeight) {
             pdf.addPage();
             y = margin;
             return true;
@@ -514,22 +577,26 @@ export async function exportToPDF(
         return pdf.splitTextToSize(text, maxW);
     };
 
+    // Set default text color
+    pdf.setTextColor(...textRgb);
+
     // Render each element
     for (const element of elements) {
         switch (element.type) {
             case 'h1': {
                 checkPageBreak(15);
-                y += 8; // Space before heading
+                y += 8;
                 pdf.setFontSize(sizes.h1);
                 pdf.setFont('helvetica', 'bold');
+                pdf.setTextColor(...h1Rgb);
                 const lines = wrapText(element.text, maxWidth, sizes.h1);
                 pdf.text(lines, margin, y);
                 y += lines.length * (sizes.h1 * 0.4) + 3;
-                // Draw underline
-                pdf.setDrawColor(200, 200, 200);
+                pdf.setDrawColor(...borderRgb);
                 pdf.setLineWidth(0.5);
                 pdf.line(margin, y, pageWidth - margin, y);
                 y += 5;
+                pdf.setTextColor(...textRgb);
                 break;
             }
 
@@ -538,13 +605,15 @@ export async function exportToPDF(
                 y += 6;
                 pdf.setFontSize(sizes.h2);
                 pdf.setFont('helvetica', 'bold');
+                pdf.setTextColor(...h2Rgb);
                 const lines = wrapText(element.text, maxWidth, sizes.h2);
                 pdf.text(lines, margin, y);
                 y += lines.length * (sizes.h2 * 0.4) + 2;
-                pdf.setDrawColor(220, 220, 220);
+                pdf.setDrawColor(...borderRgb);
                 pdf.setLineWidth(0.3);
                 pdf.line(margin, y, pageWidth - margin, y);
                 y += 4;
+                pdf.setTextColor(...textRgb);
                 break;
             }
 
@@ -553,9 +622,11 @@ export async function exportToPDF(
                 y += 4;
                 pdf.setFontSize(sizes.h3);
                 pdf.setFont('helvetica', 'bold');
+                pdf.setTextColor(...h3Rgb);
                 const lines = wrapText(element.text, maxWidth, sizes.h3);
                 pdf.text(lines, margin, y);
                 y += lines.length * (sizes.h3 * 0.4) + 3;
+                pdf.setTextColor(...textRgb);
                 break;
             }
 
@@ -563,29 +634,31 @@ export async function exportToPDF(
                 const lineH = sizes.base * 0.4 * sizes.lineHeight;
                 pdf.setFontSize(sizes.base);
                 pdf.setFont('helvetica', 'normal');
+                pdf.setTextColor(...textRgb);
                 const lines = wrapText(element.text, maxWidth, sizes.base);
-                checkPageBreak(lines.length * lineH);
-                pdf.text(lines, margin, y);
-                y += lines.length * lineH + 3;
+                // Check page break for each chunk of lines to prevent overflow
+                for (const line of lines) {
+                    checkPageBreak(lineH);
+                    pdf.text(line, margin, y);
+                    y += lineH;
+                }
+                y += 3;
                 break;
             }
 
             case 'li': {
                 const indent = (element.indent || 1) * 5;
-                const bullet = element.ordered ? `${element.index}.` : '•';
+                const bullet = element.ordered ? `${element.index}.` : '\u2022';
                 const lineH = sizes.base * 0.4 * sizes.lineHeight;
                 pdf.setFontSize(sizes.base);
                 pdf.setFont('helvetica', 'normal');
+                pdf.setTextColor(...textRgb);
 
-                // Clean text - remove bullet/number if already present
-                let cleanText = element.text.trim();
-
+                const cleanText = element.text.trim();
                 const lines = wrapText(cleanText, maxWidth - indent - 5, sizes.base);
                 checkPageBreak(lines.length * lineH);
 
-                // Draw bullet/number
                 pdf.text(bullet, margin + indent - 4, y);
-                // Draw text
                 pdf.text(lines, margin + indent + 2, y);
                 y += lines.length * lineH + 1;
                 break;
@@ -595,25 +668,39 @@ export async function exportToPDF(
                 const codeLines = element.text.split('\n');
                 const lineH = sizes.code * 0.4;
                 const blockHeight = codeLines.length * lineH + 6;
-                checkPageBreak(blockHeight);
 
-                // Draw background
-                pdf.setFillColor(245, 245, 245);
-                pdf.roundedRect(margin, y - 2, maxWidth, blockHeight, 2, 2, 'F');
-
-                pdf.setFontSize(sizes.code);
-                pdf.setFont('courier', 'normal');
-                pdf.setTextColor(60, 60, 60);
-
-                let codeY = y + 2;
-                for (const line of codeLines) {
-                    const wrapped = wrapText(line || ' ', maxWidth - 6, sizes.code);
-                    pdf.text(wrapped, margin + 3, codeY);
-                    codeY += wrapped.length * lineH;
+                // Split code blocks across pages if they're too tall
+                if (blockHeight > pageHeight - margin * 2 - footerHeight) {
+                    // Render line by line with page breaks
+                    pdf.setFontSize(sizes.code);
+                    pdf.setFont('courier', 'normal');
+                    pdf.setTextColor(60, 60, 60);
+                    for (const line of codeLines) {
+                        checkPageBreak(lineH + 4);
+                        pdf.setFillColor(245, 245, 245);
+                        pdf.rect(margin, y - 2, maxWidth, lineH + 2, 'F');
+                        const wrapped = wrapText(line || ' ', maxWidth - 6, sizes.code);
+                        pdf.text(wrapped, margin + 3, y);
+                        y += wrapped.length * lineH;
+                    }
+                    pdf.setTextColor(...textRgb);
+                    y += 3;
+                } else {
+                    checkPageBreak(blockHeight);
+                    pdf.setFillColor(245, 245, 245);
+                    pdf.roundedRect(margin, y - 2, maxWidth, blockHeight, 2, 2, 'F');
+                    pdf.setFontSize(sizes.code);
+                    pdf.setFont('courier', 'normal');
+                    pdf.setTextColor(60, 60, 60);
+                    let codeY = y + 2;
+                    for (const line of codeLines) {
+                        const wrapped = wrapText(line || ' ', maxWidth - 6, sizes.code);
+                        pdf.text(wrapped, margin + 3, codeY);
+                        codeY += wrapped.length * lineH;
+                    }
+                    pdf.setTextColor(...textRgb);
+                    y += blockHeight + 3;
                 }
-
-                pdf.setTextColor(0, 0, 0);
-                y += blockHeight + 3;
                 break;
             }
 
@@ -625,26 +712,69 @@ export async function exportToPDF(
                 const blockHeight = lines.length * lineH + 4;
                 checkPageBreak(blockHeight);
 
-                // Draw left border
                 pdf.setFillColor(100, 100, 100);
                 pdf.rect(margin, y - 2, 2, blockHeight, 'F');
-
-                // Draw background
                 pdf.setFillColor(250, 250, 250);
                 pdf.rect(margin + 3, y - 2, maxWidth - 3, blockHeight, 'F');
 
-                pdf.setTextColor(80, 80, 80);
+                pdf.setTextColor(...textSecondaryRgb);
                 pdf.text(lines, margin + 6, y + 2);
-                pdf.setTextColor(0, 0, 0);
+                pdf.setTextColor(...textRgb);
                 pdf.setFont('helvetica', 'normal');
                 y += blockHeight + 3;
+                break;
+            }
+
+            case 'table': {
+                if (!element.rows || element.rows.length === 0) break;
+
+                const rows = element.rows;
+                const colCount = Math.max(...rows.map(r => r.length));
+                const cellPadding = 2;
+                const colWidth = (maxWidth - cellPadding * 2) / colCount;
+                const rowHeight = sizes.base * 0.4 * sizes.lineHeight + cellPadding * 2;
+
+                pdf.setFontSize(sizes.base);
+                pdf.setDrawColor(...borderRgb);
+                pdf.setLineWidth(0.3);
+
+                for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+                    const row = rows[rowIdx];
+                    const isHeader = element.hasHeader && rowIdx === 0;
+
+                    checkPageBreak(rowHeight);
+
+                    // Draw header background
+                    if (isHeader) {
+                        pdf.setFillColor(245, 245, 245);
+                        pdf.rect(margin, y - cellPadding, maxWidth, rowHeight, 'F');
+                    }
+
+                    // Draw cells
+                    for (let colIdx = 0; colIdx < colCount; colIdx++) {
+                        const cellX = margin + colIdx * colWidth;
+                        const cellText = row[colIdx] || '';
+
+                        // Cell border
+                        pdf.rect(cellX, y - cellPadding, colWidth, rowHeight, 'S');
+
+                        // Cell text
+                        pdf.setFont('helvetica', isHeader ? 'bold' : 'normal');
+                        pdf.setTextColor(...textRgb);
+                        const wrapped = wrapText(cellText, colWidth - cellPadding * 2, sizes.base);
+                        pdf.text(wrapped[0] || '', cellX + cellPadding, y + cellPadding);
+                    }
+
+                    y += rowHeight;
+                }
+                y += 3;
                 break;
             }
 
             case 'hr': {
                 checkPageBreak(10);
                 y += 5;
-                pdf.setDrawColor(200, 200, 200);
+                pdf.setDrawColor(...borderRgb);
                 pdf.setLineWidth(0.5);
                 pdf.line(margin, y, pageWidth - margin, y);
                 y += 5;
@@ -680,7 +810,6 @@ export async function exportToPDF(
     });
 
     if (filePath) {
-        // Write binary file
         await writeFile(filePath, new Uint8Array(pdfBuffer));
     }
 }
