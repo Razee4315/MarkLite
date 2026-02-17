@@ -142,6 +142,9 @@ function AppContent() {
         try {
           await invoke("save_file", { path: selected, content });
           setFilePath(selected);
+          // Extract filename from path for title bar display
+          const name = selected.replace(/\\/g, '/').split('/').pop() || 'Untitled';
+          setFileName(name);
           setOriginalContent(content);
         } catch (err) {
           console.error("Failed to save file:", err);
@@ -231,37 +234,39 @@ function AppContent() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+O - Open file
-      if (e.ctrlKey && e.key === "o") {
-        e.preventDefault();
-        handleOpenFile();
-      }
-      // Ctrl+S - Save file
-      if (e.ctrlKey && e.key === "s") {
-        e.preventDefault();
-        if (hasFile || content) {
-          handleSaveFile();
-        }
-      }
-      // Ctrl+E - Toggle mode
-      if (e.ctrlKey && e.key === "e") {
-        e.preventDefault();
-        if (hasFile) {
-          handleToggleMode();
-        }
-      }
-      // Ctrl+Shift+E - Toggle file explorer
+      // Ctrl+Shift+E - Toggle file explorer (check before Ctrl+E)
       if (e.ctrlKey && e.shiftKey && e.key === "E") {
         e.preventDefault();
         if (hasFile) {
           handleToggleFileExplorer();
         }
+        return;
       }
-      // Ctrl+Shift+O - Toggle TOC
+      // Ctrl+Shift+O - Toggle TOC (check before Ctrl+O)
       if (e.ctrlKey && e.shiftKey && e.key === "O") {
         e.preventDefault();
         if (hasFile) {
           handleToggleTOC();
+        }
+        return;
+      }
+      // Ctrl+O - Open file (without Shift)
+      if (e.ctrlKey && !e.shiftKey && e.key === "o") {
+        e.preventDefault();
+        handleOpenFile();
+      }
+      // Ctrl+S - Save file
+      if (e.ctrlKey && !e.shiftKey && e.key === "s") {
+        e.preventDefault();
+        if (hasFile || content) {
+          handleSaveFile();
+        }
+      }
+      // Ctrl+E - Toggle mode (without Shift)
+      if (e.ctrlKey && !e.shiftKey && e.key === "e") {
+        e.preventDefault();
+        if (hasFile) {
+          handleToggleMode();
         }
       }
     };
@@ -293,30 +298,28 @@ function AppContent() {
         <WelcomeScreen onOpenFile={handleOpenFile} onFileDrop={handleFileDrop} />
       ) : (
         <>
-          {mode === "preview" ? (
-<div key="preview" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
-              <MarkdownPreview
-                content={content}
-                fileName={fileName || ""}
-                lineCount={lineCount}
-                fileSize={fileSize}
-                onEditClick={handleToggleMode}
-                onLineChange={(line) => setPreviewLine(line)}
-                filePath={filePath}
-                markdownBodyRef={previewRef}
-              />
-            </div>
-          ) : (
-<div key="code" className="flex-1 animate-fade-in overflow-hidden flex flex-col">
-              <CodeEditor
-                content={content}
-                onChange={handleContentChange}
-                onCursorChange={(line, col) => setCursorPosition({ line, col })}
-                onImagePaste={handleImagePaste}
-                filePath={filePath}
-              />
-            </div>
-          )}
+          {/* Both views rendered; toggle via display to preserve scroll/state */}
+          <div className="flex-1 overflow-hidden flex flex-col" style={{ display: mode === "preview" ? "flex" : "none" }}>
+            <MarkdownPreview
+              content={content}
+              fileName={fileName || ""}
+              lineCount={lineCount}
+              fileSize={fileSize}
+              onEditClick={handleToggleMode}
+              onLineChange={(line) => setPreviewLine(line)}
+              filePath={filePath}
+              markdownBodyRef={previewRef}
+            />
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col" style={{ display: mode === "code" ? "flex" : "none" }}>
+            <CodeEditor
+              content={content}
+              onChange={handleContentChange}
+              onCursorChange={(line, col) => setCursorPosition({ line, col })}
+              onImagePaste={handleImagePaste}
+              filePath={filePath}
+            />
+          </div>
 
           <ModeToggle mode={mode} onToggle={handleToggleMode} />
 
