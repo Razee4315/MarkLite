@@ -10,10 +10,10 @@ interface TitleBarProps {
     filePath?: string;
     onOpenFile?: () => void;
     onSaveFile?: () => Promise<void>;
-    htmlContent?: string;
+    getExportHtml?: () => string;
 }
 
-export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, htmlContent }: TitleBarProps) {
+export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, getExportHtml }: TitleBarProps) {
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
     const handleMinimize = async () => {
@@ -118,8 +118,7 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, 
                             </button>
                             <ExportMenu
                                 fileName={fileName || 'document.md'}
-                                htmlContent={htmlContent || ''}
-                                disabled={!htmlContent}
+                                getExportHtml={getExportHtml}
                             />
                         </>
                     )}

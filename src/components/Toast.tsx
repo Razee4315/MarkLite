@@ -13,11 +13,14 @@ export function Toast({ message, isVisible, onHide, duration = 2000 }: ToastProp
     useEffect(() => {
         if (isVisible) {
             setIsAnimating(true);
-            const timer = setTimeout(() => {
+            const fadeTimer = setTimeout(() => {
                 setIsAnimating(false);
-                setTimeout(onHide, 200); // Wait for fade out animation
             }, duration);
-            return () => clearTimeout(timer);
+            const hideTimer = setTimeout(onHide, duration + 200);
+            return () => {
+                clearTimeout(fadeTimer);
+                clearTimeout(hideTimer);
+            };
         }
     }, [isVisible, duration, onHide]);
 

@@ -4,13 +4,12 @@ import { exportToHTML, exportToPDF } from '../utils/exportUtils';
 
 interface ExportMenuProps {
     fileName: string;
-    htmlContent: string;
-    disabled?: boolean;
+    getExportHtml?: () => string;
 }
 
 type ExportFormat = 'html' | 'pdf';
 
-export function ExportMenu({ fileName, htmlContent, disabled = false }: ExportMenuProps) {
+export function ExportMenu({ fileName, getExportHtml }: ExportMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const { theme, font, fontSize } = useTheme();
@@ -31,8 +30,14 @@ export function ExportMenu({ fileName, htmlContent, disabled = false }: ExportMe
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isOpen]);
 
+    const disabled = !getExportHtml;
+
     const handleExport = async (format: ExportFormat) => {
-        if (isExporting || !htmlContent) return;
+        if (isExporting || !getExportHtml) return;
+
+        // Capture HTML on demand from the visible preview
+        const htmlContent = getExportHtml();
+        if (!htmlContent) return;
 
         setIsExporting(true);
         setIsOpen(false);

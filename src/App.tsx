@@ -1,10 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
 
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
@@ -55,15 +52,14 @@ function AppContent() {
   // Toast notification state
   const [toast, setToast] = useState({ message: '', isVisible: false });
 
-  // Export HTML content ref
-  const exportRef = useRef<HTMLDivElement>(null);
-  const [exportHtml, setExportHtml] = useState<string>("");
+  // Export HTML content ref - captures from visible preview
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Derived state
   const isDirty = content !== originalContent;
-  const lineCount = content.split("\n").length;
+  const lineCount = useMemo(() => content.split("\n").length, [content]);
   const hasFile = filePath !== null;
-  const wordCount = getWordCount(content);
+  const wordCount = useMemo(() => getWordCount(content), [content]);
 
   // Load file from path
   const loadFile = useCallback(async (path: string) => {
@@ -82,30 +78,29 @@ function AppContent() {
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
-    const setupDragDrop = async () => {
-      const unlisten = await listen<{ paths: string[] }>(TauriEvent.DRAG_DROP, async (event) => {
-        const paths = event.payload.paths;
-        if (paths && paths.length > 0) {
-          const firstPath = paths[0];
-          // Only load markdown files
-          if (firstPath.endsWith('.md') || firstPath.endsWith('.markdown')) {
-            await loadFile(firstPath);
-          }
-        }
-      });
-
-      return unlisten;
-    };
-
+    let mounted = true;
     let unlisten: (() => void) | undefined;
-    setupDragDrop().then((fn) => {
-      unlisten = fn;
+
+    listen<{ paths: string[] }>(TauriEvent.DRAG_DROP, async (event) => {
+      const paths = event.payload.paths;
+      if (paths && paths.length > 0) {
+        const firstPath = paths[0];
+        // Only load markdown files
+        if (firstPath.endsWith('.md') || firstPath.endsWith('.markdown')) {
+          await loadFile(firstPath);
+        }
+      }
+    }).then((fn) => {
+      if (mounted) {
+        unlisten = fn;
+      } else {
+        fn(); // Component already unmounted, clean up immediately
+      }
     });
 
     return () => {
-      if (unlisten) {
-        unlisten();
-      }
+      mounted = false;
+      unlisten?.();
     };
   }, [loadFile]);
 
@@ -165,26 +160,25 @@ function AppContent() {
 
   // Listen for file open from CLI (when app is opened with a file by double-click)
   useEffect(() => {
-    const setupCliFileOpen = async () => {
-      const unlisten = await listen<string>("file-open-from-cli", async (event) => {
-        const filePath = event.payload;
-        if (filePath) {
-          await loadFile(filePath);
-        }
-      });
-
-      return unlisten;
-    };
-
+    let mounted = true;
     let unlisten: (() => void) | undefined;
-    setupCliFileOpen().then((fn) => {
-      unlisten = fn;
+
+    listen<string>("file-open-from-cli", async (event) => {
+      const filePath = event.payload;
+      if (filePath) {
+        await loadFile(filePath);
+      }
+    }).then((fn) => {
+      if (mounted) {
+        unlisten = fn;
+      } else {
+        fn();
+      }
     });
 
     return () => {
-      if (unlisten) {
-        unlisten();
-      }
+      mounted = false;
+      unlisten?.();
     };
   }, [loadFile]);
 
@@ -276,42 +270,24 @@ function AppContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleOpenFile, handleSaveFile, handleToggleMode, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
 
-  // Update export HTML when content changes
-  useEffect(() => {
-    if (exportRef.current && content) {
-      // Small delay to ensure Markdown has rendered
-      const timer = setTimeout(() => {
-        if (exportRef.current) {
-          setExportHtml(exportRef.current.innerHTML);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    } else {
-      setExportHtml("");
+  // Get export HTML from the visible preview on demand (avoids duplicate rendering)
+  const getExportHtml = useCallback((): string => {
+    if (previewRef.current) {
+      return previewRef.current.innerHTML;
     }
-  }, [content]);
+    return "";
+  }, []);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
-      <TitleBar 
-        fileName={fileName ?? undefined} 
-        isDirty={isDirty} 
-        filePath={filePath ?? undefined} 
-        onOpenFile={handleOpenFile} 
+      <TitleBar
+        fileName={fileName ?? undefined}
+        isDirty={isDirty}
+        filePath={filePath ?? undefined}
+        onOpenFile={handleOpenFile}
         onSaveFile={handleSaveFile}
-        htmlContent={exportHtml}
+        getExportHtml={getExportHtml}
       />
-
-      {/* Hidden export renderer - positioned off-screen to allow rendering */}
-      <div 
-        ref={exportRef} 
-        className="absolute -left-[9999px] -top-[9999px] w-[800px]"
-        aria-hidden="true"
-      >
-        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-          {content}
-        </Markdown>
-      </div>
 
       {!hasFile ? (
         <WelcomeScreen onOpenFile={handleOpenFile} onFileDrop={handleFileDrop} />
@@ -327,6 +303,7 @@ function AppContent() {
                 onEditClick={handleToggleMode}
                 onLineChange={(line) => setPreviewLine(line)}
                 filePath={filePath}
+                markdownBodyRef={previewRef}
               />
             </div>
           ) : (
