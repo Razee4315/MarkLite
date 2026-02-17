@@ -47,6 +47,9 @@ export function SettingsMenu() {
             {/* Settings Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
+                aria-label="Settings"
+                aria-expanded={isOpen}
+                aria-haspopup="true"
                 className="btn-press flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 title="Settings"
             >
@@ -55,7 +58,7 @@ export function SettingsMenu() {
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50 animate-fade-in-down">
+                <div role="menu" aria-label="Settings" className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50 animate-fade-in-down">
                     {/* Theme Section */}
                     <div className="p-4 border-b border-[var(--border)]">
                         <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">

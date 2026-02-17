@@ -110,7 +110,8 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, 
                             <div className="w-[1px] h-4 bg-[var(--border)] ml-2"></div>
                             <button
                                 onClick={onOpenFile}
-                                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
+                                aria-label="Open file"
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
                                 title="Open File (Ctrl+O)"
                             >
                                 <span className="material-symbols-outlined text-[16px]">folder_open</span>

@@ -12,7 +12,7 @@ import { StatusBar } from "./components/StatusBar";
 import { ModeToggle } from "./components/ModeToggle";
 import { FileExplorer } from "./components/FileExplorer";
 import { TableOfContents } from "./components/TableOfContents";
-import { Toast } from "./components/Toast";
+import { Toast, ToastType } from "./components/Toast";
 
 interface FileData {
   path: string;
@@ -50,7 +50,7 @@ function AppContent() {
   const [previewLine, setPreviewLine] = useState(1);
 
   // Toast notification state
-  const [toast, setToast] = useState({ message: '', isVisible: false });
+  const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: ToastType }>({ message: '', isVisible: false, type: 'success' });
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
@@ -60,6 +60,11 @@ function AppContent() {
   const lineCount = useMemo(() => content.split("\n").length, [content]);
   const hasFile = filePath !== null;
   const wordCount = useMemo(() => getWordCount(content), [content]);
+
+  // Show toast helper
+  const showToast = useCallback((message: string, type: ToastType = 'success') => {
+    setToast({ message, isVisible: true, type });
+  }, []);
 
   // Load file from path
   const loadFile = useCallback(async (path: string) => {
@@ -73,8 +78,9 @@ function AppContent() {
       setMode("preview");
     } catch (err) {
       console.error("Failed to load file:", err);
+      showToast("Failed to open file", "error");
     }
-  }, []);
+  }, [showToast]);
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
@@ -142,24 +148,26 @@ function AppContent() {
         try {
           await invoke("save_file", { path: selected, content });
           setFilePath(selected);
-          // Extract filename from path for title bar display
           const name = selected.replace(/\\/g, '/').split('/').pop() || 'Untitled';
           setFileName(name);
           setOriginalContent(content);
+          showToast("File saved", "success");
         } catch (err) {
           console.error("Failed to save file:", err);
+          showToast("Failed to save file", "error");
         }
       }
     } else {
-      // Save to existing path
       try {
         await invoke("save_file", { path: filePath, content });
         setOriginalContent(content);
+        showToast("File saved", "success");
       } catch (err) {
         console.error("Failed to save file:", err);
+        showToast("Failed to save file", "error");
       }
     }
-  }, [filePath, content]);
+  }, [filePath, content, showToast]);
 
   // Listen for file open from CLI (when app is opened with a file by double-click)
   useEffect(() => {
@@ -223,8 +231,13 @@ function AppContent() {
 
   // Handle image paste success
   const handleImagePaste = useCallback(() => {
-    setToast({ message: 'Image pasted successfully!', isVisible: true });
-  }, []);
+    showToast('Image pasted successfully!', 'success');
+  }, [showToast]);
+
+  // Handle error messages from child components
+  const handleError = useCallback((message: string) => {
+    showToast(message, 'error');
+  }, [showToast]);
 
   // Hide toast
   const hideToast = useCallback(() => {
@@ -317,6 +330,7 @@ function AppContent() {
               onChange={handleContentChange}
               onCursorChange={(line, col) => setCursorPosition({ line, col })}
               onImagePaste={handleImagePaste}
+              onError={handleError}
               filePath={filePath}
             />
           </div>
@@ -351,10 +365,11 @@ function AppContent() {
       )}
 
       {/* Toast notifications */}
-      <Toast 
-        message={toast.message} 
-        isVisible={toast.isVisible} 
-        onHide={hideToast} 
+      <Toast
+        message={toast.message}
+        isVisible={toast.isVisible}
+        onHide={hideToast}
+        type={toast.type}
       />
     </div>
   );

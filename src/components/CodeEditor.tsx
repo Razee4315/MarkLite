@@ -6,10 +6,11 @@ interface CodeEditorProps {
     onChange: (content: string) => void;
     onCursorChange?: (line: number, column: number) => void;
     onImagePaste?: () => void; // Callback when image is successfully pasted
+    onError?: (message: string) => void; // Callback for error messages
     filePath?: string | null; // Current file path for saving images
 }
 
-export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, filePath }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -32,7 +33,7 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
             
             // Check if file is saved (required for image storage)
             if (!filePath) {
-                alert('Please save your file first before pasting images.');
+                onError?.('Please save your file first before pasting images.');
                 return;
             }
             
@@ -66,7 +67,7 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 onImagePaste?.();
             } catch (error) {
                 console.error('Failed to paste image:', error);
-                alert('Failed to save image. Please try again.');
+                onError?.('Failed to save image. Please try again.');
             }
         }
         // If no image, let default paste behavior handle text
