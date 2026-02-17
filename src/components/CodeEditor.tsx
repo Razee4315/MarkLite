@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useMemo } from "react";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage, insertAtCursor } from "../utils/imageUtils";
 
 interface CodeEditorProps {
@@ -6,10 +6,11 @@ interface CodeEditorProps {
     onChange: (content: string) => void;
     onCursorChange?: (line: number, column: number) => void;
     onImagePaste?: () => void; // Callback when image is successfully pasted
+    onError?: (message: string) => void; // Callback for error messages
     filePath?: string | null; // Current file path for saving images
 }
 
-export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, filePath }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -32,7 +33,7 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
             
             // Check if file is saved (required for image storage)
             if (!filePath) {
-                alert('Please save your file first before pasting images.');
+                onError?.('Please save your file first before pasting images.');
                 return;
             }
             
@@ -66,7 +67,7 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 onImagePaste?.();
             } catch (error) {
                 console.error('Failed to paste image:', error);
-                alert('Failed to save image. Please try again.');
+                onError?.('Failed to save image. Please try again.');
             }
         }
         // If no image, let default paste behavior handle text
@@ -122,8 +123,11 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         }
     }, []);
 
+    // Memoize highlighted lines to avoid recalculating on non-content re-renders
+    const highlightedLines = useMemo(() => lines.map((line) => highlightLine(line)), [content]);
+
     // Syntax highlighting for markdown
-    const highlightLine = (line: string): React.ReactNode => {
+    function highlightLine(line: string): React.ReactNode {
         // H1 headers
         if (line.startsWith("# ")) {
             return <span className="text-[var(--syntax-h1)] font-bold">{line}</span>;
@@ -179,12 +183,12 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (line.includes("**")) {
             return highlightBold(line);
         }
-// Regular text
+        // Regular text
         return <span>{line || "\u00A0"}</span>;
-    };
+    }
 
     // Highlight images ![alt](url) - shows truncated for data URLs
-    const highlightImages = (text: string): React.ReactNode => {
+    function highlightImages(text: string): React.ReactNode {
         const parts: React.ReactNode[] = [];
         const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
         let lastIndex = 0;
@@ -220,9 +224,9 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         }
 
         return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
-    };
+    }
 
-    const highlightLinks = (text: string): React.ReactNode => {
+    function highlightLinks(text: string): React.ReactNode {
         const parts: React.ReactNode[] = [];
         const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
         let lastIndex = 0;
@@ -247,9 +251,9 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         }
 
         return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
-    };
+    }
 
-    const highlightBold = (text: string): React.ReactNode => {
+    function highlightBold(text: string): React.ReactNode {
         const parts: React.ReactNode[] = [];
         const boldRegex = /\*\*([^*]+)\*\*/g;
         let lastIndex = 0;
@@ -273,7 +277,7 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         }
 
         return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
-    };
+    }
 
     return (
         <main className="flex-1 flex overflow-hidden relative">
@@ -299,9 +303,9 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                     className="absolute inset-0 p-4 font-mono text-sm leading-6 text-[var(--text-primary)] pointer-events-none overflow-hidden whitespace-pre"
                     aria-hidden="true"
                 >
-                    {lines.map((line, i) => (
+                    {highlightedLines.map((highlighted, i) => (
                         <div key={i} className="h-6">
-                            {highlightLine(line)}
+                            {highlighted}
                         </div>
                     ))}
                 </div>

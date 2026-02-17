@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 interface UnsavedChangesDialogProps {
     isOpen: boolean;
     onClose: () => void;
@@ -11,6 +13,45 @@ export function UnsavedChangesDialog({
     onDiscard,
     onSave,
 }: UnsavedChangesDialogProps) {
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const saveButtonRef = useRef<HTMLButtonElement>(null);
+
+    // Focus trap and keyboard handling
+    useEffect(() => {
+        if (!isOpen) return;
+
+        // Auto-focus the save button when dialog opens
+        saveButtonRef.current?.focus();
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+                return;
+            }
+
+            // Focus trap: keep Tab within dialog
+            if (e.key === "Tab" && dialogRef.current) {
+                const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last?.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first?.focus();
+                }
+            }
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     return (
@@ -19,10 +60,18 @@ export function UnsavedChangesDialog({
             <div
                 className="absolute inset-0 bg-black/50 backdrop-blur-sm"
                 onClick={onClose}
+                aria-hidden="true"
             />
 
             {/* Dialog */}
-            <div className="relative z-10 w-[380px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden animate-fade-in">
+            <div
+                ref={dialogRef}
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="unsaved-dialog-title"
+                aria-describedby="unsaved-dialog-desc"
+                className="relative z-10 w-[380px] bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden animate-fade-in"
+            >
                 {/* Header */}
                 <div className="px-5 pt-5 pb-3">
                     <div className="flex items-center gap-3">
@@ -32,7 +81,7 @@ export function UnsavedChangesDialog({
                             </span>
                         </div>
                         <div>
-                            <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                            <h2 id="unsaved-dialog-title" className="text-base font-semibold text-[var(--text-primary)]">
                                 Unsaved Changes
                             </h2>
                             <p className="text-sm text-[var(--text-secondary)]">
@@ -44,7 +93,7 @@ export function UnsavedChangesDialog({
 
                 {/* Body */}
                 <div className="px-5 pb-4">
-                    <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                    <p id="unsaved-dialog-desc" className="text-sm text-[var(--text-secondary)] leading-relaxed">
                         You have unsaved changes. Do you want to save them before closing?
                     </p>
                 </div>
@@ -64,6 +113,7 @@ export function UnsavedChangesDialog({
                         Don't Save
                     </button>
                     <button
+                        ref={saveButtonRef}
                         onClick={onSave}
                         className="px-4 py-2 text-sm font-medium text-[var(--accent-text)] bg-[var(--accent)] hover:bg-[var(--accent-hover)] rounded-lg transition-colors"
                     >

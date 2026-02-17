@@ -19,21 +19,31 @@ const THEME_STORAGE_KEY = 'marklite-theme';
 const FONT_STORAGE_KEY = 'marklite-font';
 const FONT_SIZE_STORAGE_KEY = 'marklite-font-size';
 
+// Valid values for validation against corrupted localStorage
+const VALID_THEMES: Theme[] = ['dark', 'light', 'paper', 'github'];
+const VALID_FONTS: FontFamily[] = ['inter', 'merriweather', 'lora', 'source-serif', 'fira-sans'];
+const VALID_FONT_SIZES: FontSize[] = ['small', 'medium', 'large'];
+
+function getValidated<T extends string>(key: string, validValues: T[], fallback: T): T {
+    const stored = localStorage.getItem(key);
+    if (stored && validValues.includes(stored as T)) {
+        return stored as T;
+    }
+    return fallback;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-    const [theme, setThemeState] = useState<Theme>(() => {
-        const stored = localStorage.getItem(THEME_STORAGE_KEY);
-        return (stored as Theme) || 'dark';
-    });
+    const [theme, setThemeState] = useState<Theme>(() =>
+        getValidated(THEME_STORAGE_KEY, VALID_THEMES, 'dark')
+    );
 
-    const [font, setFontState] = useState<FontFamily>(() => {
-        const stored = localStorage.getItem(FONT_STORAGE_KEY);
-        return (stored as FontFamily) || 'inter';
-    });
+    const [font, setFontState] = useState<FontFamily>(() =>
+        getValidated(FONT_STORAGE_KEY, VALID_FONTS, 'inter')
+    );
 
-    const [fontSize, setFontSizeState] = useState<FontSize>(() => {
-        const stored = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
-        return (stored as FontSize) || 'medium';
-    });
+    const [fontSize, setFontSizeState] = useState<FontSize>(() =>
+        getValidated(FONT_SIZE_STORAGE_KEY, VALID_FONT_SIZES, 'medium')
+    );
 
     const setTheme = (newTheme: Theme) => {
         setThemeState(newTheme);
@@ -50,20 +60,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(FONT_SIZE_STORAGE_KEY, newSize);
     };
 
-    // Apply theme to document
+    // Apply theme, font, and font size to document in a single effect
     useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme);
-    }, [theme]);
-
-    // Apply font to document
-    useEffect(() => {
-        document.documentElement.setAttribute('data-font', font);
-    }, [font]);
-
-    // Apply font size to document
-    useEffect(() => {
-        document.documentElement.setAttribute('data-font-size', fontSize);
-    }, [fontSize]);
+        const el = document.documentElement;
+        el.setAttribute('data-theme', theme);
+        el.setAttribute('data-font', font);
+        el.setAttribute('data-font-size', fontSize);
+    }, [theme, font, fontSize]);
 
     return (
         <ThemeContext.Provider value={{ theme, setTheme, font, setFont, fontSize, setFontSize }}>

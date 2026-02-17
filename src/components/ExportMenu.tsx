@@ -4,13 +4,12 @@ import { exportToHTML, exportToPDF } from '../utils/exportUtils';
 
 interface ExportMenuProps {
     fileName: string;
-    htmlContent: string;
-    disabled?: boolean;
+    getExportHtml?: () => string;
 }
 
 type ExportFormat = 'html' | 'pdf';
 
-export function ExportMenu({ fileName, htmlContent, disabled = false }: ExportMenuProps) {
+export function ExportMenu({ fileName, getExportHtml }: ExportMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const { theme, font, fontSize } = useTheme();
@@ -31,8 +30,14 @@ export function ExportMenu({ fileName, htmlContent, disabled = false }: ExportMe
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isOpen]);
 
+    const disabled = !getExportHtml;
+
     const handleExport = async (format: ExportFormat) => {
-        if (isExporting || !htmlContent) return;
+        if (isExporting || !getExportHtml) return;
+
+        // Capture HTML on demand from the visible preview
+        const htmlContent = getExportHtml();
+        if (!htmlContent) return;
 
         setIsExporting(true);
         setIsOpen(false);
@@ -56,7 +61,10 @@ export function ExportMenu({ fileName, htmlContent, disabled = false }: ExportMe
             <button
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 disabled={disabled || isExporting}
-                className={`btn-press flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--bg-hover)] transition-colors text-xs ${
+                aria-label="Export document"
+                aria-expanded={isOpen}
+                aria-haspopup="true"
+                className={`btn-press flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-xs ${
                     disabled
                         ? 'opacity-40 cursor-not-allowed text-[var(--text-muted)]'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -78,8 +86,9 @@ export function ExportMenu({ fileName, htmlContent, disabled = false }: ExportMe
 
             {/* Simple Dropdown Menu */}
             {isOpen && !disabled && (
-                <div className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-50 animate-fade-in-down">
+                <div role="menu" aria-label="Export formats" className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-50 animate-fade-in-down">
                     <button
+                        role="menuitem"
                         onClick={() => handleExport('html')}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
                     >
@@ -87,6 +96,7 @@ export function ExportMenu({ fileName, htmlContent, disabled = false }: ExportMe
                         <span>HTML</span>
                     </button>
                     <button
+                        role="menuitem"
                         onClick={() => handleExport('pdf')}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
                     >

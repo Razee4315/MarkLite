@@ -12,7 +12,19 @@ interface MarkdownPreviewProps {
     onEditClick: () => void;
     onLineChange?: (line: number) => void;
     filePath?: string | null;
+    markdownBodyRef?: React.RefObject<HTMLDivElement | null>;
 }
+
+// MIME type lookup for image extensions
+const IMAGE_MIME_TYPES: Record<string, string> = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+    'bmp': 'image/bmp'
+};
 
 // Component to handle local image loading
 function LocalImage({ src, alt, baseDir, ...props }: { src: string; alt: string; baseDir: string | null } & React.ImgHTMLAttributes<HTMLImageElement>) {
@@ -20,36 +32,31 @@ function LocalImage({ src, alt, baseDir, ...props }: { src: string; alt: string;
     const [error, setError] = useState(false);
 
     useEffect(() => {
+        let objectUrl: string | null = null;
+
         const loadImage = async () => {
             if (!baseDir || !src) return;
-            
+
             // Check if it's a relative path
             if (src.startsWith('./') || src.startsWith('../') || (!src.includes('://') && !src.startsWith('data:'))) {
                 try {
                     // Remove leading ./ if present
                     const cleanPath = src.startsWith('./') ? src.slice(2) : src;
-                    // Construct full path with proper Windows separators
-                    const fullPath = `${baseDir}\\${cleanPath.replace(/\//g, '\\')}`;
-                    
+                    // Construct full path - handle both Windows and Unix separators
+                    const sep = baseDir.includes('\\') ? '\\' : '/';
+                    const fullPath = `${baseDir}${sep}${cleanPath.replace(/[/\\]/g, sep)}`;
+
                     // Read the file as binary
                     const data = await readFile(fullPath);
-                    
+
                     // Detect image type from extension
                     const ext = cleanPath.split('.').pop()?.toLowerCase() || 'png';
-                    const mimeTypes: Record<string, string> = {
-                        'png': 'image/png',
-                        'jpg': 'image/jpeg',
-                        'jpeg': 'image/jpeg',
-                        'gif': 'image/gif',
-                        'webp': 'image/webp',
-                        'svg': 'image/svg+xml',
-                        'bmp': 'image/bmp'
-                    };
-                    const mimeType = mimeTypes[ext] || 'image/png';
-                    
-                    // Convert to base64 data URL
-                    const base64 = btoa(String.fromCharCode(...data));
-                    setImageSrc(`data:${mimeType};base64,${base64}`);
+                    const mimeType = IMAGE_MIME_TYPES[ext] || 'image/png';
+
+                    // Use Blob + ObjectURL instead of base64 for better performance
+                    const blob = new Blob([data], { type: mimeType });
+                    objectUrl = URL.createObjectURL(blob);
+                    setImageSrc(objectUrl);
                     setError(false);
                 } catch (err) {
                     console.error('Failed to load image:', err);
@@ -62,6 +69,13 @@ function LocalImage({ src, alt, baseDir, ...props }: { src: string; alt: string;
         };
 
         loadImage();
+
+        // Revoke object URL on cleanup to prevent memory leaks
+        return () => {
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
     }, [src, baseDir]);
 
     if (error) {
@@ -95,6 +109,7 @@ export function MarkdownPreview({
     lineCount,
     onLineChange,
     filePath,
+    markdownBodyRef,
 }: MarkdownPreviewProps) {
     const mainRef = useRef<HTMLElement>(null);
 
@@ -153,9 +168,9 @@ export function MarkdownPreview({
             className="flex-1 overflow-y-auto bg-[var(--bg-primary)] transition-colors"
         >
             <div className="max-w-[800px] mx-auto px-8 py-12">
-<div className="markdown-body">
-                    <Markdown 
-                        remarkPlugins={[remarkGfm]} 
+<div className="markdown-body" ref={markdownBodyRef}>
+                    <Markdown
+                        remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeHighlight]}
                         components={components}
                     >
