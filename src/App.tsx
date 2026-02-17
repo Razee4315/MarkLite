@@ -13,6 +13,7 @@ import { ModeToggle } from "./components/ModeToggle";
 import { FileExplorer } from "./components/FileExplorer";
 import { TableOfContents } from "./components/TableOfContents";
 import { Toast, ToastType } from "./components/Toast";
+import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 
 interface FileData {
   path: string;
@@ -41,6 +42,11 @@ function AppContent() {
   // UI state
   const [mode, setMode] = useState<ViewMode>("preview");
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Pending file to open after unsaved changes dialog
+  const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
+  const [showUnsavedBeforeOpen, setShowUnsavedBeforeOpen] = useState(false);
 
   // Sidebar panel state
   const [showFileExplorer, setShowFileExplorer] = useState(false);
@@ -66,8 +72,9 @@ function AppContent() {
     setToast({ message, isVisible: true, type });
   }, []);
 
-  // Load file from path
-  const loadFile = useCallback(async (path: string) => {
+  // Load file from path (with unsaved changes check)
+  const loadFileDirect = useCallback(async (path: string) => {
+    setIsLoading(true);
     try {
       const fileData = await invoke<FileData>("read_file", { path });
       setFilePath(fileData.path);
@@ -79,8 +86,53 @@ function AppContent() {
     } catch (err) {
       console.error("Failed to load file:", err);
       showToast("Failed to open file", "error");
+    } finally {
+      setIsLoading(false);
     }
   }, [showToast]);
+
+  // Load file with unsaved changes protection
+  const loadFile = useCallback(async (path: string) => {
+    if (content !== originalContent) {
+      // Has unsaved changes — ask user first
+      setPendingFilePath(path);
+      setShowUnsavedBeforeOpen(true);
+    } else {
+      await loadFileDirect(path);
+    }
+  }, [content, originalContent, loadFileDirect]);
+
+  // Handlers for unsaved-before-open dialog
+  const handleSaveAndOpen = useCallback(async () => {
+    setShowUnsavedBeforeOpen(false);
+    if (filePath) {
+      try {
+        await invoke("save_file", { path: filePath, content });
+        setOriginalContent(content);
+      } catch (err) {
+        console.error("Failed to save file:", err);
+        showToast("Failed to save file", "error");
+        return;
+      }
+    }
+    if (pendingFilePath) {
+      await loadFileDirect(pendingFilePath);
+      setPendingFilePath(null);
+    }
+  }, [filePath, content, pendingFilePath, loadFileDirect, showToast]);
+
+  const handleDiscardAndOpen = useCallback(async () => {
+    setShowUnsavedBeforeOpen(false);
+    if (pendingFilePath) {
+      await loadFileDirect(pendingFilePath);
+      setPendingFilePath(null);
+    }
+  }, [pendingFilePath, loadFileDirect]);
+
+  const handleCancelOpen = useCallback(() => {
+    setShowUnsavedBeforeOpen(false);
+    setPendingFilePath(null);
+  }, []);
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
@@ -362,6 +414,24 @@ function AppContent() {
             wordCount={wordCount}
           />
         </>
+      )}
+
+      {/* Unsaved changes dialog before opening new file */}
+      <UnsavedChangesDialog
+        isOpen={showUnsavedBeforeOpen}
+        onClose={handleCancelOpen}
+        onDiscard={handleDiscardAndOpen}
+        onSave={handleSaveAndOpen}
+      />
+
+      {/* Loading overlay */}
+      {isLoading && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[var(--bg-primary)]/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3">
+            <span className="material-symbols-outlined text-[32px] text-[var(--accent)] animate-spin">progress_activity</span>
+            <span className="text-sm text-[var(--text-secondary)]">Loading...</span>
+          </div>
+        </div>
       )}
 
       {/* Toast notifications */}
