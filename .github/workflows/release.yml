@@ -2,14 +2,82 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  # ─── Job 1: Version check + bump ──────────────────────────
+  check-and-bump:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.bump.outputs.should_release }}
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes and bump version
+        id: bump
+        run: |
+          # Get current version from tauri.conf.json
+          CURRENT_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          echo "Current version: $CURRENT_VERSION"
+
+          # Check if tag for current version exists
+          if git tag -l "v$CURRENT_VERSION" | grep -q "v$CURRENT_VERSION"; then
+            echo "Tag v$CURRENT_VERSION already exists"
+
+            # Check if there are commits since the last tag
+            COMMITS_SINCE=$(git rev-list "v$CURRENT_VERSION"..HEAD --count 2>/dev/null || echo "0")
+            echo "Commits since v$CURRENT_VERSION: $COMMITS_SINCE"
+
+            if [ "$COMMITS_SINCE" -eq "0" ]; then
+              echo "No new commits since last release — skipping"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            # Auto-bump patch version
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+            echo "Bumping version: $CURRENT_VERSION → $NEW_VERSION"
+
+            # Update tauri.conf.json
+            jq --arg v "$NEW_VERSION" '.version = $v' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+
+            # Update package.json
+            jq --arg v "$NEW_VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+
+            # Update Cargo.toml version
+            sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" src-tauri/Cargo.toml
+
+            # Commit the version bump
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml
+            git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+            git push
+
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Tag v$CURRENT_VERSION does not exist — first release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+  # ─── Job 2: Build + Release ────────────────────────────────
+  release:
+    needs: check-and-bump
+    if: needs.check-and-bump.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -22,11 +90,18 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (with bumped version)
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -47,14 +122,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'MarkLite ${{ github.ref_name }}'
+          tauriScript: bun run tauri
+          tagName: v__VERSION__
+          releaseName: 'MarkLite v__VERSION__'
           releaseBody: |
-            ## What's Changed
-            See the [CHANGELOG.md](https://github.com/Razee4315/MarkLite/blob/main/CHANGELOG.md) for details.
-            
-            ## Installation
-            Download the appropriate installer for your platform below.
+            ## MarkLite v__VERSION__
+
+            A minimal, distraction-free markdown editor.
+
+            ### Installation
+            - **Windows:** `.msi` (recommended) or `.exe` (NSIS installer)
+            - **Linux:** `.deb` or `.AppImage`
+
+            See the [CHANGELOG](https://github.com/Razee4315/MarkLite/blob/main/CHANGELOG.md) for details.
+          args: ${{ matrix.args }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
