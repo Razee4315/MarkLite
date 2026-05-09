@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo, useState } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState, memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -442,7 +442,7 @@ function HeadingWithAnchor(
     }
 }
 
-export function MarkdownPreview({
+function MarkdownPreviewImpl({
     content,
     onLineChange,
     filePath,
@@ -775,3 +775,12 @@ export function MarkdownPreview({
         </>
     );
 }
+
+// React.memo so we skip the heavy markdown re-parse + reconcile when only
+// the editor cursor moved or selection changed. App re-renders on every
+// keystroke (live `content` state); without memo, that re-render flowed
+// straight through and called react-markdown again with the same input.
+// All inputs to MarkdownPreview are either stable (callbacks via useCallback,
+// filePath/fileName) or genuine work triggers (debounced content) — the
+// default shallow prop comparator is exactly what we want.
+export const MarkdownPreview = memo(MarkdownPreviewImpl);

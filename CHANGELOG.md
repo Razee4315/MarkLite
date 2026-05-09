@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Improved — Cold start and runtime performance
+
+- **Bundle main chunk: 1.08 MB → 282 kB (~74% smaller).** Welcome screen no
+  longer ships the markdown rendering pipeline, jspdf/html2canvas, the
+  command palette, settings, stats dialog, file explorer, outline panel,
+  shortcuts cheatsheet, or the unsaved-changes dialog. Each is its own
+  chunk, fetched the moment its surface mounts. `vite manualChunks`
+  groups React and the markdown stack into stable vendor chunks the
+  WebView2 disk cache can hold across upgrades.
+- **First file open: instant.** A `requestIdleCallback` after the welcome
+  screen settles starts the markdown chunk download in the background, so
+  by the time the user opens a file the bundle is already in cache.
+- **Typing path: less work per keystroke.** Command-palette heading scan
+  no longer runs on every typing pause — only while the palette is
+  actually open. App's per-keystroke `content.split("\n")` for
+  `lineCount` moved into MarkdownPreview where it's actually used (one
+  fewer full-document scan per keystroke). StatusBar, TitleBar,
+  MarkdownPreview, and CodeEditor wrapped in `React.memo` with stable
+  callbacks so caret-only re-renders bail out of reconciliation.
+- **Highlight cache: drop LRU thrash.** The CodeEditor's per-line
+  highlight cache used to do `delete + set` on every cached line per
+  render to maintain LRU order — ~20 k Map mutations per keystroke on a
+  10 k-line file. The pruning that actually mattered ("is this line
+  still in the doc?") doesn't depend on order, so we just lookup-only on
+  hit and let the rare hard-cap fallback evict FIFO.
+
 ### Added — Chemistry notation in math
 
 - KaTeX now loads the **mhchem** contrib alongside the rest of the math

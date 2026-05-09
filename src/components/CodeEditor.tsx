@@ -191,7 +191,7 @@ const Gutter = memo(forwardRef<HTMLDivElement, { lineCount: number; activeLine: 
     }
 ));
 
-export function CodeEditor({ content, onChange, onCursorChange, onSelectionChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
+function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
     // When word wrap is on, long lines wrap inside the editor and the highlight
     // overlay; when off, lines scroll horizontally. Both layers must agree on
     // these styles or the caret will visually drift away from the rendered text.
@@ -592,10 +592,18 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
     // short-circuits on `prev === next` and skips the unchanged children.
     //
     // Cache is per-component-instance and bounded two ways:
-    //   1) HARD CAP via LRU eviction (Map insertion-order). Without this, a
+    //   1) HARD CAP via FIFO eviction (Map insertion-order). Without this, a
     //      doc where every line is unique (think 10k lines of UUIDs) would
     //      grow the cache by `lines.length` per render forever.
     //   2) Stale-entry pruning when growth outpaces in-use lines by >256.
+    //
+    // We do NOT touch entries on hit. The previous version did delete+set per
+    // line per render to maintain LRU order — that's ~2N Map mutations per
+    // keystroke for a doc with N lines (20 k ops on a 10 k-line file). Their
+    // only purpose was to influence overflow eviction order, and overflow
+    // only fires on docs with >4 k UNIQUE lines (rare). The "is this line
+    // still in the doc?" pruning is the load-bearing bound; FIFO order is
+    // fine for the rare hard-cap fallback.
     const HIGHLIGHT_CACHE_MAX = 4096;
     const highlightCacheRef = useRef<Map<string, React.ReactNode>>(new Map());
     const highlightedLines = useMemo(() => {
@@ -608,10 +616,6 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
             if (node === undefined) {
                 node = highlightLine(line);
                 cache.set(line, node);
-            } else {
-                // Re-insert to mark as MRU.
-                cache.delete(line);
-                cache.set(line, node);
             }
             out[i] = node;
             inUse.add(line);
@@ -623,7 +627,7 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
         }
         // Hard ceiling regardless of in-use set size: protects against
         // pathological docs where every line is unique and `inUse` itself is
-        // huge. Evict from the front (LRU) until under the cap.
+        // huge. Evict from the front (FIFO) until under the cap.
         while (cache.size > HIGHLIGHT_CACHE_MAX) {
             const oldest = cache.keys().next().value;
             if (oldest === undefined) break;
@@ -1122,3 +1126,11 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
         </main>
     );
 }
+
+// React.memo so renders driven by App-level state (sidebar toggles, palette
+// open/close, theme changes, caret moves driven by selectionchange — see
+// updateCursorPosition) skip the editor when its real inputs (content,
+// modes, file path) are unchanged. The default shallow comparator is right
+// for us: every callback prop is useCallback'd in App and every primitive
+// prop is stable between caret-only re-renders.
+export const CodeEditor = memo(CodeEditorImpl);
