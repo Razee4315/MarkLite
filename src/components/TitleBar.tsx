@@ -1,8 +1,14 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
-import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
+
+// Loaded only when the user actually tries to close a dirty buffer.
+// Eager-importing this kept its module (and its chained imports) in the
+// main bundle even though most sessions never trigger the dialog.
+const UnsavedChangesDialog = lazy(() =>
+    import("./UnsavedChangesDialog").then((m) => ({ default: m.UnsavedChangesDialog }))
+);
 
 interface TitleBarProps {
     fileName?: string;
@@ -81,12 +87,16 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onNewFile, o
 
     return (
         <>
-            <UnsavedChangesDialog
-                isOpen={showUnsavedDialog}
-                onClose={() => setShowUnsavedDialog(false)}
-                onDiscard={handleDiscardAndClose}
-                onSave={handleSaveAndClose}
-            />
+            {showUnsavedDialog && (
+                <Suspense fallback={null}>
+                    <UnsavedChangesDialog
+                        isOpen={showUnsavedDialog}
+                        onClose={() => setShowUnsavedDialog(false)}
+                        onDiscard={handleDiscardAndClose}
+                        onSave={handleSaveAndClose}
+                    />
+                </Suspense>
+            )}
             <header className="h-12 shrink-0 flex items-center justify-between px-4 bg-[var(--bg-titlebar)] border-b border-[var(--border)] no-select drag-region transition-colors">
                 {/* Left: Icon & Title */}
                 <div className="flex items-center gap-3 no-drag">

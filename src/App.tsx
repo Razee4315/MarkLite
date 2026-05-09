@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
@@ -8,20 +8,48 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
-import { MarkdownPreview } from "./components/MarkdownPreview";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
 import { ModeToggle, type ViewMode } from "./components/ModeToggle";
-import { FileExplorer } from "./components/FileExplorer";
-import { TableOfContents } from "./components/TableOfContents";
 import { Toast, ToastType } from "./components/Toast";
-import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { SplitDivider } from "./components/SplitDivider";
 import { createScrollSync } from "./utils/scrollSync";
-import { ShortcutCheatsheet } from "./components/ShortcutCheatsheet";
-import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
-import { SettingsModal } from "./components/SettingsModal";
-import { StatsDialog } from "./components/StatsDialog";
+import { type PaletteCommand } from "./components/CommandPalette";
+
+// === Lazy-loaded screens / dialogs ===
+//
+// Cold-start budget: the welcome screen is what the user sees first, and it
+// doesn't need react-markdown, jspdf, the settings modal, the command
+// palette, or any sidebar panel to render. Importing them eagerly meant
+// 300 kB+ of JS had to parse before the welcome screen could paint. Each of
+// these is now its own chunk, fetched only when its surface is mounted.
+//
+// React.lazy expects a default export; our components are named exports, so
+// we adapt with the `.then(m => ({ default: m.X }))` shim.
+const MarkdownPreview = lazy(() =>
+    import("./components/MarkdownPreview").then((m) => ({ default: m.MarkdownPreview }))
+);
+const FileExplorer = lazy(() =>
+    import("./components/FileExplorer").then((m) => ({ default: m.FileExplorer }))
+);
+const TableOfContents = lazy(() =>
+    import("./components/TableOfContents").then((m) => ({ default: m.TableOfContents }))
+);
+const SettingsModal = lazy(() =>
+    import("./components/SettingsModal").then((m) => ({ default: m.SettingsModal }))
+);
+const StatsDialog = lazy(() =>
+    import("./components/StatsDialog").then((m) => ({ default: m.StatsDialog }))
+);
+const CommandPalette = lazy(() =>
+    import("./components/CommandPalette").then((m) => ({ default: m.CommandPalette }))
+);
+const ShortcutCheatsheet = lazy(() =>
+    import("./components/ShortcutCheatsheet").then((m) => ({ default: m.ShortcutCheatsheet }))
+);
+const UnsavedChangesDialog = lazy(() =>
+    import("./components/UnsavedChangesDialog").then((m) => ({ default: m.UnsavedChangesDialog }))
+);
 import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
@@ -996,38 +1024,55 @@ function AppContent() {
                 minWidth: 0,
               }}
             >
-              <MarkdownPreview
-                content={deferredContent}
-                fileName={fileName || ""}
-                lineCount={lineCount}
-                fileSize={fileSize}
-                onEditClick={handleToggleMode}
-                onLineChange={handlePreviewLineChange}
-                filePath={filePath}
-                markdownBodyRef={previewRef}
-                onContentChange={handleContentChange}
-                onScrollFraction={onPreviewScrollFraction}
-                registerScroller={registerPreviewScroller}
-                onWikilinkClick={handleWikilinkClick}
-              />
+              {/* MarkdownPreview is lazy-loaded — its react-markdown +
+                  remark-gfm + rehype-highlight stack is ~250 kB and
+                  doesn't need to ship with the welcome screen. The
+                  fallback is invisible since the parent column already
+                  has a background; a brief flash on first render is
+                  preferable to a spinner that pre-empts the layout. */}
+              <Suspense fallback={null}>
+                <MarkdownPreview
+                  content={deferredContent}
+                  fileName={fileName || ""}
+                  lineCount={lineCount}
+                  fileSize={fileSize}
+                  onEditClick={handleToggleMode}
+                  onLineChange={handlePreviewLineChange}
+                  filePath={filePath}
+                  markdownBodyRef={previewRef}
+                  onContentChange={handleContentChange}
+                  onScrollFraction={onPreviewScrollFraction}
+                  registerScroller={registerPreviewScroller}
+                  onWikilinkClick={handleWikilinkClick}
+                />
+              </Suspense>
             </div>
           </div>
 
           <ModeToggle mode={mode} onSetMode={setMode} />
 
-          {/* Sidebar Panels */}
-          <FileExplorer
-            isOpen={showFileExplorer}
-            currentFilePath={filePath}
-            onFileSelect={loadFile}
-            onClose={closeAllPanels}
-          />
-          <TableOfContents
-            isOpen={showTOC}
-            content={deferredContent}
-            onClose={closeAllPanels}
-            activeLine={mode === "preview" ? previewLine : cursorPosition.line}
-          />
+          {/* Sidebar Panels — only mount when actually open so they don't
+              load their module until first use. */}
+          {showFileExplorer && (
+            <Suspense fallback={null}>
+              <FileExplorer
+                isOpen={showFileExplorer}
+                currentFilePath={filePath}
+                onFileSelect={loadFile}
+                onClose={closeAllPanels}
+              />
+            </Suspense>
+          )}
+          {showTOC && (
+            <Suspense fallback={null}>
+              <TableOfContents
+                isOpen={showTOC}
+                content={deferredContent}
+                onClose={closeAllPanels}
+                activeLine={mode === "preview" ? previewLine : cursorPosition.line}
+              />
+            </Suspense>
+          )}
 
 <StatusBar
             isSaved={!isDirty}
@@ -1047,13 +1092,18 @@ function AppContent() {
         </>
       )}
 
-      {/* Unsaved changes dialog before opening new file */}
-      <UnsavedChangesDialog
-        isOpen={showUnsavedBeforeOpen}
-        onClose={handleCancelOpen}
-        onDiscard={handleDiscardAndOpen}
-        onSave={handleSaveAndOpen}
-      />
+      {/* Unsaved-changes dialog: only mounts when needed. Most app sessions
+          never trigger it, so eagerly loading the module was pure waste. */}
+      {showUnsavedBeforeOpen && (
+        <Suspense fallback={null}>
+          <UnsavedChangesDialog
+            isOpen={showUnsavedBeforeOpen}
+            onClose={handleCancelOpen}
+            onDiscard={handleDiscardAndOpen}
+            onSave={handleSaveAndOpen}
+          />
+        </Suspense>
+      )}
 
       {/* Loading overlay */}
       {isLoading && (
@@ -1065,21 +1115,40 @@ function AppContent() {
         </div>
       )}
 
-      <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
+      {/* Heavy modal surfaces — palette, settings, stats, cheatsheet — are
+          off the cold-start critical path. They mount only when first
+          opened so their bundles only download on demand. */}
+      {showCheatsheet && (
+        <Suspense fallback={null}>
+          <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
+        </Suspense>
+      )}
       {/* Stats dialog reads LIVE `content`, not the debounced version. The
           dialog opens on a discrete user action (palette command), not while
           typing, so the typing-fast-path argument doesn't apply — and a user
           who opens "Show document statistics" expects the numbers to match
           what they just typed. */}
-      <StatsDialog isOpen={showStats} content={content} onClose={() => setShowStats(false)} />
-      <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
-      <SettingsModal
-        isOpen={showSettings}
-        onClose={() => {
-          setShowSettings(false);
-          setAiConfigState(getAIConfig()); // pick up endpoint/key edits immediately
-        }}
-      />
+      {showStats && (
+        <Suspense fallback={null}>
+          <StatsDialog isOpen={showStats} content={content} onClose={() => setShowStats(false)} />
+        </Suspense>
+      )}
+      {showPalette && (
+        <Suspense fallback={null}>
+          <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
+        </Suspense>
+      )}
+      {showSettings && (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen={showSettings}
+            onClose={() => {
+              setShowSettings(false);
+              setAiConfigState(getAIConfig()); // pick up endpoint/key edits immediately
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Toast notifications */}
       <Toast

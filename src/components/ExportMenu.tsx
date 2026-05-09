@@ -1,6 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { exportToHTML, exportToPDF } from '../utils/exportUtils';
+
+// Heavy export deps (jsPDF pulls in ~200 kB of html2canvas; jsPDF itself is
+// another big bundle) only matter when the user actually exports. We import
+// the module on demand so the main chunk doesn't ship them. Caching the
+// promise means a second click — or HTML-then-PDF — reuses the first load.
+type ExportModule = typeof import('../utils/exportUtils');
+let exportModulePromise: Promise<ExportModule> | null = null;
+const loadExportModule = (): Promise<ExportModule> => {
+    if (!exportModulePromise) {
+        exportModulePromise = import('../utils/exportUtils');
+    }
+    return exportModulePromise;
+};
 
 interface ExportMenuProps {
     fileName: string;
@@ -45,10 +57,11 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
         setIsOpen(false);
 
         try {
+            const mod = await loadExportModule();
             if (format === 'html') {
-                await exportToHTML(htmlContent, fileName, theme, font, fontSize);
+                await mod.exportToHTML(htmlContent, fileName, theme, font, fontSize);
             } else {
-                await exportToPDF(htmlContent, fileName, theme, font, fontSize);
+                await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize);
             }
             onSuccess?.(format.toUpperCase());
         } catch (error) {
