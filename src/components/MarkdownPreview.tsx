@@ -41,7 +41,6 @@ const loadMathPlugins = (): Promise<PluginPair> => {
 interface MarkdownPreviewProps {
     content: string;
     fileName: string;
-    lineCount: number;
     fileSize: number;
     onEditClick: () => void;
     onLineChange?: (line: number) => void;
@@ -445,7 +444,6 @@ function HeadingWithAnchor(
 
 export function MarkdownPreview({
     content,
-    lineCount,
     onLineChange,
     filePath,
     markdownBodyRef,
@@ -456,6 +454,13 @@ export function MarkdownPreview({
 }: MarkdownPreviewProps) {
     const mainRef = useRef<HTMLElement>(null);
     const [zoomImage, setZoomImage] = useState<{ src: string; alt: string } | null>(null);
+
+    // lineCount is derived here (instead of being passed as a prop) so the
+    // preview's split happens once, against the same `content` we render.
+    // App used to compute this from live content and pass it down, which
+    // double-scanned the document on every keystroke and reported the wrong
+    // count for the (debounced) snapshot we're actually rendering.
+    const lineCount = useMemo(() => content.split("\n").length, [content]);
 
     // Listen for zoom requests from LocalImage clicks
     useEffect(() => {

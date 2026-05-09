@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, memo } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
@@ -22,7 +22,7 @@ interface TitleBarProps {
     onExportError?: (format: string) => void;
 }
 
-export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError }: TitleBarProps) {
+function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError }: TitleBarProps) {
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
     const handleMinimize = async () => {
@@ -184,3 +184,10 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onNewFile, o
         </>
     );
 }
+
+// React.memo + useCallback'd parent props means the TitleBar skips re-render
+// while the user is typing. Without this every keystroke reconciled the
+// header — cheap individually, but it adds up on hot paths. The default
+// shallow prop comparison is enough; all props are primitives or stable
+// callbacks from App.
+export const TitleBar = memo(TitleBarImpl);

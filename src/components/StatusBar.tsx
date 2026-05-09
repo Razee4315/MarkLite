@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface StatusBarProps {
     isSaved: boolean;
     lineNumber: number;
@@ -25,7 +27,7 @@ const formatReadingTime = (min: number): string => {
     return rem === 0 ? `${hours}h read` : `${hours}h ${rem}m read`;
 };
 
-export function StatusBar({
+function StatusBarImpl({
     isSaved,
     lineNumber,
     columnNumber,
@@ -122,3 +124,11 @@ export function StatusBar({
         </footer>
     );
 }
+
+// React.memo so the status bar bails out when its props haven't actually
+// changed. During typing, App re-renders on every keystroke (live `content`
+// state), but most StatusBar inputs (wordCount/charCount/readingTime are
+// debounced; selection counts collapse to 0 while typing) don't. Without
+// memo, every keystroke reconciled the whole footer; with it, the typing
+// path skips the status bar's render entirely between caret moves.
+export const StatusBar = memo(StatusBarImpl);

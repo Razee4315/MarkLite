@@ -200,7 +200,6 @@ function AppContent() {
   // showing the empty initial value.)
   const deferredContent = useDebouncedValue(content, 80);
 
-  const lineCount = useMemo(() => content.split("\n").length, [content]);
   // Word/char counts feed the status bar — fine to lag a frame behind on huge
   // docs, so they read deferred too.
   const wordCount = useMemo(() => getWordCount(deferredContent), [deferredContent]);
@@ -279,6 +278,29 @@ function AppContent() {
 
     return () => {
       handlers.forEach(([k, h]) => window.removeEventListener(k, h));
+    };
+  }, []);
+
+  // Prefetch the heaviest lazy chunks during browser idle so the first time
+  // the user actually opens a file or a sidebar, the bundle is already in
+  // cache. Without this we'd block the file-open click on a network fetch
+  // for ~340 kB of react-markdown. The prefetch is fire-and-forget; if the
+  // user never opens a file before closing the app, no harm done.
+  useEffect(() => {
+    type IdleApi = (cb: () => void, opts?: { timeout?: number }) => number;
+    const ric: IdleApi = (typeof window !== "undefined" && (window as unknown as { requestIdleCallback?: IdleApi }).requestIdleCallback)
+        ? (window as unknown as { requestIdleCallback: IdleApi }).requestIdleCallback
+        : ((cb) => window.setTimeout(cb, 600) as unknown as number);
+    const id = ric(() => {
+      // Markdown rendering pipeline is the single biggest deferred chunk;
+      // pull it in the moment the welcome screen has settled. The other
+      // dialogs are tiny and aren't worth racing the network for.
+      import("./components/MarkdownPreview").catch(() => {/* offline / cancelled */ });
+    }, { timeout: 1500 });
+    return () => {
+      const cancel = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+      if (cancel) cancel(id);
+      else window.clearTimeout(id);
     };
   }, []);
 
@@ -619,6 +641,18 @@ function AppContent() {
     showToast(message, 'error');
   }, [showToast]);
 
+  // Stable export-result callbacks so TitleBar's props are reference-equal
+  // across renders. Inline arrows here would re-create the closures on every
+  // App render and defeat any downstream memoization.
+  const handleExportSuccess = useCallback(
+    (fmt: string) => showToast(`Exported as ${fmt}`, "success"),
+    [showToast]
+  );
+  const handleExportError = useCallback(
+    (fmt: string) => showToast(`Failed to export ${fmt}`, "error"),
+    [showToast]
+  );
+
   // Hide toast
   const hideToast = useCallback(() => {
     // Bail out when the toast is already hidden — without this guard, a
@@ -914,44 +948,62 @@ function AppContent() {
       });
     }
 
-    // === Headings of current document ===
-    // Use deferredContent so a single keystroke doesn't re-scan every line for
-    // headings. The palette is closed most of the time anyway.
-    if (deferredContent) {
-      const lines = deferredContent.split("\n");
-      lines.forEach((line, idx) => {
-        const m = line.match(/^(#{1,6})\s+(.+)$/);
-        if (m) {
-          const level = m[1].length;
-          const text = m[2].trim();
-          items.push({
-            id: `head.${idx}`,
-            label: text,
-            hint: `H${level}`,
-            section: "Headings",
-            icon: level === 1 ? "title" : level === 2 ? "format_h2" : "format_h3",
-            keywords: "jump heading",
-            run: () => {
-              // Switch to preview if in code-only mode, then scroll to heading
-              setMode((prev) => (prev === "code" ? "preview" : prev));
-              requestAnimationFrame(() => {
-                const slug = text.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
-                const el = document.getElementById(slug);
-                el?.scrollIntoView({ behavior: "smooth", block: "start" });
-              });
-            },
-          });
-        }
-      });
-    }
-
     return items;
   }, [
+    // NB: deferredContent is intentionally NOT a dep here. Building static
+    // file/view/toggle/recent items doesn't depend on the document text, so
+    // letting `content` flow into this useMemo would rebuild every keystroke
+    // (post-debounce) for no reason. Headings are computed below in a
+    // separate hook that's gated on the palette actually being open.
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
-    loadFile, filePath, deferredContent, hasFile, showToast,
+    loadFile, filePath, hasFile, showToast,
     typewriterModeEnabled, toolbarVisible,
   ]);
+
+  // Heading items are recomputed only while the palette is actually open.
+  // Scanning every line of the document for `#`-prefixed headings on every
+  // typing pause used to be cheap on small docs and noticeable on large
+  // ones — and 100 % of that work was discarded if the user wasn't looking
+  // at the palette.
+  const headingPaletteItems = useMemo<PaletteCommand[]>(() => {
+    if (!showPalette || !deferredContent) return [];
+    const items: PaletteCommand[] = [];
+    const lines = deferredContent.split("\n");
+    lines.forEach((line, idx) => {
+      const m = line.match(/^(#{1,6})\s+(.+)$/);
+      if (m) {
+        const level = m[1].length;
+        const text = m[2].trim();
+        items.push({
+          id: `head.${idx}`,
+          label: text,
+          hint: `H${level}`,
+          section: "Headings",
+          icon: level === 1 ? "title" : level === 2 ? "format_h2" : "format_h3",
+          keywords: "jump heading",
+          run: () => {
+            // Switch to preview if in code-only mode, then scroll to heading
+            setMode((prev) => (prev === "code" ? "preview" : prev));
+            requestAnimationFrame(() => {
+              const slug = text.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
+              const el = document.getElementById(slug);
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+          },
+        });
+      }
+    });
+    return items;
+  }, [showPalette, deferredContent]);
+
+  // Concatenated list passed to the palette. Same `paletteItems` shape as
+  // before so the CommandPalette component sees no API change. Reference
+  // changes only when one of the two sources changes — typically rare.
+  const fullPaletteItems = useMemo<PaletteCommand[]>(
+    () => (headingPaletteItems.length ? [...paletteItems, ...headingPaletteItems] : paletteItems),
+    [paletteItems, headingPaletteItems]
+  );
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
@@ -963,8 +1015,8 @@ function AppContent() {
         onNewFile={handleNewFile}
         onSaveFile={handleSaveFile}
         getExportHtml={getExportHtml}
-        onExportSuccess={(fmt) => showToast(`Exported as ${fmt}`, "success")}
-        onExportError={(fmt) => showToast(`Failed to export ${fmt}`, "error")}
+        onExportSuccess={handleExportSuccess}
+        onExportError={handleExportError}
       />
 
       {!hasFile ? (
@@ -1034,7 +1086,6 @@ function AppContent() {
                 <MarkdownPreview
                   content={deferredContent}
                   fileName={fileName || ""}
-                  lineCount={lineCount}
                   fileSize={fileSize}
                   onEditClick={handleToggleMode}
                   onLineChange={handlePreviewLineChange}
@@ -1135,7 +1186,7 @@ function AppContent() {
       )}
       {showPalette && (
         <Suspense fallback={null}>
-          <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
+          <CommandPalette isOpen={showPalette} items={fullPaletteItems} onClose={() => setShowPalette(false)} />
         </Suspense>
       )}
       {showSettings && (
