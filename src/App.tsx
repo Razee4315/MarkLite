@@ -278,6 +278,8 @@ function AppContent() {
       ["marklite:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
       ["marklite:wordwrap-toggle", (e) => setWordWrapEnabled(!!(e as CustomEvent).detail?.enabled)],
       ["marklite:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
+      // Opened from the title-bar settings dropdown's "More settings…" entry.
+      ["marklite:open-settings", () => setShowSettings(true)],
     ];
     handlers.forEach(([k, h]) => window.addEventListener(k, h));
 
@@ -764,6 +766,16 @@ function AppContent() {
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         e.preventDefault();
         setShowSettings(true);
+      }
+      // AI assist — Alt+J everywhere, ⌘+J on macOS. Handled here (window level)
+      // rather than only in the editor so it fires regardless of focus; the
+      // editor opens the bubble via the marklite:ai-assist listener. (Ctrl+J is
+      // reserved by WebView2 on Windows, hence Alt+J there.)
+      const isAltJ = e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === "j" || e.key === "J" || e.code === "KeyJ");
+      const isCmdJ = e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === "j" || e.key === "J");
+      if (isAltJ || isCmdJ) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("marklite:ai-assist"));
       }
     };
 

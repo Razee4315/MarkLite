@@ -144,6 +144,17 @@ export function SettingsMenu() {
                             ))}
                         </div>
                     </div>
+
+                    {/* More settings — opens the full settings modal (AI, editor toggles, about). */}
+                    <div className="p-2 border-t border-[var(--border)]">
+                        <button
+                            onClick={() => { setIsOpen(false); window.dispatchEvent(new CustomEvent("marklite:open-settings")); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-[18px]">tune</span>
+                            More settings…
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

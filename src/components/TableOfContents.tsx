@@ -117,12 +117,13 @@ export function TableOfContents({
                 if (elText === text || elText === cleanText || elText.includes(cleanText)) {
                     const elementTop = el.getBoundingClientRect().top;
                     const containerTop = scrollContainer.getBoundingClientRect().top;
-                    const offset = elementTop - containerTop + scrollContainer.scrollTop - 20;
+                    // Land the heading a few px below the top edge so the active-line
+                    // detection (which samples ~14px down) resolves to THIS heading,
+                    // not the one above it. Instant jump — smooth scrolling felt like
+                    // it crawled "one by one" to distant sections.
+                    const offset = elementTop - containerTop + scrollContainer.scrollTop - 8;
 
-                    scrollContainer.scrollTo({
-                        top: offset,
-                        behavior: "smooth"
-                    });
+                    scrollContainer.scrollTo({ top: offset, behavior: "auto" });
                     break;
                 }
             }

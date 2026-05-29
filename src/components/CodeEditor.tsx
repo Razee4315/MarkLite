@@ -220,8 +220,9 @@ function CodeEditorImpl({
             },
             { key: "Mod-f", run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("find"); setFindOpen(true); return true; } },
             { key: "Mod-h", run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("replace"); setFindOpen(true); return true; } },
-            { key: "Alt-j", run: () => { openAIBubble(); return true; } },
-            { key: "Mod-j", run: () => { openAIBubble(); return true; } },
+            // NB: the AI shortcut (Alt+J / ⌘J) is handled at the App window level
+            // so it fires regardless of editor focus — see App.tsx. The editor
+            // opens the bubble via the marklite:ai-assist event listener below.
         ]));
 
         const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
@@ -237,7 +238,10 @@ function CodeEditorImpl({
                 const sel = update.state.selection.main;
                 onSelectionChangeRef.current?.(sel.from, sel.to);
                 detectSlash(update.view);
-                if (typewriterRef.current && update.selectionSet) {
+                // Typewriter mode: recenter only while TYPING (docChanged), not on
+                // mouse clicks / arrow navigation — clicking shouldn't yank the
+                // viewport around.
+                if (typewriterRef.current && update.docChanged) {
                     const pos = head;
                     requestAnimationFrame(() => {
                         const v = viewRef.current;
