@@ -147,3 +147,80 @@ export function buildAskMessages(
         { role: "user", content: `${ctx}\n\n---\nQuestion: ${userInput}` },
     ];
 }
+
+// ===== Agent / Edit mode =====
+
+export const AGENT_SYSTEM_PROMPT =
+    "You are the agent inside MarkLite, a Markdown editor, working on the user's current document.\n\n" +
+    "Decide what the user wants:\n" +
+    "- If they ask a QUESTION, answer concisely in Markdown. Do NOT output edit blocks.\n" +
+    "- If they ask you to CHANGE the document (edit, rewrite, add, fix, restructure), respond with edit blocks ONLY. You may put at most one short sentence of summary before the blocks.\n\n" +
+    "Edit block format — one per change, EXACTLY:\n" +
+    "<<<<<<< SEARCH\n" +
+    "(text to find, copied verbatim from the document including whitespace; minimal but unique)\n" +
+    "=======\n" +
+    "(replacement text)\n" +
+    ">>>>>>> REPLACE\n\n" +
+    "Rules:\n" +
+    "- SEARCH must match the current document character-for-character.\n" +
+    "- Use several blocks for several changes.\n" +
+    "- To INSERT, SEARCH a nearby existing line and repeat it unchanged in REPLACE with the new text added around it.\n" +
+    "- To REWRITE the whole document, use ONE block whose SEARCH is the entire current document.\n" +
+    "- Preserve the user's Markdown style, heading levels, and voice.\n" +
+    "- Never wrap blocks in ``` fences. Output nothing after the final block.";
+
+export function buildAgentMessages(
+    history: ChatMessage[],
+    note: string,
+    selection: string,
+    userInput: string
+): ChatMessage[] {
+    const ctx = selection.trim()
+        ? `Current document:\n${asDocument(note)}\n\nThe user's current selection:\n${asDocument(selection)}`
+        : `Current document:\n${asDocument(note)}`;
+    return [
+        { role: "system", content: AGENT_SYSTEM_PROMPT },
+        ...history,
+        { role: "user", content: `${ctx}\n\n---\nRequest: ${userInput}` },
+    ];
+}
+
+export interface EditResult {
+    /** Document after applying every block that matched. */
+    proposedDoc: string;
+    applied: number;
+    failed: number;
+    /** Any prose the model wrote outside the edit blocks. */
+    explanation: string;
+    /** True when the response contained at least one well-formed edit block. */
+    hasEdits: boolean;
+}
+
+const EDIT_BLOCK_RE = /<<<<<<<[ \t]*SEARCH[ \t]*\r?\n([\s\S]*?)\r?\n=======[ \t]*\r?\n([\s\S]*?)\r?\n>>>>>>>[ \t]*REPLACE/g;
+
+/**
+ * Parse SEARCH/REPLACE blocks out of an agent response and apply them to the
+ * current document, in order. Each SEARCH is matched literally (first
+ * occurrence). Blocks whose SEARCH isn't found are counted as failed and skipped.
+ */
+export function parseEdits(response: string, currentDoc: string): EditResult {
+    const blocks: Array<[string, string]> = [];
+    EDIT_BLOCK_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = EDIT_BLOCK_RE.exec(response)) !== null) {
+        blocks.push([m[1], m[2]]);
+    }
+
+    let doc = currentDoc;
+    let applied = 0;
+    let failed = 0;
+    for (const [search, replace] of blocks) {
+        const idx = doc.indexOf(search);
+        if (idx === -1) { failed++; continue; }
+        doc = doc.slice(0, idx) + replace + doc.slice(idx + search.length);
+        applied++;
+    }
+
+    const explanation = response.replace(EDIT_BLOCK_RE, "").trim();
+    return { proposedDoc: doc, applied, failed, explanation, hasEdits: blocks.length > 0 };
+}

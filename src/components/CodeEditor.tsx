@@ -14,6 +14,7 @@ import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { unifiedMergeView } from "@codemirror/merge";
 import { tags as t } from "@lezer/highlight";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage } from "../utils/imageUtils";
 import {
@@ -47,6 +48,12 @@ interface CodeEditorProps {
     wordWrap?: boolean;
     spellCheck?: boolean;
     aiConfig?: { endpoint: string; model: string; apiKey: string };
+    /** When non-null, show this proposed document as an inline diff (CodeMirror
+     *  merge view) for the user to accept/reject. Null = no review in progress. */
+    reviewDoc?: string | null;
+    /** Called when the user finishes a review: the final document (accept) or
+     *  null (rejected everything — keep the original). */
+    onReviewResolve?: (finalDoc: string | null) => void;
 }
 
 const EDITOR_FONT_FAMILY =
@@ -142,6 +149,8 @@ function CodeEditorImpl({
     wordWrap = true,
     spellCheck = false,
     aiConfig,
+    reviewDoc,
+    onReviewResolve,
 }: CodeEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -152,6 +161,7 @@ function CodeEditorImpl({
     const [slashState, setSlashState] = useState<{ from: number; pos: { x: number; y: number } } | null>(null);
     const [slashQuery, setSlashQuery] = useState("");
     const [aiBubble, setAIBubble] = useState<{ x: number; y: number; selStart: number; selEnd: number; text: string } | null>(null);
+    const [reviewActive, setReviewActive] = useState(false);
 
     // Latest props read by the once-created CodeMirror extensions, kept in refs so
     // the view never has to be torn down and rebuilt on a callback/flag change.
@@ -175,6 +185,11 @@ function CodeEditorImpl({
     // Reconfigurable extensions.
     const wrapCompRef = useRef(new Compartment());
     const spellCompRef = useRef(new Compartment());
+    // AI review (merge view) state.
+    const mergeCompRef = useRef(new Compartment());
+    const reviewingRef = useRef(false);
+    const reviewOriginalRef = useRef("");
+    const lastReviewRef = useRef<string | null>(null);
 
     const openAIBubble = useCallback(() => {
         const view = viewRef.current;
@@ -197,6 +212,7 @@ function CodeEditorImpl({
 
         const wrapComp = wrapCompRef.current;
         const spellComp = spellCompRef.current;
+        const mergeComp = mergeCompRef.current;
 
         const editingKeymap = Prec.highest(keymap.of([
             { key: "Tab", run: (v) => runAction(v, (st) => handleTab(st, false)), shift: (v) => runAction(v, (st) => handleTab(st, true)) },
@@ -226,7 +242,9 @@ function CodeEditorImpl({
         ]));
 
         const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
-            if (update.docChanged) {
+            // Suppress propagation while an AI review is active — the doc shows the
+            // PROPOSED text then, which mustn't be committed until accept/reject.
+            if (update.docChanged && !reviewingRef.current) {
                 const value = update.state.doc.toString();
                 lastEmittedRef.current = value;
                 onChangeRef.current?.(value);
@@ -272,6 +290,7 @@ function CodeEditorImpl({
                     editorTheme,
                     wrapComp.of(wordWrap ? EditorView.lineWrapping : []),
                     spellComp.of(EditorView.contentAttributes.of(spellAttrs(spellCheck))),
+                    mergeComp.of([]),
                     editingKeymap,
                     keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
                     updateListener,
@@ -393,6 +412,57 @@ function CodeEditorImpl({
         viewRef.current?.dispatch({ effects: spellCompRef.current.reconfigure(EditorView.contentAttributes.of(spellAttrs(spellCheck))) });
     }, [spellCheck]);
 
+    // Enter / refresh / exit the AI review (CodeMirror unified merge view). The
+    // original side is the document as it was BEFORE the proposal; the editor doc
+    // becomes the proposed text, and the merge view shows per-change ✓/✗ controls.
+    useEffect(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        if (reviewDoc != null) {
+            if (reviewingRef.current && reviewDoc === lastReviewRef.current) return;
+            if (!reviewingRef.current) reviewOriginalRef.current = view.state.doc.toString();
+            reviewingRef.current = true;
+            lastReviewRef.current = reviewDoc;
+            setReviewActive(true);
+            view.dispatch({
+                changes: { from: 0, to: view.state.doc.length, insert: reviewDoc },
+                effects: mergeCompRef.current.reconfigure(unifiedMergeView({ original: reviewOriginalRef.current })),
+            });
+        } else if (reviewingRef.current) {
+            reviewingRef.current = false;
+            lastReviewRef.current = null;
+            setReviewActive(false);
+            view.dispatch({ effects: mergeCompRef.current.reconfigure([]) });
+        }
+    }, [reviewDoc]);
+
+    const acceptAllChanges = useCallback(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        const final = view.state.doc.toString();
+        reviewingRef.current = false;
+        lastReviewRef.current = null;
+        setReviewActive(false);
+        view.dispatch({ effects: mergeCompRef.current.reconfigure([]) });
+        lastEmittedRef.current = final; // keep the App content-sync from re-dispatching
+        onReviewResolve?.(final);
+    }, [onReviewResolve]);
+
+    const rejectAllChanges = useCallback(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        const orig = reviewOriginalRef.current;
+        reviewingRef.current = false;
+        lastReviewRef.current = null;
+        setReviewActive(false);
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: orig },
+            effects: mergeCompRef.current.reconfigure([]),
+        });
+        lastEmittedRef.current = orig;
+        onReviewResolve?.(null);
+    }, [onReviewResolve]);
+
     // Scroll-fraction sync (rAF-throttled — PREVIEW-04) + imperative scroller.
     const scrollRafRef = useRef(0);
     useEffect(() => {
@@ -478,6 +548,17 @@ function CodeEditorImpl({
 
     return (
         <main className="flex-1 flex flex-col overflow-hidden relative">
+            {reviewActive && (
+                <div className="flex items-center gap-2 px-3 h-9 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--accent)] text-xs no-select">
+                    <span className="material-symbols-outlined text-[16px] text-[var(--accent)]">auto_awesome</span>
+                    <span className="text-[var(--text-primary)] font-medium">AI suggested changes</span>
+                    <span className="text-[var(--text-muted)] hidden sm:inline">— review each, or:</span>
+                    <div className="ml-auto flex items-center gap-2">
+                        <button onClick={rejectAllChanges} className="px-2 py-1 rounded-[var(--radius-sm)] text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors">Reject all</button>
+                        <button onClick={acceptAllChanges} className="px-2 py-1 rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90 transition-colors">Accept all</button>
+                    </div>
+                </div>
+            )}
             {showToolbar && (
                 <FormatToolbar getState={getState} apply={applyResult} insert={insertAtCaret} onAIAssist={openAIBubble} />
             )}

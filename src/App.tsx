@@ -156,6 +156,8 @@ function AppContent() {
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(false);
+  // Proposed document from Agent mode, shown as an inline diff for accept/reject.
+  const [proposedDoc, setProposedDoc] = useState<string | null>(null);
 
   // Preview scroll position
   const [previewLine, setPreviewLine] = useState(1);
@@ -619,6 +621,19 @@ function AppContent() {
 
   // Toggle the right-side AI assistant panel.
   const handleToggleAI = useCallback(() => setShowAIPanel((v) => !v), []);
+
+  // Agent proposed an edited document → show it as a diff to accept/reject.
+  // Ensure the editor (where the diff renders) is visible.
+  const handleProposeEdit = useCallback((doc: string) => {
+    setProposedDoc(doc);
+    setMode((m) => (m === "preview" ? "split" : m));
+  }, []);
+
+  // Review finished: commit the accepted document (or keep the original on reject).
+  const handleReviewResolve = useCallback((finalDoc: string | null) => {
+    if (finalDoc != null) setContent(finalDoc);
+    setProposedDoc(null);
+  }, []);
 
   // Close all panels
   const closeAllPanels = useCallback(() => {
@@ -1131,6 +1146,8 @@ function AppContent() {
                 wordWrap={wordWrapEnabled}
                 spellCheck={spellCheckEnabled}
                 aiConfig={aiConfig}
+                reviewDoc={proposedDoc}
+                onReviewResolve={handleReviewResolve}
               />
             </div>
 
@@ -1208,6 +1225,7 @@ function AppContent() {
                 fileName={fileName || ""}
                 selectionText={content.slice(selectionRange.start, selectionRange.end)}
                 aiConfig={aiConfig}
+                onProposeEdit={handleProposeEdit}
               />
             </Suspense>
           )}

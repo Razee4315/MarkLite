@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { streamChat, buildAskMessages, type ChatMessage } from "../utils/aiChat";
+import { streamChat, buildAskMessages, buildAgentMessages, parseEdits, type ChatMessage } from "../utils/aiChat";
 import type { AIConfig } from "../utils/aiAssist";
 
 interface AIPanelProps {
@@ -13,6 +13,8 @@ interface AIPanelProps {
     /** Currently-selected text in the editor, if any. */
     selectionText: string;
     aiConfig: AIConfig;
+    /** Called (Agent mode) with the proposed document to review in the editor. */
+    onProposeEdit?: (proposedDoc: string) => void;
 }
 
 interface UIMessage {
@@ -24,9 +26,10 @@ interface UIMessage {
 // itself is attached only to the latest turn inside buildAskMessages).
 const MAX_HISTORY_TURNS = 8;
 
-export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConfig }: AIPanelProps) {
+export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConfig, onProposeEdit }: AIPanelProps) {
     const [messages, setMessages] = useState<UIMessage[]>([]);
     const [input, setInput] = useState("");
+    const [mode, setMode] = useState<"ask" | "agent">("ask");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -63,8 +66,10 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
         const ctrl = new AbortController();
         abortRef.current = ctrl;
         try {
-            const msgs = buildAskMessages(history, note, selectionText, text);
-            await streamChat(msgs, aiConfig, {
+            const msgs = mode === "agent"
+                ? buildAgentMessages(history, note, selectionText, text)
+                : buildAskMessages(history, note, selectionText, text);
+            const full = await streamChat(msgs, aiConfig, {
                 signal: ctrl.signal,
                 onToken: (delta) => {
                     setMessages((prev) => {
@@ -75,6 +80,27 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                     });
                 },
             });
+            // Agent mode: if the reply was edit blocks, apply them and hand the
+            // proposed document to the editor for review (replacing the raw blocks
+            // that briefly streamed into the bubble with a clean summary).
+            if (mode === "agent") {
+                const res = parseEdits(full, note);
+                if (res.hasEdits) {
+                    let summary: string;
+                    if (res.applied > 0) {
+                        onProposeEdit?.(res.proposedDoc);
+                        summary = `${res.explanation ? res.explanation + "\n\n" : ""}**Proposed ${res.applied} change${res.applied !== 1 ? "s" : ""}.** Review and Accept/Reject them in the editor.${res.failed ? `\n\n⚠️ ${res.failed} change${res.failed !== 1 ? "s" : ""} couldn't be applied — the text may have shifted. Try again.` : ""}`;
+                    } else {
+                        summary = "I drafted changes but none matched the current document (it may have changed since). Please try again.";
+                    }
+                    setMessages((prev) => {
+                        const copy = prev.slice();
+                        if (copy[assistantIdx]) copy[assistantIdx] = { role: "assistant", content: summary };
+                        return copy;
+                    });
+                }
+                // No edit blocks → it was an answer; the streamed text stays as-is.
+            }
         } catch (e) {
             if ((e as Error).name !== "AbortError") setError((e as Error).message);
             // Drop the empty assistant bubble if nothing streamed in.
@@ -83,7 +109,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
             setBusy(false);
             abortRef.current = null;
         }
-    }, [input, busy, configured, messages, note, selectionText, aiConfig]);
+    }, [input, busy, configured, messages, note, selectionText, aiConfig, mode, onProposeEdit]);
 
     const stop = useCallback(() => abortRef.current?.abort(), []);
     const clear = useCallback(() => { abortRef.current?.abort(); setMessages([]); setError(null); }, []);
@@ -121,13 +147,25 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                 </div>
             </div>
 
-            {/* Context indicator */}
-            <div className="px-3 py-1.5 shrink-0 border-b border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[13px]">description</span>
-                <span className="truncate">{fileName || "Untitled"}</span>
+            {/* Context indicator + Ask/Agent mode toggle */}
+            <div className="px-3 py-1.5 shrink-0 border-b border-[var(--border-subtle)] flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[13px] text-[var(--text-muted)]">description</span>
+                <span className="truncate text-[11px] text-[var(--text-muted)] min-w-0">{fileName || "Untitled"}</span>
                 {selectionText.trim() && (
-                    <span className="ml-auto px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--accent)]">selection</span>
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--accent)] text-[11px] shrink-0">selection</span>
                 )}
+                <div className="ml-auto flex items-center gap-0.5 bg-[var(--bg-input)] rounded-[var(--radius-sm)] p-0.5 border border-[var(--border-subtle)] shrink-0">
+                    {(["ask", "agent"] as const).map((md) => (
+                        <button
+                            key={md}
+                            onClick={() => setMode(md)}
+                            title={md === "ask" ? "Ask questions (read-only)" : "Make edits (review before applying)"}
+                            className={`px-2 py-0.5 text-[11px] rounded-[var(--radius-sm)] capitalize transition-colors ${mode === md ? "bg-[var(--accent)] text-[var(--accent-text)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                        >
+                            {md}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Messages */}
@@ -147,7 +185,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                     <div className="flex flex-col items-center justify-center h-full text-center gap-2 text-sm text-[var(--text-secondary)] px-4">
                         <span className="material-symbols-outlined text-[32px] opacity-40">forum</span>
                         <p>Ask anything about <strong>{fileName || "this note"}</strong> — summarize it, find something, or get suggestions.</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">Editing your note from here is coming in the next update.</p>
+                        <p className="text-[11px] text-[var(--text-muted)]">Switch to <strong>Agent</strong> mode to make edits — you'll review each change before it's applied.</p>
                     </div>
                 ) : (
                     messages.map((m, i) => (
@@ -188,7 +226,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={onKeyDown}
                             rows={1}
-                            placeholder="Ask about this note…  (Enter to send, Shift+Enter for newline)"
+                            placeholder={mode === "agent" ? "Tell the AI what to change…" : "Ask about this note…"}
                             className="flex-1 bg-transparent text-sm text-[var(--text-primary)] outline-none resize-none max-h-32 placeholder:text-[var(--text-muted)]"
                         />
                         {busy ? (
