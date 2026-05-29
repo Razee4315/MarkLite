@@ -20,9 +20,11 @@ interface TitleBarProps {
     getExportHtml?: () => string;
     onExportSuccess?: (format: string) => void;
     onExportError?: (format: string) => void;
+    onToggleAI?: () => void;
+    aiActive?: boolean;
 }
 
-function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError }: TitleBarProps) {
+function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive }: TitleBarProps) {
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
     const handleMinimize = async () => {
@@ -150,6 +152,21 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSa
                                 onSuccess={onExportSuccess}
                                 onError={onExportError}
                             />
+                            {onToggleAI && (
+                                <button
+                                    onClick={onToggleAI}
+                                    aria-label="AI assistant"
+                                    aria-pressed={aiActive}
+                                    title="AI assistant"
+                                    className={`flex items-center gap-1 px-2 py-1 rounded-[var(--radius-md)] transition-colors text-xs ${aiActive
+                                        ? "bg-[var(--accent)] text-[var(--accent-text)]"
+                                        : "hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                                        }`}
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                                    <span>AI</span>
+                                </button>
+                            )}
                         </>
                     )}
                 </div>

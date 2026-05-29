@@ -50,6 +50,9 @@ const ShortcutCheatsheet = lazy(() =>
 const UnsavedChangesDialog = lazy(() =>
     import("./components/UnsavedChangesDialog").then((m) => ({ default: m.UnsavedChangesDialog }))
 );
+const AIPanel = lazy(() =>
+    import("./components/AIPanel").then((m) => ({ default: m.AIPanel }))
+);
 import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
@@ -148,6 +151,7 @@ function AppContent() {
   // Sidebar panel state
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
+  const [showAIPanel, setShowAIPanel] = useState(false);
 
   // Preview scroll position
   const [previewLine, setPreviewLine] = useState(1);
@@ -609,6 +613,9 @@ function AppContent() {
     setShowFileExplorer(false);
   }, []);
 
+  // Toggle the right-side AI assistant panel.
+  const handleToggleAI = useCallback(() => setShowAIPanel((v) => !v), []);
+
   // Close all panels
   const closeAllPanels = useCallback(() => {
     setShowFileExplorer(false);
@@ -1068,6 +1075,8 @@ function AppContent() {
         getExportHtml={getExportHtml}
         onExportSuccess={handleExportSuccess}
         onExportError={handleExportError}
+        onToggleAI={handleToggleAI}
+        aiActive={showAIPanel}
       />
 
       {!hasFile ? (
@@ -1173,6 +1182,21 @@ function AppContent() {
                 content={deferredContent}
                 onClose={closeAllPanels}
                 activeLine={mode === "preview" ? previewLine : cursorPosition.line}
+              />
+            </Suspense>
+          )}
+
+          {/* Right-side AI assistant panel. Reads the live document + current
+              selection; chat is read-only for now (edit/agent flow is next). */}
+          {showAIPanel && (
+            <Suspense fallback={null}>
+              <AIPanel
+                isOpen={showAIPanel}
+                onClose={() => setShowAIPanel(false)}
+                note={content}
+                fileName={fileName || ""}
+                selectionText={content.slice(selectionRange.start, selectionRange.end)}
+                aiConfig={aiConfig}
               />
             </Suspense>
           )}
