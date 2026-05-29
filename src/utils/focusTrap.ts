@@ -15,6 +15,13 @@ const FOCUSABLE = [
 export function attachFocusTrap(container: HTMLElement | null): () => void {
     if (!container) return () => { };
 
+    // Remember what had focus before the trap engaged so we can return focus
+    // there on detach — keyboard/screen-reader users land back on the control
+    // that opened the dialog instead of at the top of the document. Call this
+    // BEFORE moving focus into the dialog so we capture the trigger, not the
+    // dialog's own first field. UX-01.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
     const handler = (e: KeyboardEvent) => {
         if (e.key !== "Tab") return;
         const focusable = container.querySelectorAll<HTMLElement>(FOCUSABLE);
@@ -33,5 +40,14 @@ export function attachFocusTrap(container: HTMLElement | null): () => void {
     };
 
     container.addEventListener("keydown", handler);
-    return () => container.removeEventListener("keydown", handler);
+    return () => {
+        container.removeEventListener("keydown", handler);
+        if (
+            previouslyFocused &&
+            typeof previouslyFocused.focus === "function" &&
+            document.contains(previouslyFocused)
+        ) {
+            previouslyFocused.focus();
+        }
+    };
 }

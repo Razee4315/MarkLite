@@ -43,8 +43,13 @@ const groups: ShortcutGroup[] = [
             { keys: `${cmd}+Shift+O`, description: "Toggle outline" },
             { keys: `${cmd}+P`, description: "Command palette" },
             { keys: `${cmd}+,`, description: "Open settings" },
-            { keys: aiShortcut, description: "AI assist on selection" },
             { keys: "?", description: "Show this cheatsheet" },
+        ],
+    },
+    {
+        title: "AI",
+        items: [
+            { keys: aiShortcut, description: "AI assist on selection (also: ✨ toolbar button, command palette)" },
         ],
     },
     {
@@ -109,10 +114,11 @@ export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps)
             }
         };
         document.addEventListener("keydown", handleKey);
-        // Focus the search input
+        // Trap first (captures the trigger for focus-restore on close), then
+        // move focus into the search input. UX-01.
+        const detach = attachFocusTrap(dialogRef.current);
         const input = dialogRef.current?.querySelector<HTMLInputElement>("input");
         input?.focus();
-        const detach = attachFocusTrap(dialogRef.current);
         return () => {
             document.removeEventListener("keydown", handleKey);
             detach();

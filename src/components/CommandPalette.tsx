@@ -58,9 +58,11 @@ export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) 
     // Focus input + trap, Escape to close
     useEffect(() => {
         if (!isOpen) return;
+        // Trap first (captures the trigger for focus-restore on close), then
+        // move focus into the search input. UX-01.
+        const detach = attachFocusTrap(dialogRef.current);
         const input = dialogRef.current?.querySelector<HTMLInputElement>("input");
         input?.focus();
-        const detach = attachFocusTrap(dialogRef.current);
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 e.preventDefault();
