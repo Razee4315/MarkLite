@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo, useState, memo } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState, useTransition, memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -14,6 +14,13 @@ import { MermaidBlock, isMermaidLanguage } from "./MermaidBlock";
 // written as \ce{...} / \pu{...} so people can use mhchem without explicit $$.
 const MATH_DETECTION_REGEX = /(\$\$[\s\S]+?\$\$)|((?:^|[^\d$])\$[^\s$][^\n$]*?[^\s$]\$(?!\d))|(\\ce\{)|(\\pu\{)/m;
 const hasMath = (s: string): boolean => MATH_DETECTION_REGEX.test(s);
+
+// rehype-highlight config. `detect: false` is the library default — pinned here
+// explicitly so a future default change can't silently turn full-language
+// auto-detection back on. Only fenced blocks with an explicit language are
+// highlighted; untagged blocks render plain. Unknown language tags are ignored
+// gracefully by the plugin (no throw). PREVIEW-02.
+const HIGHLIGHT_OPTIONS = { detect: false } as const;
 
 type PluginPair = { remark: unknown; rehype: unknown };
 let mathPluginsCache: PluginPair | null = null;
@@ -442,6 +449,17 @@ function HeadingWithAnchor(
     }
 }
 
+// Stable, stateless renderers hoisted to module scope so their identity never
+// changes across renders — react-markdown then won't remount these node types
+// when the components map is rebuilt (e.g. on file change). PREVIEW-06.
+const PreRenderer = (props: React.HTMLAttributes<HTMLPreElement>) => <CodeBlock {...props} />;
+const H1Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={1} {...props} />;
+const H2Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={2} {...props} />;
+const H3Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={3} {...props} />;
+const H4Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={4} {...props} />;
+const H5Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={5} {...props} />;
+const H6Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={6} {...props} />;
+
 function MarkdownPreviewImpl({
     content,
     onLineChange,
@@ -461,6 +479,13 @@ function MarkdownPreviewImpl({
     // double-scanned the document on every keystroke and reported the wrong
     // count for the (debounced) snapshot we're actually rendering.
     const lineCount = useMemo(() => content.split("\n").length, [content]);
+
+    // Latest content via ref so handleTaskToggle (and therefore the components
+    // map) stays reference-stable across keystrokes — without this the map is
+    // rebuilt every edit, forcing react-markdown to treat every renderer as new
+    // and defeating the deferred render below. PREVIEW-06.
+    const contentRef = useRef(content);
+    contentRef.current = content;
 
     // Listen for zoom requests from LocalImage clicks
     useEffect(() => {
@@ -495,7 +520,7 @@ function MarkdownPreviewImpl({
     // in a documentation example doesn't shift the index of the real tasks.
     const handleTaskToggle = useCallback((index: number, checked: boolean) => {
         if (!onContentChange) return;
-        const lines = content.split("\n");
+        const lines = contentRef.current.split("\n");
         let count = 0;
         let inFence = false;
         const fenceRe = /^(\s*)(```|~~~)/;
@@ -516,7 +541,7 @@ function MarkdownPreviewImpl({
                 count++;
             }
         }
-    }, [content, onContentChange]);
+    }, [onContentChange]);
 
     const components = useMemo(() => ({
         img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => (
@@ -598,13 +623,13 @@ function MarkdownPreviewImpl({
                 </a>
             );
         },
-        pre: (props: React.HTMLAttributes<HTMLPreElement>) => <CodeBlock {...props} />,
-        h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={1} {...props} />,
-        h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={2} {...props} />,
-        h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={3} {...props} />,
-        h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={4} {...props} />,
-        h5: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={5} {...props} />,
-        h6: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={6} {...props} />,
+        pre: PreRenderer,
+        h1: H1Renderer,
+        h2: H2Renderer,
+        h3: H3Renderer,
+        h4: H4Renderer,
+        h5: H5Renderer,
+        h6: H6Renderer,
         // Interactive task checkbox: react-markdown + remarkGfm renders <input type="checkbox" disabled />.
         // We capture the task's positional index AT RENDER TIME (so each <input>'s
         // closure remembers its own index) — not on click. The previous form
@@ -671,9 +696,21 @@ function MarkdownPreviewImpl({
         [mathPlugins]
     );
     const rehypePlugins = useMemo(
-        () => (mathPlugins ? [rehypeHighlight, mathPlugins.rehype] : [rehypeHighlight]),
+        () => (mathPlugins
+            ? [[rehypeHighlight, HIGHLIGHT_OPTIONS], mathPlugins.rehype]
+            : [[rehypeHighlight, HIGHLIGHT_OPTIONS]]),
         [mathPlugins]
     );
+
+    // Render the heavy markdown tree from a deferred copy of the body, updated
+    // inside a transition. A burst of edits (already coalesced by App's debounce)
+    // never blocks the commit that paints the latest keystroke, and React can
+    // interrupt + restart this reconcile if newer input arrives. PREVIEW-01.
+    const [renderedBody, setRenderedBody] = useState(renderBody);
+    const [, startBodyTransition] = useTransition();
+    useEffect(() => {
+        startBodyTransition(() => setRenderedBody(renderBody));
+    }, [renderBody]);
 
     // Track scroll: update active-line indicator + report fraction for split-sync.
     const handleScroll = useCallback(() => {
@@ -743,7 +780,7 @@ function MarkdownPreviewImpl({
                             rehypePlugins={rehypePlugins as any}
                             components={components}
                         >
-                            {renderBody}
+                            {renderedBody}
                         </Markdown>
                     </div>
                 </div>

@@ -203,7 +203,12 @@ function AppContent() {
   // (We previously used useDeferredValue here, but under React StrictMode + the
   // bursty state churn at file-open it could starve and leave the preview
   // showing the empty initial value.)
-  const deferredContent = useDebouncedValue(content, 80);
+  // Scale the debounce with document size: tiny docs feel instant at 80ms, but a
+  // multi-thousand-line doc benefits from coalescing more keystrokes before the
+  // (still heavy) full re-parse fires. Combined with the preview's startTransition
+  // render, this keeps typing responsive on large files. PREVIEW-01.
+  const previewDebounceMs = content.length > 40_000 ? 250 : content.length > 12_000 ? 160 : 80;
+  const deferredContent = useDebouncedValue(content, previewDebounceMs);
 
   // Word/char counts feed the status bar — fine to lag a frame behind on huge
   // docs, so they read deferred too.
