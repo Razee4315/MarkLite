@@ -1,14 +1,28 @@
-import { useRef, useCallback, useEffect, useMemo, useState, memo, forwardRef } from "react";
-import { getImageFromClipboard, saveImageToFile, createMarkdownImage, insertAtCursor } from "../utils/imageUtils";
+import { useRef, useCallback, useEffect, useState, memo } from "react";
+import { EditorState as CMEditorState, Compartment, Prec } from "@codemirror/state";
+import {
+    EditorView,
+    keymap,
+    lineNumbers,
+    highlightActiveLine,
+    highlightActiveLineGutter,
+    drawSelection,
+    dropCursor,
+    type ViewUpdate,
+} from "@codemirror/view";
+import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { markdown } from "@codemirror/lang-markdown";
+import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { tags as t } from "@lezer/highlight";
+import { getImageFromClipboard, saveImageToFile, createMarkdownImage } from "../utils/imageUtils";
 import {
     handleTab,
     handleEnter,
-    handleAutoPair,
-    handleSkipCloser,
-    handleBackspace,
     wrapSelection,
     insertLink,
     type EditorResult,
+    type EditorState,
 } from "../utils/editorActions";
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FormatToolbar } from "./FormatToolbar";
@@ -21,15 +35,11 @@ interface CodeEditorProps {
     content: string;
     onChange: (content: string) => void;
     onCursorChange?: (line: number, column: number) => void;
-    /** Fires whenever the textarea's selection range changes. `start === end`
-     *  indicates a collapsed caret with no selection. Used by the status bar
-     *  to show "N words selected" while the user has a range highlighted. */
     onSelectionChange?: (start: number, end: number) => void;
-    onImagePaste?: () => void; // Callback when image is successfully pasted
-    onError?: (message: string) => void; // Callback for error messages
-    /** Neutral (info) notice — e.g. "AI isn't set up yet". Distinct from onError. */
+    onImagePaste?: () => void;
+    onError?: (message: string) => void;
     onNotice?: (message: string) => void;
-    filePath?: string | null; // Current file path for saving images
+    filePath?: string | null;
     onScrollFraction?: (fraction: number) => void;
     registerScroller?: (scroller: Scroller | null) => void;
     typewriterMode?: boolean;
@@ -39,1073 +49,443 @@ interface CodeEditorProps {
     aiConfig?: { endpoint: string; model: string; apiKey: string };
 }
 
-// Locked metrics for perfect alignment between textarea and highlight layer.
-// Both layers MUST use these exact values to keep the caret on top of the rendered text.
 const EDITOR_FONT_FAMILY =
     "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace";
-const EDITOR_FONT_SIZE = 14; // px
-const EDITOR_LINE_HEIGHT = 24; // px
-const EDITOR_PADDING = 16; // px
-const EDITOR_TAB_SIZE = 4;
 
-const sharedTextStyle: React.CSSProperties = {
-    fontFamily: EDITOR_FONT_FAMILY,
-    fontSize: `${EDITOR_FONT_SIZE}px`,
-    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
-    padding: `${EDITOR_PADDING}px`,
-    tabSize: EDITOR_TAB_SIZE,
-    MozTabSize: EDITOR_TAB_SIZE,
-    // Lock every metric-affecting property to defend the textarea/overlay
-    // alignment guarantee. If a parent rule (theme, body, dialog, etc.) ever
-    // sets bold/italic/etc. on an ancestor, both layers must inherit the SAME
-    // value or the caret will visually offset from the rendered glyph.
-    fontWeight: 400,
-    fontStyle: "normal",
-    fontVariantLigatures: "none",
-    fontVariantNumeric: "normal",
-    fontFeatureSettings: "normal",
-    fontVariationSettings: "normal",
-    fontKerning: "none",
-    letterSpacing: "0px",
-    whiteSpace: "pre",
-    wordBreak: "normal",
-    overflowWrap: "normal",
-    boxSizing: "border-box",
-    // Reserve a fixed-width scrollbar gutter on both layers regardless of
-    // whether the scrollbar is currently shown. Without this, the textarea's
-    // scrollbar appears once content overflows vertically and silently
-    // narrows the content area by ~10px — but the highlight overlay (which
-    // has no scrollbar) keeps its full width. The two layers then wrap text
-    // at different columns, and after a couple of wrapped lines the caret
-    // visibly drifts off the rendered glyph. Reserving the gutter keeps
-    // both layers' content widths identical.
-    scrollbarGutter: "stable",
-};
+// Markdown syntax colours, driven by the same CSS variables the rest of the app
+// themes with — so light/dark/paper/github all "just work" in the editor too.
+const markdownHighlight = HighlightStyle.define([
+    { tag: t.heading1, color: "var(--syntax-h1)", fontWeight: "bold" },
+    { tag: t.heading2, color: "var(--syntax-h2)", fontWeight: "bold" },
+    { tag: [t.heading3, t.heading4, t.heading5, t.heading6], color: "var(--syntax-h3)", fontWeight: "600" },
+    { tag: t.strong, color: "var(--syntax-bold)", fontWeight: "bold" },
+    { tag: t.emphasis, fontStyle: "italic" },
+    { tag: t.strikethrough, textDecoration: "line-through" },
+    { tag: t.link, color: "var(--syntax-link)" },
+    { tag: t.url, color: "var(--syntax-link)" },
+    { tag: t.monospace, color: "var(--syntax-code)" },
+    { tag: t.quote, color: "var(--syntax-quote)", fontStyle: "italic" },
+    { tag: t.list, color: "var(--syntax-list)" },
+    { tag: t.processingInstruction, color: "var(--syntax-list)" },
+]);
 
-// Stable per-line wrapper styles. Hoisting these out of the render path means
-// every <div> in the highlight overlay receives the SAME style ref across
-// renders, so React's prop diff is a single ref check instead of an iteration
-// over the keys of a freshly-allocated style object. With 5k+ lines the
-// difference is measurable on each keystroke.
-const HIGHLIGHT_LINE_STYLE_FIXED: React.CSSProperties = {
-    height: `${EDITOR_LINE_HEIGHT}px`,
-    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
-    position: "relative",
-};
-const HIGHLIGHT_LINE_STYLE_WRAP: React.CSSProperties = {
-    minHeight: `${EDITOR_LINE_HEIGHT}px`,
-    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
-    position: "relative",
-};
-
-// Renders every line — used for small docs and word-wrap mode. Memoized so
-// React skips reconciliation entirely when the `lines` ref hasn't changed
-// (the per-line cache in CodeEditor preserves array refs for unchanged lines,
-// but React still walks children unless the parent itself short-circuits).
-const RenderedLines = memo(function RenderedLines({
-    lines,
-    wordWrap,
-}: {
-    lines: React.ReactNode[];
-    wordWrap: boolean;
-}) {
-    const lineStyle = wordWrap ? HIGHLIGHT_LINE_STYLE_WRAP : HIGHLIGHT_LINE_STYLE_FIXED;
-    return (
-        <>
-            {lines.map((node, i) => (
-                <div key={i} style={lineStyle}>
-                    {node}
-                </div>
-            ))}
-        </>
-    );
+const editorTheme = EditorView.theme({
+    "&": {
+        height: "100%",
+        color: "var(--text-primary)",
+        backgroundColor: "var(--bg-editor)",
+        fontSize: "14px",
+    },
+    ".cm-scroller": {
+        fontFamily: EDITOR_FONT_FAMILY,
+        lineHeight: "24px",
+        overflow: "auto",
+    },
+    ".cm-content": {
+        caretColor: "var(--accent)",
+        padding: "16px 0",
+    },
+    ".cm-gutters": {
+        backgroundColor: "var(--bg-gutter)",
+        color: "var(--text-muted)",
+        border: "none",
+        borderRight: "1px solid var(--border-subtle)",
+    },
+    ".cm-activeLine": { backgroundColor: "var(--bg-hover)" },
+    ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text-primary)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: "var(--selection-bg)",
+    },
+    ".cm-foldPlaceholder": { backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)", border: "none" },
 });
 
-// Renders only the slice [firstVisible, lastVisible) of the doc, with
-// fixed-height spacers above and below to preserve the textarea/overlay
-// scroll-height parity (caret-glyph alignment depends on it). Only valid
-// when wordWrap is OFF — variable line heights would break the geometry.
-const VirtualizedHighlight = memo(function VirtualizedHighlight({
-    lines,
-    firstVisible,
-    lastVisible,
-}: {
-    lines: React.ReactNode[];
-    firstVisible: number;
-    lastVisible: number;
-}) {
-    const total = lines.length;
-    const slice: React.ReactNode[] = [];
-    const end = Math.min(lastVisible, total);
-    for (let i = firstVisible; i < end; i++) {
-        slice.push(
-            <div key={i} style={HIGHLIGHT_LINE_STYLE_FIXED}>
-                {lines[i]}
-            </div>
-        );
-    }
-    const topSpacer = firstVisible * EDITOR_LINE_HEIGHT;
-    const bottomSpacer = Math.max(0, total - end) * EDITOR_LINE_HEIGHT;
-    return (
-        <>
-            {topSpacer > 0 && <div aria-hidden style={{ height: `${topSpacer}px` }} />}
-            {slice}
-            {bottomSpacer > 0 && <div aria-hidden style={{ height: `${bottomSpacer}px` }} />}
-        </>
-    );
-});
+/** Build the EditorState shape the (tested) editorActions helpers expect. */
+function toEdState(view: EditorView): EditorState {
+    const s = view.state.selection.main;
+    return { text: view.state.doc.toString(), selStart: s.from, selEnd: s.to };
+}
 
-// Line-number gutter. Extracted + memoized so typing within a single line
-// (lineCount unchanged, activeLine unchanged) doesn't cause React to reconcile
-// thousands of <div>s on every keystroke. Only re-renders when the visible line
-// count or active line actually changes.
-const Gutter = memo(forwardRef<HTMLDivElement, { lineCount: number; activeLine: number }>(
-    function Gutter({ lineCount, activeLine }, ref) {
-        return (
-            <div
-                ref={ref}
-                className="w-14 shrink-0 bg-[var(--bg-gutter)] border-r border-[var(--border-subtle)] no-select text-xs text-[var(--text-muted)] overflow-hidden transition-colors"
-                style={{
-                    fontFamily: EDITOR_FONT_FAMILY,
-                    fontSize: `${EDITOR_FONT_SIZE}px`,
-                    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
-                    paddingTop: `${EDITOR_PADDING}px`,
-                    paddingBottom: `${EDITOR_PADDING}px`,
-                    paddingRight: "12px",
-                }}
-            >
-                <div className="flex flex-col items-end">
-                    {Array.from({ length: lineCount }, (_, i) => {
-                        const isActive = i + 1 === activeLine;
-                        return (
-                            <div
-                                key={i}
-                                className={isActive ? "text-[var(--text-primary)] font-medium" : ""}
-                                style={{ height: `${EDITOR_LINE_HEIGHT}px`, lineHeight: `${EDITOR_LINE_HEIGHT}px` }}
-                            >
-                                {i + 1}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        );
-    }
-));
+/** Apply an EditorResult (full new text + selection) as a MINIMAL change — diff
+ *  the common prefix/suffix so CodeMirror only touches what actually changed
+ *  (keeps undo granular and avoids full-doc churn). Selection is set atomically,
+ *  so there's no one-frame caret flicker (fixes the old rAF restore). */
+function applyResultToView(view: EditorView, r: EditorResult) {
+    const old = view.state.doc.toString();
+    const next = r.text;
+    let p = 0;
+    const maxP = Math.min(old.length, next.length);
+    while (p < maxP && old.charCodeAt(p) === next.charCodeAt(p)) p++;
+    let s = 0;
+    const maxS = Math.min(old.length - p, next.length - p);
+    while (s < maxS && old.charCodeAt(old.length - 1 - s) === next.charCodeAt(next.length - 1 - s)) s++;
+    view.dispatch({
+        changes: { from: p, to: old.length - s, insert: next.slice(p, next.length - s) },
+        selection: { anchor: r.selStart, head: r.selEnd },
+        scrollIntoView: true,
+    });
+}
 
-function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, onImagePaste, onError, onNotice, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
-    // When word wrap is on, long lines wrap inside the editor and the highlight
-    // overlay; when off, lines scroll horizontally. Both layers must agree on
-    // these styles or the caret will visually drift away from the rendered text.
-    const wrapStyle: React.CSSProperties = wordWrap
-        ? { whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }
-        : { whiteSpace: "pre", wordBreak: "normal", overflowWrap: "normal" };
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const gutterRef = useRef<HTMLDivElement>(null);
-    const highlightRef = useRef<HTMLDivElement>(null);
-    const [activeLine, setActiveLine] = useState(1);
+function CodeEditorImpl({
+    content,
+    onChange,
+    onCursorChange,
+    onSelectionChange,
+    onImagePaste,
+    onError,
+    onNotice,
+    filePath,
+    onScrollFraction,
+    registerScroller,
+    typewriterMode,
+    showToolbar,
+    wordWrap = true,
+    spellCheck = false,
+    aiConfig,
+}: CodeEditorProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const viewRef = useRef<EditorView | null>(null);
+
     const [findOpen, setFindOpen] = useState(false);
     const [findMode, setFindMode] = useState<"find" | "replace">("find");
     const [selStartForFind, setSelStartForFind] = useState(0);
-
-    // Slash menu state — tracked as the index of the "/" trigger and the live query
-    // (text typed after the slash). Caret movement / blur closes the menu.
-    const [slashState, setSlashState] = useState<{ startIdx: number; pos: { x: number; y: number } } | null>(null);
+    const [slashState, setSlashState] = useState<{ from: number; pos: { x: number; y: number } } | null>(null);
     const [slashQuery, setSlashQuery] = useState("");
     const [aiBubble, setAIBubble] = useState<{ x: number; y: number; selStart: number; selEnd: number; text: string } | null>(null);
 
-    const lines = useMemo(() => content.split("\n"), [content]);
-    const lineCount = lines.length;
+    // Latest props read by the once-created CodeMirror extensions, kept in refs so
+    // the view never has to be torn down and rebuilt on a callback/flag change.
+    const onChangeRef = useRef(onChange); onChangeRef.current = onChange;
+    const onCursorChangeRef = useRef(onCursorChange); onCursorChangeRef.current = onCursorChange;
+    const onSelectionChangeRef = useRef(onSelectionChange); onSelectionChangeRef.current = onSelectionChange;
+    const onScrollFractionRef = useRef(onScrollFraction); onScrollFractionRef.current = onScrollFraction;
+    const onImagePasteRef = useRef(onImagePaste); onImagePasteRef.current = onImagePaste;
+    const onErrorRef = useRef(onError); onErrorRef.current = onError;
+    const onNoticeRef = useRef(onNotice); onNoticeRef.current = onNotice;
+    const filePathRef = useRef(filePath); filePathRef.current = filePath;
+    const aiConfigRef = useRef(aiConfig); aiConfigRef.current = aiConfig;
+    const typewriterRef = useRef(typewriterMode); typewriterRef.current = typewriterMode;
+    const slashStateRef = useRef(slashState); slashStateRef.current = slashState;
 
-    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onChange(e.target.value);
-    };
+    // The last value WE emitted via onChange — lets the external-content sync
+    // effect below skip the O(n) doc.toString() comparison on the common case
+    // (the prop change is just our own keystroke echoing back through App state).
+    const lastEmittedRef = useRef(content);
 
-    // Apply an EditorResult: update content + restore selection on next frame.
-    // (selection must be set after React flushes the new value to the DOM)
-    const applyResult = useCallback((r: EditorResult) => {
-        onChange(r.text);
-        requestAnimationFrame(() => {
-            const t = textareaRef.current;
-            if (!t) return;
-            t.selectionStart = r.selStart;
-            t.selectionEnd = r.selEnd;
-        });
-    }, [onChange]);
+    // Reconfigurable extensions.
+    const wrapCompRef = useRef(new Compartment());
+    const spellCompRef = useRef(new Compartment());
 
-    const getState = useCallback(() => {
-        const t = textareaRef.current;
-        if (!t) return null;
-        return { text: t.value, selStart: t.selectionStart, selEnd: t.selectionEnd };
+    const openAIBubble = useCallback(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        if (!aiConfigRef.current?.endpoint) {
+            onNoticeRef.current?.("AI isn't set up yet — add an endpoint in Settings → AI to enable AI assist.");
+            return;
+        }
+        const sel = view.state.selection.main;
+        const coords = view.coordsAtPos(sel.head);
+        const rect = view.scrollDOM.getBoundingClientRect();
+        const x = coords ? coords.left : rect.left + 28;
+        const y = (coords ? coords.bottom : rect.top + 24) + 6;
+        setAIBubble({ x, y, selStart: sel.from, selEnd: sel.to, text: view.state.doc.sliceString(sel.from, sel.to) });
     }, []);
 
-    // Open the AI bubble anchored to the current selection / caret. Shared by the
-    // keyboard shortcut (Alt+J everywhere, Ctrl+J on Linux/macOS), the toolbar AI
-    // button, and the command palette ("AI assist on selection", which reaches us
-    // via the marklite:ai-assist window event). When AI hasn't been configured we
-    // surface a guiding notice instead of opening a bubble whose only content
-    // would be an error revealed after a click — this is the fix for "AI is
-    // broken / there's no button" (AI-01/02/03 in AUDIT.md).
-    const openAIBubble = useCallback(() => {
-        const t = textareaRef.current;
-        if (!t) return;
-        if (!aiConfig?.endpoint) {
-            onNotice?.("AI isn't set up yet — add an endpoint in Settings → AI to enable AI assist.");
-            return;
-        }
-        const selStart = t.selectionStart;
-        const selEnd = t.selectionEnd;
-        const lineIdx = t.value.slice(0, selStart).split("\n").length - 1;
-        const rect = t.getBoundingClientRect();
-        const y = rect.top + EDITOR_PADDING + lineIdx * EDITOR_LINE_HEIGHT - t.scrollTop + EDITOR_LINE_HEIGHT + 4;
-        const x = rect.left + EDITOR_PADDING + 12;
-        setAIBubble({ x, y, selStart, selEnd, text: t.value.slice(selStart, selEnd) });
-    }, [aiConfig, onNotice]);
-
-    // Let App-level surfaces (e.g. the command palette) open the AI bubble without
-    // threading editor internals upward. We focus the textarea first because the
-    // palette held focus while open; the textarea's selection range survives blur.
+    // === One-time CodeMirror setup ===
     useEffect(() => {
-        const handler = () => {
-            textareaRef.current?.focus();
-            openAIBubble();
-        };
-        window.addEventListener("marklite:ai-assist", handler);
-        return () => window.removeEventListener("marklite:ai-assist", handler);
-    }, [openAIBubble]);
+        if (!containerRef.current) return;
 
-    const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        const state = getState();
-        if (!state) return;
+        const wrapComp = wrapCompRef.current;
+        const spellComp = spellCompRef.current;
 
-        // Ctrl+F / Ctrl+H — open find / find-and-replace bar
-        if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-            if (e.key === "f" || e.key === "F") {
-                e.preventDefault();
-                setSelStartForFind(state.selStart);
-                setFindMode("find");
-                setFindOpen(true);
-                return;
-            }
-            if (e.key === "h" || e.key === "H") {
-                e.preventDefault();
-                setSelStartForFind(state.selStart);
-                setFindMode("replace");
-                setFindOpen(true);
-                return;
-            }
-        }
-        // AI bubble: Ctrl+J on Linux/macOS (WebKitGTK / WKWebView), Alt+J
-        // everywhere — including Windows, where WebView2 grabs Ctrl+J for
-        // the built-in Downloads UI before the page can preventDefault. The
-        // Alt+J alias keeps the J mnemonic without colliding with that
-        // accelerator.
-        const isAiCombo =
-            ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === "j" || e.key === "J")) ||
-            (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === "j" || e.key === "J" || e.code === "KeyJ"));
-        if (isAiCombo) {
-            e.preventDefault();
-            openAIBubble();
-            return;
-        }
-
-        // Ctrl/Cmd shortcuts (Bold, Italic, Link). Other Ctrl combos handled at app level.
-        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-            if (e.key === "b" || e.key === "B") {
-                e.preventDefault();
-                applyResult(wrapSelection(state, "**", "**", "bold"));
-                return;
-            }
-            if (e.key === "i" || e.key === "I") {
-                e.preventDefault();
-                applyResult(wrapSelection(state, "*", "*", "italic"));
-                return;
-            }
-            if (e.key === "k" || e.key === "K") {
-                e.preventDefault();
-                applyResult(insertLink(state));
-                return;
-            }
-            // Ctrl+/ — toggle blockquote on the current line
-            if (e.key === "/") {
-                e.preventDefault();
-                const ls = state.text.lastIndexOf("\n", state.selStart - 1) + 1;
-                const lineEnd = state.text.indexOf("\n", state.selStart);
-                const end = lineEnd === -1 ? state.text.length : lineEnd;
-                const line = state.text.slice(ls, end);
-                const quoted = line.startsWith("> ");
-                const newLine = quoted ? line.slice(2) : "> " + line;
-                const delta = newLine.length - line.length;
-                applyResult({
-                    text: state.text.slice(0, ls) + newLine + state.text.slice(end),
-                    selStart: state.selStart + delta,
-                    selEnd: state.selEnd + delta,
-                });
-                return;
-            }
-        }
-
-        if (e.key === "Tab") {
-            const r = handleTab(state, e.shiftKey);
-            if (r) {
-                e.preventDefault();
-                applyResult(r);
-            }
-            return;
-        }
-
-        if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const r = handleEnter(state);
-            if (r) {
-                e.preventDefault();
-                applyResult(r);
-            }
-            return;
-        }
-
-        if (e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const r = handleBackspace(state);
-            if (r) {
-                e.preventDefault();
-                applyResult(r);
-            }
-            return;
-        }
-
-        // Auto-pair / skip-closer: only for printable single-char keys
-        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const skip = handleSkipCloser(state, e.key);
-            if (skip) {
-                e.preventDefault();
-                const t = textareaRef.current;
-                if (t) {
-                    t.selectionStart = skip.selStart;
-                    t.selectionEnd = skip.selEnd;
+        const editingKeymap = Prec.highest(keymap.of([
+            { key: "Tab", run: (v) => runAction(v, (st) => handleTab(st, false)), shift: (v) => runAction(v, (st) => handleTab(st, true)) },
+            { key: "Enter", run: (v) => runAction(v, handleEnter) },
+            { key: "Mod-b", run: (v) => { applyResultToView(v, wrapSelection(toEdState(v), "**", "**", "bold")); return true; } },
+            { key: "Mod-i", run: (v) => { applyResultToView(v, wrapSelection(toEdState(v), "*", "*", "italic")); return true; } },
+            { key: "Mod-k", run: (v) => { applyResultToView(v, insertLink(toEdState(v))); return true; } },
+            {
+                key: "Mod-/", run: (v) => {
+                    const st = toEdState(v);
+                    const ls = st.text.lastIndexOf("\n", st.selStart - 1) + 1;
+                    const lineEnd = st.text.indexOf("\n", st.selStart);
+                    const end = lineEnd === -1 ? st.text.length : lineEnd;
+                    const line = st.text.slice(ls, end);
+                    const quoted = line.startsWith("> ");
+                    const newLine = quoted ? line.slice(2) : "> " + line;
+                    const delta = newLine.length - line.length;
+                    applyResultToView(v, { text: st.text.slice(0, ls) + newLine + st.text.slice(end), selStart: st.selStart + delta, selEnd: st.selEnd + delta });
+                    return true;
                 }
-                return;
+            },
+            { key: "Mod-f", run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("find"); setFindOpen(true); return true; } },
+            { key: "Mod-h", run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("replace"); setFindOpen(true); return true; } },
+            { key: "Alt-j", run: () => { openAIBubble(); return true; } },
+            { key: "Mod-j", run: () => { openAIBubble(); return true; } },
+        ]));
+
+        const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
+            if (update.docChanged) {
+                const value = update.state.doc.toString();
+                lastEmittedRef.current = value;
+                onChangeRef.current?.(value);
             }
-            const pair = handleAutoPair(state, e.key);
-            if (pair) {
-                e.preventDefault();
-                applyResult(pair);
-                return;
-            }
-        }
-    }, [applyResult, getState, openAIBubble]);
-
-    // Handle paste events — order: image → smart paste rules → default text.
-    const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-        const imageFile = getImageFromClipboard(e.nativeEvent);
-
-        if (imageFile) {
-            e.preventDefault();
-
-            if (!filePath) {
-                onError?.('Please save your file first before pasting images.');
-                return;
-            }
-
-            try {
-                const imagePath = await saveImageToFile(imageFile, filePath);
-                const timestamp = Date.now();
-                const altText = `image-${timestamp}`;
-                const markdownImage = createMarkdownImage(imagePath, altText);
-
-                const textarea = textareaRef.current;
-                if (!textarea) return;
-
-                const cursorPos = textarea.selectionStart;
-                const { newText, newCursorPosition } = insertAtCursor(content, cursorPos, markdownImage);
-                onChange(newText);
-
-                requestAnimationFrame(() => {
-                    if (textareaRef.current) {
-                        textareaRef.current.selectionStart = newCursorPosition;
-                        textareaRef.current.selectionEnd = newCursorPosition;
-                        textareaRef.current.focus();
-                    }
-                });
-
-                onImagePaste?.();
-                return;
-            } catch (error) {
-                console.error('Failed to paste image:', error);
-                // Surface the actual error so "Image is 30 MB; maximum is
-                // 25 MB" reaches the user rather than a generic retry hint.
-                const msg =
-                    typeof error === "string"
-                        ? error
-                        : (error as { message?: string })?.message;
-                onError?.(msg || 'Failed to save image. Please try again.');
-                return;
-            }
-        }
-
-        // Smart paste rules — run on text/html and text/plain payloads.
-        const t = textareaRef.current;
-        if (!t) return;
-        const cd = e.clipboardData;
-        if (!cd) return;
-        const html = cd.getData("text/html");
-        const text = cd.getData("text/plain");
-
-        const state = { text: t.value, selStart: t.selectionStart, selEnd: t.selectionEnd };
-
-        // 1) URL on selection → [text](url)
-        const urlOnSel = pasteUrlOnSelection(state, text);
-        if (urlOnSel) {
-            e.preventDefault();
-            applyResult(urlOnSel);
-            return;
-        }
-        // 2) Plain URL on empty selection → <url>
-        const autolink = pasteUrlAutolink(state, text);
-        if (autolink) {
-            e.preventDefault();
-            applyResult(autolink);
-            return;
-        }
-        // 3) TSV → table (only when no rich HTML present, so spreadsheet plain
-        //    paste wins, but a webpage with an HTML table goes through turndown)
-        if (!html) {
-            const tsv = pasteTsvAsTable(state, text);
-            if (tsv) {
-                e.preventDefault();
-                applyResult(tsv);
-                return;
-            }
-        }
-        // 4) Rich HTML → markdown via turndown (skipped if it's just a textual
-        //    fragment — heuristic: contains real tags)
-        if (html && /<\w+/.test(html)) {
-            e.preventDefault();
-            try {
-                const md = (await htmlToMarkdown(html)).trim();
-                if (md) {
-                    applyResult({
-                        text: state.text.slice(0, state.selStart) + md + state.text.slice(state.selEnd),
-                        selStart: state.selStart + md.length,
-                        selEnd: state.selStart + md.length,
+            if (update.selectionSet || update.docChanged) {
+                const head = update.state.selection.main.head;
+                const line = update.state.doc.lineAt(head);
+                onCursorChangeRef.current?.(line.number, head - line.from + 1);
+                const sel = update.state.selection.main;
+                onSelectionChangeRef.current?.(sel.from, sel.to);
+                detectSlash(update.view);
+                if (typewriterRef.current && update.selectionSet) {
+                    const pos = head;
+                    requestAnimationFrame(() => {
+                        const v = viewRef.current;
+                        if (v) v.dispatch({ effects: EditorView.scrollIntoView(pos, { y: "center" }) });
                     });
-                    return;
                 }
-            } catch {
-                // fall through to plain paste
             }
-            // turndown failed or returned empty — paste the text/plain instead
-            applyResult({
-                text: state.text.slice(0, state.selStart) + text + state.text.slice(state.selEnd),
-                selStart: state.selStart + text.length,
-                selEnd: state.selStart + text.length,
-            });
-        }
-        // else: let default paste handle plain text
-    }, [content, onChange, onImagePaste, onError, filePath, applyResult]);
+        });
 
-    // Last-reported cursor state. Lets us short-circuit the work in
-    // updateCursorPosition when nothing has actually changed — without this
-    // we'd run the substring-and-split routine twice per keystroke
-    // (selectionchange and keyup both fire) and even though the downstream
-    // setStates bail out via Object.is, the substring/split itself is real
-    // work that adds up on huge docs.
-    const lastCursorRef = useRef({ line: -1, col: -1, start: -1, end: -1 });
+        const pasteHandler = EditorView.domEventHandlers({
+            paste: (event, view) => handlePaste(event, view),
+        });
 
-    // Calculate cursor position (line and column) and active line for highlight
-    const updateCursorPosition = useCallback(() => {
-        if (!textareaRef.current) return;
-
-        const textarea = textareaRef.current;
-        const cursorPos = textarea.selectionStart;
-        const selEnd = textarea.selectionEnd;
-
-        // Cheap pre-check: if the raw selection range hasn't moved since the
-        // last time we ran, skip the line/col recompute entirely. This is the
-        // common case during typing — input event already fired, caret moved,
-        // selectionchange + keyup both fire, second call sees the same range.
-        const last = lastCursorRef.current;
-        if (cursorPos === last.start && selEnd === last.end) return;
-
-        const textBeforeCursor = textarea.value.substring(0, cursorPos);
-        const linesBeforeCursor = textBeforeCursor.split("\n");
-        const line = linesBeforeCursor.length;
-        const column = linesBeforeCursor[linesBeforeCursor.length - 1].length + 1;
-
-        lastCursorRef.current = { line, col: column, start: cursorPos, end: selEnd };
-        setActiveLine(line);
-        onCursorChange?.(line, column);
-        onSelectionChange?.(cursorPos, selEnd);
-    }, [onCursorChange, onSelectionChange]);
-
-    // Track cursor on every relevant event (selectionchange catches all caret moves)
-    useEffect(() => {
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-
-        const handler = () => {
-            // selectionchange fires on document; only react if our textarea is focused
-            if (document.activeElement === textarea) {
-                updateCursorPosition();
-            }
-        };
-
-        document.addEventListener("selectionchange", handler);
-        textarea.addEventListener("keyup", updateCursorPosition);
-        textarea.addEventListener("click", updateCursorPosition);
-        textarea.addEventListener("focus", updateCursorPosition);
-
-        updateCursorPosition();
+        const view = new EditorView({
+            parent: containerRef.current,
+            state: CMEditorState.create({
+                doc: content,
+                extensions: [
+                    lineNumbers(),
+                    highlightActiveLineGutter(),
+                    highlightActiveLine(),
+                    history(),
+                    drawSelection(),
+                    dropCursor(),
+                    closeBrackets(),
+                    markdown(),
+                    syntaxHighlighting(markdownHighlight),
+                    editorTheme,
+                    wrapComp.of(wordWrap ? EditorView.lineWrapping : []),
+                    spellComp.of(EditorView.contentAttributes.of(spellAttrs(spellCheck))),
+                    editingKeymap,
+                    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
+                    updateListener,
+                    pasteHandler,
+                    EditorView.theme({ "&": { outline: "none" } }),
+                ],
+            }),
+        });
+        viewRef.current = view;
+        lastEmittedRef.current = content;
+        view.focus();
 
         return () => {
-            document.removeEventListener("selectionchange", handler);
-            textarea.removeEventListener("keyup", updateCursorPosition);
-            textarea.removeEventListener("click", updateCursorPosition);
-            textarea.removeEventListener("focus", updateCursorPosition);
+            view.destroy();
+            viewRef.current = null;
         };
-    }, [updateCursorPosition]);
+        // Created once; prop changes flow in via the effects + refs below.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    // Indirection ref so handleTextareaScroll below can call the latest
-    // recomputeVisible without re-creating the callback on every render.
-    // Assigned just below where recomputeVisible is declared.
-    const recomputeVisibleRef = useRef<() => void>(() => { });
+    // Helper used by the editing keymap: run a (tested) editorActions function and
+    // apply its result, or fall through to CodeMirror's default if it returns null.
+    function runAction(view: EditorView, fn: (st: EditorState) => EditorResult | null): boolean {
+        const r = fn(toEdState(view));
+        if (!r) return false;
+        applyResultToView(view, r);
+        return true;
+    }
 
-    // Synchronous scroll sync via the textarea's native onScroll. Wired into
-    // the JSX as `onScroll={handleTextareaScroll}`.
-    //
-    // Why this matters for click-after-scroll alignment: with the previous
-    // rAF-based sync the overlay's scrollTop only caught up on the NEXT
-    // animation frame after the textarea scrolled. If the user clicked
-    // (or double-clicked) inside that 16-ms window, the textarea placed
-    // the caret at the new scroll position but the overlay still painted
-    // the OLD position — giving the impression that the visible word was
-    // one line off from the click. Setting overlay.scrollTop in the same
-    // synchronous turn as the scroll event keeps the two layers in
-    // lockstep, so clicks always land where the user expects.
-    const scrollRafRef = useRef(0);
-    const handleTextareaScroll = useCallback((e: React.UIEvent<HTMLTextAreaElement>) => {
-        const t = e.currentTarget;
-        const top = t.scrollTop;
-        const left = t.scrollLeft;
-        // Synchronous mirror — caret/glyph alignment depends on the overlay and
-        // gutter tracking the textarea in the SAME turn as the scroll event.
-        if (highlightRef.current) {
-            highlightRef.current.scrollTop = top;
-            highlightRef.current.scrollLeft = left;
+    // Slash-command lifecycle, mirroring the previous textarea behaviour but
+    // reading only the current line (no full-doc scans).
+    function detectSlash(view: EditorView) {
+        const head = view.state.selection.main.head;
+        const doc = view.state.doc;
+        const cur = slashStateRef.current;
+        if (cur) {
+            if (head < cur.from + 1) { setSlashState(null); setSlashQuery(""); return; }
+            const between = doc.sliceString(cur.from + 1, head);
+            if (between.includes("\n") || between.includes(" ")) { setSlashState(null); setSlashQuery(""); return; }
+            setSlashQuery(between);
+            return;
         }
-        if (gutterRef.current) {
-            gutterRef.current.scrollTop = top;
-        }
-        // Cross-pane fraction notify + virtualization recompute are coalesced to
-        // one per animation frame so fast scrolling doesn't thrash layout (the
-        // synchronous mirror above is intentionally exempt). PREVIEW-04.
-        if (scrollRafRef.current) return;
-        scrollRafRef.current = requestAnimationFrame(() => {
-            scrollRafRef.current = 0;
-            const el = textareaRef.current;
-            if (!el) return;
-            if (onScrollFraction) {
-                const max = el.scrollHeight - el.clientHeight;
-                onScrollFraction(max > 0 ? el.scrollTop / max : 0);
+        if (head > 0 && doc.sliceString(head - 1, head) === "/") {
+            const line = doc.lineAt(head);
+            const lineHead = doc.sliceString(line.from, head - 1);
+            if (lineHead === "" || /^\s*$/.test(lineHead) || /\s$/.test(lineHead)) {
+                const coords = view.coordsAtPos(head - 1);
+                if (coords) {
+                    setSlashState({ from: head - 1, pos: { x: coords.left, y: coords.bottom + 4 } });
+                    setSlashQuery("");
+                }
             }
-            recomputeVisibleRef.current();
-        });
-    }, [onScrollFraction]);
-    useEffect(() => () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); }, []);
+        }
+    }
 
-    // Register an imperative scroller so external code (split-view sync) can
-    // drive our scroll position by fraction without touching internals.
+    function handlePaste(event: ClipboardEvent, view: EditorView): boolean {
+        const imageFile = getImageFromClipboard(event);
+        if (imageFile) {
+            event.preventDefault();
+            if (!filePathRef.current) { onErrorRef.current?.("Please save your file first before pasting images."); return true; }
+            (async () => {
+                try {
+                    const imagePath = await saveImageToFile(imageFile, filePathRef.current!);
+                    const md = createMarkdownImage(imagePath, `image-${Date.now()}`);
+                    const sel = view.state.selection.main;
+                    view.dispatch({ changes: { from: sel.from, to: sel.to, insert: md }, selection: { anchor: sel.from + md.length } });
+                    onImagePasteRef.current?.();
+                } catch (error) {
+                    const msg = typeof error === "string" ? error : (error as { message?: string })?.message;
+                    onErrorRef.current?.(msg || "Failed to save image. Please try again.");
+                }
+            })();
+            return true;
+        }
+        const cd = event.clipboardData;
+        if (!cd) return false;
+        const html = cd.getData("text/html");
+        const text = cd.getData("text/plain");
+        const state = toEdState(view);
+
+        const urlOnSel = pasteUrlOnSelection(state, text);
+        if (urlOnSel) { event.preventDefault(); applyResultToView(view, urlOnSel); return true; }
+        const autolink = pasteUrlAutolink(state, text);
+        if (autolink) { event.preventDefault(); applyResultToView(view, autolink); return true; }
+        if (!html) {
+            const tsv = pasteTsvAsTable(state, text);
+            if (tsv) { event.preventDefault(); applyResultToView(view, tsv); return true; }
+        }
+        if (html && /<\w+/.test(html)) {
+            event.preventDefault();
+            (async () => {
+                let insert = text;
+                try { const md = (await htmlToMarkdown(html)).trim(); if (md) insert = md; } catch {/* fall back to plain text */ }
+                const sel = view.state.selection.main;
+                view.dispatch({ changes: { from: sel.from, to: sel.to, insert }, selection: { anchor: sel.from + insert.length } });
+            })();
+            return true;
+        }
+        return false; // let CodeMirror insert plain text
+    }
+
+    // Sync external content changes (file open, AI replace via App, frontmatter
+    // edits) into the editor — skipping our own keystroke echoes cheaply.
+    useEffect(() => {
+        if (content === lastEmittedRef.current) return;
+        const view = viewRef.current;
+        if (!view) return;
+        if (content !== view.state.doc.toString()) {
+            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+        }
+        lastEmittedRef.current = content;
+    }, [content]);
+
+    // Reconfigure word-wrap / spellcheck when their props change.
+    useEffect(() => {
+        viewRef.current?.dispatch({ effects: wrapCompRef.current.reconfigure(wordWrap ? EditorView.lineWrapping : []) });
+    }, [wordWrap]);
+    useEffect(() => {
+        viewRef.current?.dispatch({ effects: spellCompRef.current.reconfigure(EditorView.contentAttributes.of(spellAttrs(spellCheck))) });
+    }, [spellCheck]);
+
+    // Scroll-fraction sync (rAF-throttled — PREVIEW-04) + imperative scroller.
+    const scrollRafRef = useRef(0);
+    useEffect(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        const scroller = view.scrollDOM;
+        const onScroll = () => {
+            if (scrollRafRef.current) return;
+            scrollRafRef.current = requestAnimationFrame(() => {
+                scrollRafRef.current = 0;
+                const max = scroller.scrollHeight - scroller.clientHeight;
+                onScrollFractionRef.current?.(max > 0 ? scroller.scrollTop / max : 0);
+            });
+        };
+        scroller.addEventListener("scroll", onScroll, { passive: true });
+        return () => {
+            scroller.removeEventListener("scroll", onScroll);
+            if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+        };
+    }, []);
+
     useEffect(() => {
         if (!registerScroller) return;
         registerScroller({
             setFraction: (f: number) => {
-                const t = textareaRef.current;
-                if (!t) return;
-                const max = t.scrollHeight - t.clientHeight;
-                if (max > 0) t.scrollTop = max * f;
+                const view = viewRef.current;
+                if (!view) return;
+                const s = view.scrollDOM;
+                const max = s.scrollHeight - s.clientHeight;
+                if (max > 0) s.scrollTop = max * f;
             },
         });
         return () => registerScroller(null);
     }, [registerScroller]);
 
-    // Per-line highlight cache. Most keystrokes only change ONE source line, so
-    // re-running `highlightLine` over every line — and minting fresh React
-    // elements for the unchanged ones — is wasted work. The cache returns the
-    // identical React node for repeat line text; React's reconciler then
-    // short-circuits on `prev === next` and skips the unchanged children.
-    //
-    // Cache is per-component-instance and bounded two ways:
-    //   1) HARD CAP via FIFO eviction (Map insertion-order). Without this, a
-    //      doc where every line is unique (think 10k lines of UUIDs) would
-    //      grow the cache by `lines.length` per render forever.
-    //   2) Stale-entry pruning when growth outpaces in-use lines by >256.
-    //
-    // We do NOT touch entries on hit. The previous version did delete+set per
-    // line per render to maintain LRU order — that's ~2N Map mutations per
-    // keystroke for a doc with N lines (20 k ops on a 10 k-line file). Their
-    // only purpose was to influence overflow eviction order, and overflow
-    // only fires on docs with >4 k UNIQUE lines (rare). The "is this line
-    // still in the doc?" pruning is the load-bearing bound; FIFO order is
-    // fine for the rare hard-cap fallback.
-    const HIGHLIGHT_CACHE_MAX = 4096;
-    const highlightCacheRef = useRef<Map<string, React.ReactNode>>(new Map());
-    const highlightedLines = useMemo(() => {
-        const cache = highlightCacheRef.current;
-        const out: React.ReactNode[] = new Array(lines.length);
-        const inUse = new Set<string>();
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            let node = cache.get(line);
-            if (node === undefined) {
-                node = highlightLine(line);
-                cache.set(line, node);
-            }
-            out[i] = node;
-            inUse.add(line);
-        }
-        if (cache.size > inUse.size + 256) {
-            for (const key of cache.keys()) {
-                if (!inUse.has(key)) cache.delete(key);
-            }
-        }
-        // Hard ceiling regardless of in-use set size: protects against
-        // pathological docs where every line is unique and `inUse` itself is
-        // huge. Evict from the front (FIFO) until under the cap.
-        while (cache.size > HIGHLIGHT_CACHE_MAX) {
-            const oldest = cache.keys().next().value;
-            if (oldest === undefined) break;
-            cache.delete(oldest);
-        }
-        return out;
-    }, [lines]);
-
-    // Virtualization for the highlight overlay.
-    //
-    // Without this, a 10k-line file mounts 10k <div> nodes in the highlight
-    // layer; every keystroke makes React's reconciler walk all of them even
-    // though the per-line node refs are cached and equal. That walk is what
-    // makes typing feel "sticky" on large markdown files.
-    //
-    // We only render the lines currently visible in the viewport, plus a
-    // generous buffer so scrolling never reveals an un-rendered gap before
-    // the next recompute fires. The total scroll height is preserved with
-    // top/bottom spacer divs so the textarea's and overlay's scroll
-    // geometry stay identical (caret-glyph alignment depends on it).
-    //
-    // Word-wrap mode opts out: line heights vary with content there, so we
-    // can't compute slot positions without measurement. The cap on
-    // `RENDER_ALL_THRESHOLD` keeps small/medium docs unchanged regardless,
-    // because virtualization adds a (tiny) per-scroll cost of its own.
-    const VIRTUALIZE_BUFFER = 40;
-    const RENDER_ALL_THRESHOLD = 400;
-    const shouldVirtualize = !wordWrap && lineCount > RENDER_ALL_THRESHOLD;
-    const [visibleRange, setVisibleRange] = useState({ first: 0, last: 0 });
-    const visibleRangeRef = useRef(visibleRange);
-    visibleRangeRef.current = visibleRange;
-
-    const recomputeVisible = useCallback(() => {
-        if (!shouldVirtualize) return;
-        const t = textareaRef.current;
-        if (!t) return;
-        const top = t.scrollTop;
-        const height = t.clientHeight;
-        const first = Math.max(
-            0,
-            Math.floor((top - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) - VIRTUALIZE_BUFFER
-        );
-        const last = Math.min(
-            lineCount,
-            Math.ceil((top + height - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) + VIRTUALIZE_BUFFER
-        );
-        const cur = visibleRangeRef.current;
-        // Hysteresis: only update when the window has shifted enough that a
-        // re-render is genuinely needed. Prevents setState thrash during
-        // smooth scrolling.
-        const halfBuf = VIRTUALIZE_BUFFER / 2;
-        if (Math.abs(first - cur.first) >= halfBuf || Math.abs(last - cur.last) >= halfBuf) {
-            setVisibleRange({ first, last });
-        }
-    }, [shouldVirtualize, lineCount]);
-
-    // Keep the ref pointed at the latest recomputeVisible so the rAF sync
-    // (which depends only on onScrollFraction) doesn't tear down + rebuild
-    // every time lineCount or shouldVirtualize changes.
-    recomputeVisibleRef.current = recomputeVisible;
-
-    // Initialize / reset the visible window when virtualization toggles or the
-    // doc is replaced wholesale (file open, big paste). Without this the
-    // initial state {first:0, last:0} would render zero lines on first paint.
+    // Let App-level surfaces (command palette) open the AI bubble.
     useEffect(() => {
-        if (!shouldVirtualize) {
-            // Make sure the next switch back into virtualization re-seeds.
-            if (visibleRangeRef.current.last !== 0) {
-                setVisibleRange({ first: 0, last: 0 });
-            }
-            return;
-        }
-        const t = textareaRef.current;
-        if (!t) return;
-        const top = t.scrollTop;
-        const height = t.clientHeight || 600;
-        const first = Math.max(
-            0,
-            Math.floor((top - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) - VIRTUALIZE_BUFFER
-        );
-        const last = Math.min(
-            lineCount,
-            Math.ceil((top + height - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) + VIRTUALIZE_BUFFER
-        );
-        setVisibleRange({ first, last });
-    }, [shouldVirtualize, lineCount]);
+        const handler = () => { viewRef.current?.focus(); openAIBubble(); };
+        window.addEventListener("marklite:ai-assist", handler);
+        return () => window.removeEventListener("marklite:ai-assist", handler);
+    }, [openAIBubble]);
 
-    // Hook recomputeVisible into scroll. We piggyback on the existing rAF in
-    // the next effect (it already runs on every frame while there's scroll
-    // motion); no extra event listener needed.
-
-    // Typewriter mode: keep the active line vertically centered as the caret moves.
-    useEffect(() => {
-        if (!typewriterMode) return;
-        const t = textareaRef.current;
-        if (!t) return;
-        const targetTop = (activeLine - 1) * EDITOR_LINE_HEIGHT - t.clientHeight / 2 + EDITOR_LINE_HEIGHT / 2;
-        // Smooth via rAF for a calmer scroll than scrollTo({behavior:'smooth'}) which
-        // can fight the user's own input on some browsers.
-        const start = t.scrollTop;
-        const distance = Math.max(0, targetTop) - start;
-        if (Math.abs(distance) < 1) return;
-        let raf = 0;
-        const t0 = performance.now();
-        const dur = 120;
-        const step = (now: number) => {
-            const p = Math.min(1, (now - t0) / dur);
-            const eased = 1 - Math.pow(1 - p, 3);
-            t.scrollTop = start + distance * eased;
-            if (p < 1) raf = requestAnimationFrame(step);
-        };
-        raf = requestAnimationFrame(step);
-        return () => cancelAnimationFrame(raf);
-    }, [activeLine, typewriterMode]);
-
-    // Slash-command lifecycle. When user types "/" at line start, open the menu
-    // anchored below the caret line. As they keep typing, update the query.
-    // Caret moving outside [startIdx, caretPos] or pressing Escape closes it.
-    useEffect(() => {
-        const t = textareaRef.current;
-        if (!t) return;
-
-        const recomputePos = (lineIdx: number) => {
-            const rect = t.getBoundingClientRect();
-            return {
-                x: rect.left + EDITOR_PADDING,
-                y: rect.top + EDITOR_PADDING + lineIdx * EDITOR_LINE_HEIGHT - t.scrollTop + EDITOR_LINE_HEIGHT + 4,
-            };
-        };
-
-        const onKeyUp = () => {
-            const pos = t.selectionStart;
-            const value = t.value;
-
-            if (slashState) {
-                // Close if caret moved left of start, or to a different line
-                if (pos < slashState.startIdx + 1) {
-                    setSlashState(null);
-                    setSlashQuery("");
-                    return;
-                }
-                const between = value.slice(slashState.startIdx + 1, pos);
-                if (between.includes("\n") || between.includes(" ")) {
-                    setSlashState(null);
-                    setSlashQuery("");
-                    return;
-                }
-                setSlashQuery(between);
-                return;
-            }
-
-            // Maybe open: caret right after a "/" that's at line start or post-whitespace
-            if (pos > 0 && value[pos - 1] === "/") {
-                const before = value.slice(0, pos - 1);
-                const lastNl = before.lastIndexOf("\n");
-                const lineHead = value.slice(lastNl + 1, pos - 1);
-                // Only at start of line, or after a single space (e.g. nested in lists)
-                if (lineHead === "" || /^\s*$/.test(lineHead) || /[\s]$/.test(lineHead)) {
-                    const lineIdx = before.split("\n").length - 1;
-                    setSlashState({ startIdx: pos - 1, pos: recomputePos(lineIdx) });
-                    setSlashQuery("");
-                }
-            }
-        };
-
-        t.addEventListener("keyup", onKeyUp);
-        t.addEventListener("click", onKeyUp);
-        return () => {
-            t.removeEventListener("keyup", onKeyUp);
-            t.removeEventListener("click", onKeyUp);
-        };
-    }, [slashState]);
-
-    const handleSlashSelect = useCallback((cmd: SlashCommand) => {
-        if (!slashState) return;
-        const t = textareaRef.current;
-        if (!t) return;
-        const pos = t.selectionStart;
-        // Replace the "/query" range with the snippet
-        const newText = t.value.slice(0, slashState.startIdx) + cmd.snippet + t.value.slice(pos);
-        const caretAt = slashState.startIdx + (cmd.caretOffset ?? cmd.snippet.length);
-        applyResult({ text: newText, selStart: caretAt, selEnd: caretAt });
-        setSlashState(null);
-        setSlashQuery("");
-    }, [slashState, applyResult]);
-
-    // Syntax highlighting for markdown
-    function highlightLine(line: string): React.ReactNode {
-        if (line.startsWith("# ")) {
-            return <span className="text-[var(--syntax-h1)] font-bold">{line}</span>;
-        }
-        if (line.startsWith("## ")) {
-            return <span className="text-[var(--syntax-h2)] font-bold">{line}</span>;
-        }
-        if (line.startsWith("### ") || line.startsWith("#### ")) {
-            return <span className="text-[var(--syntax-h3)] font-semibold">{line}</span>;
-        }
-        if (line.startsWith("```")) {
-            return <span className="text-[var(--syntax-code)]">{line}</span>;
-        }
-        if (line.match(/^[\s]*[-*+]\s/)) {
-            const marker = line.match(/^[\s]*[-*+]/)?.[0] || "";
-            const rest = line.slice(marker.length);
-            return (
-                <>
-                    <span className="text-[var(--syntax-list)]">{marker}</span>
-                    <span>{rest}</span>
-                </>
-            );
-        }
-        if (line.match(/^[\s]*\d+\.\s/)) {
-            const match = line.match(/^([\s]*\d+\.)/);
-            const marker = match?.[0] || "";
-            const rest = line.slice(marker.length);
-            return (
-                <>
-                    <span className="text-[var(--syntax-number)]">{marker}</span>
-                    <span>{rest}</span>
-                </>
-            );
-        }
-        if (line.startsWith(">")) {
-            return <span className="text-[var(--syntax-quote)] italic">{line}</span>;
-        }
-        if (line.includes("![") && line.includes("](")) {
-            return highlightImages(line);
-        }
-        if (line.includes("[") && line.includes("](")) {
-            return highlightLinks(line);
-        }
-        if (line.includes("**")) {
-            return highlightBold(line);
-        }
-        // Empty lines must render something with zero width but real height.
-        // Using "" lets the parent line-height (24px) own vertical metrics —
-        // identical to how a textarea renders an empty line. NBSP would shift
-        // baseline metrics on some fonts and desync the caret.
-        return <span>{line}</span>;
-    }
-
-    function highlightImages(text: string): React.ReactNode {
-        const parts: React.ReactNode[] = [];
-        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        let lastIndex = 0;
-        let match;
-        let key = 0;
-
-        while ((match = imageRegex.exec(text)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
-            }
-
-            const altText = match[1];
-            const url = match[2];
-            const displayUrl = url.startsWith('data:')
-                ? `data:image/...`
-                : url.length > 40
-                    ? url.slice(0, 37) + '...'
-                    : url;
-
-            parts.push(
-                <span key={key++} className="text-[var(--syntax-link)]">
-                    <span className="text-[var(--syntax-bold)]">!</span>
-                    [{altText}]
-                    <span className="text-[var(--syntax-code)] opacity-70">({displayUrl})</span>
-                </span>
-            );
-            lastIndex = match.index + match[0].length;
-        }
-
-        if (lastIndex < text.length) {
-            parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
-        }
-
-        return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
-    }
-
-    function highlightLinks(text: string): React.ReactNode {
-        const parts: React.ReactNode[] = [];
-        const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-        let lastIndex = 0;
-        let match;
-        let key = 0;
-
-        while ((match = linkRegex.exec(text)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
-            }
-            parts.push(
-                <span key={key++} className="text-[var(--syntax-link)]">
-                    [{match[1]}]
-                    <span className="text-[var(--syntax-code)]">({match[2]})</span>
-                </span>
-            );
-            lastIndex = match.index + match[0].length;
-        }
-
-        if (lastIndex < text.length) {
-            parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
-        }
-
-        return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
-    }
-
-    function highlightBold(text: string): React.ReactNode {
-        const parts: React.ReactNode[] = [];
-        const boldRegex = /\*\*([^*]+)\*\*/g;
-        let lastIndex = 0;
-        let match;
-        let key = 0;
-
-        while ((match = boldRegex.exec(text)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
-            }
-            parts.push(
-                <span key={key++} className="text-[var(--syntax-bold)] font-bold">
-                    {match[0]}
-                </span>
-            );
-            lastIndex = match.index + match[0].length;
-        }
-
-        if (lastIndex < text.length) {
-            parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
-        }
-
-        return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
-    }
+    // === Imperative helpers for child UI (toolbar, find/replace, slash, AI) ===
+    const getState = useCallback((): EditorState | null => {
+        const v = viewRef.current;
+        return v ? toEdState(v) : null;
+    }, []);
+    const applyResult = useCallback((r: EditorResult) => {
+        const v = viewRef.current;
+        if (v) { applyResultToView(v, r); v.focus(); }
+    }, []);
+    const insertAtCaret = useCallback((text: string) => {
+        const v = viewRef.current;
+        if (!v) return;
+        const sel = v.state.selection.main;
+        v.dispatch({ changes: { from: sel.from, to: sel.to, insert: text }, selection: { anchor: sel.from + text.length } });
+        v.focus();
+    }, []);
 
     const handleFindJump = useCallback((start: number, end: number) => {
-        const t = textareaRef.current;
-        if (!t) return;
-        t.focus();
-        t.selectionStart = start;
-        t.selectionEnd = end;
-        // Scroll the matched line into view (textarea native scrollIntoView is unreliable;
-        // compute by line index instead)
-        const lineIdx = content.slice(0, start).split("\n").length - 1;
-        const desiredTop = lineIdx * EDITOR_LINE_HEIGHT - t.clientHeight / 2;
-        t.scrollTop = Math.max(0, desiredTop);
-    }, [content]);
-
+        const v = viewRef.current;
+        if (!v) return;
+        v.dispatch({ selection: { anchor: start, head: end }, scrollIntoView: true });
+        v.focus();
+    }, []);
     const handleFindReplace = useCallback((newContent: string, newCursor: number) => {
-        onChange(newContent);
-        requestAnimationFrame(() => {
-            const t = textareaRef.current;
-            if (!t) return;
-            t.selectionStart = newCursor;
-            t.selectionEnd = newCursor;
-        });
-    }, [onChange]);
+        const v = viewRef.current;
+        if (!v) return;
+        applyResultToView(v, { text: newContent, selStart: newCursor, selEnd: newCursor });
+    }, []);
 
-    const insertAtCaret = useCallback((text: string) => {
-        const t = textareaRef.current;
-        if (!t) return;
-        applyResult({
-            text: t.value.slice(0, t.selectionStart) + text + t.value.slice(t.selectionEnd),
-            selStart: t.selectionStart + text.length,
-            selEnd: t.selectionStart + text.length,
-        });
-    }, [applyResult]);
+    const handleSlashSelect = useCallback((cmd: SlashCommand) => {
+        const v = viewRef.current;
+        const cur = slashStateRef.current;
+        if (!v || !cur) return;
+        const head = v.state.selection.main.head;
+        const caretAt = cur.from + (cmd.caretOffset ?? cmd.snippet.length);
+        v.dispatch({ changes: { from: cur.from, to: head, insert: cmd.snippet }, selection: { anchor: caretAt } });
+        setSlashState(null);
+        setSlashQuery("");
+        v.focus();
+    }, []);
 
     return (
         <main className="flex-1 flex flex-col overflow-hidden relative">
             {showToolbar && (
-                <FormatToolbar
-                    getTextarea={() => textareaRef.current}
-                    apply={applyResult}
-                    insert={insertAtCaret}
-                    onAIAssist={openAIBubble}
-                />
+                <FormatToolbar getState={getState} apply={applyResult} insert={insertAtCaret} onAIAssist={openAIBubble} />
             )}
-            <div className="flex flex-1 overflow-hidden relative">
-            {/* Line Numbers Gutter — hidden in word-wrap mode because wrapped
-                lines occupy multiple visual rows, so per-source-line numbers
-                would no longer align with the editor content. The Gutter is
-                memoized so typing within a single line doesn't reconcile
-                thousands of line-number divs on every keystroke. */}
-            {!wordWrap && (
-                <Gutter ref={gutterRef} lineCount={lineCount} activeLine={activeLine} />
-            )}
-
-            {/* Editor Container */}
-            <div className="flex-1 relative bg-[var(--bg-editor)] transition-colors">
-                {/* Syntax Highlighted Layer (visual only).
-                    Active-line band lives inside this scroll container so it tracks
-                    scroll naturally — no JS scrollTop math required.
-                    When wordWrap is on, per-line divs use minHeight (so wrapped
-                    content can grow) and the active-line band is suppressed,
-                    since its fixed Y assumes uniform line heights. */}
-                <div
-                    ref={highlightRef}
-                    // overflow:auto (instead of hidden) so the `scrollbar-gutter:
-                    // stable` rule in sharedTextStyle takes effect — that gutter
-                    // is what keeps wrap columns identical between this layer
-                    // and the textarea. The scrollbar itself stays invisible
-                    // (see .editor-overlay-scrollbar-hidden in index.css), and
-                    // pointer-events:none means the user never interacts with
-                    // it directly anyway. Vertical scroll position is driven
-                    // imperatively from the textarea's onScroll handler so the
-                    // two layers stay in lockstep — see the textarea below.
-                    className="absolute inset-0 text-[var(--text-primary)] pointer-events-none overflow-auto editor-overlay-scrollbar-hidden"
-                    aria-hidden="true"
-                    style={{ ...sharedTextStyle, ...wrapStyle }}
-                >
-                    {!wordWrap && (
-                        <div
-                            className="absolute left-0 right-0 pointer-events-none"
-                            style={{
-                                top: `${EDITOR_PADDING + (activeLine - 1) * EDITOR_LINE_HEIGHT}px`,
-                                height: `${EDITOR_LINE_HEIGHT}px`,
-                                background: "var(--bg-hover)",
-                                opacity: 0.45,
-                            }}
-                        />
-                    )}
-                    {shouldVirtualize ? (
-                        <VirtualizedHighlight
-                            lines={highlightedLines}
-                            firstVisible={visibleRange.first}
-                            lastVisible={visibleRange.last}
-                        />
-                    ) : (
-                        <RenderedLines lines={highlightedLines} wordWrap={wordWrap} />
-                    )}
-                </div>
+            <div className="flex-1 overflow-hidden relative">
+                <div ref={containerRef} className="absolute inset-0 [&_.cm-editor]:h-full [&_.cm-editor]:outline-none" />
 
                 <FindReplaceBar
                     isOpen={findOpen}
                     initialMode={findMode}
                     content={content}
                     selectionStart={selStartForFind}
-                    onClose={() => {
-                        setFindOpen(false);
-                        textareaRef.current?.focus();
-                    }}
+                    onClose={() => { setFindOpen(false); viewRef.current?.focus(); }}
                     onJumpTo={handleFindJump}
                     onReplace={handleFindReplace}
                 />
@@ -1124,58 +504,32 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
                         selectedText={aiBubble.text}
                         config={aiConfig}
                         onReplace={(out) => {
-                            applyResult({
-                                text: content.slice(0, aiBubble.selStart) + out + content.slice(aiBubble.selEnd),
-                                selStart: aiBubble.selStart + out.length,
-                                selEnd: aiBubble.selStart + out.length,
-                            });
+                            const v = viewRef.current;
+                            if (v) v.dispatch({ changes: { from: aiBubble.selStart, to: aiBubble.selEnd, insert: out }, selection: { anchor: aiBubble.selStart + out.length } });
                             setAIBubble(null);
+                            v?.focus();
                         }}
                         onInsert={(out) => {
-                            const insertAt = aiBubble.selEnd;
-                            applyResult({
-                                text: content.slice(0, insertAt) + "\n\n" + out + content.slice(insertAt),
-                                selStart: insertAt + 2 + out.length,
-                                selEnd: insertAt + 2 + out.length,
-                            });
+                            const v = viewRef.current;
+                            const ins = "\n\n" + out;
+                            if (v) v.dispatch({ changes: { from: aiBubble.selEnd, to: aiBubble.selEnd, insert: ins }, selection: { anchor: aiBubble.selEnd + ins.length } });
                             setAIBubble(null);
+                            v?.focus();
                         }}
                         onClose={() => setAIBubble(null)}
                     />
                 )}
-
-                {/* Editable textarea — transparent text, real caret.
-                    The visible glyphs come from the highlight overlay above;
-                    this layer just owns input, selection, and the caret.
-                    Caret color stays opaque so the cursor is always visible. */}
-                <textarea
-                    ref={textareaRef}
-                    value={content}
-                    onChange={handleChange}
-                    onPaste={handlePaste}
-                    onKeyDown={onKeyDown}
-                    onScroll={handleTextareaScroll}
-                    spellCheck={spellCheck}
-                    autoComplete="off"
-                    autoCorrect={spellCheck ? "on" : "off"}
-                    autoCapitalize="off"
-                    className="absolute inset-0 w-full h-full bg-transparent text-transparent caret-[var(--accent)] resize-none outline-none overflow-auto border-0"
-                    style={{
-                        ...sharedTextStyle,
-                        ...wrapStyle,
-                        caretColor: "var(--accent)",
-                    }}
-                />
-            </div>
             </div>
         </main>
     );
 }
 
-// React.memo so renders driven by App-level state (sidebar toggles, palette
-// open/close, theme changes, caret moves driven by selectionchange — see
-// updateCursorPosition) skip the editor when its real inputs (content,
-// modes, file path) are unchanged. The default shallow comparator is right
-// for us: every callback prop is useCallback'd in App and every primitive
-// prop is stable between caret-only re-renders.
+function spellAttrs(spellCheck: boolean): Record<string, string> {
+    return {
+        spellcheck: spellCheck ? "true" : "false",
+        autocorrect: spellCheck ? "on" : "off",
+        autocapitalize: "off",
+    };
+}
+
 export const CodeEditor = memo(CodeEditorImpl);
