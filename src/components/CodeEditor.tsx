@@ -27,6 +27,8 @@ interface CodeEditorProps {
     onSelectionChange?: (start: number, end: number) => void;
     onImagePaste?: () => void; // Callback when image is successfully pasted
     onError?: (message: string) => void; // Callback for error messages
+    /** Neutral (info) notice — e.g. "AI isn't set up yet". Distinct from onError. */
+    onNotice?: (message: string) => void;
     filePath?: string | null; // Current file path for saving images
     onScrollFraction?: (fraction: number) => void;
     registerScroller?: (scroller: Scroller | null) => void;
@@ -191,7 +193,7 @@ const Gutter = memo(forwardRef<HTMLDivElement, { lineCount: number; activeLine: 
     }
 ));
 
-function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
+function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, onImagePaste, onError, onNotice, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
     // When word wrap is on, long lines wrap inside the editor and the highlight
     // overlay; when off, lines scroll horizontally. Both layers must agree on
     // these styles or the caret will visually drift away from the rendered text.
@@ -237,6 +239,41 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
         return { text: t.value, selStart: t.selectionStart, selEnd: t.selectionEnd };
     }, []);
 
+    // Open the AI bubble anchored to the current selection / caret. Shared by the
+    // keyboard shortcut (Alt+J everywhere, Ctrl+J on Linux/macOS), the toolbar AI
+    // button, and the command palette ("AI assist on selection", which reaches us
+    // via the marklite:ai-assist window event). When AI hasn't been configured we
+    // surface a guiding notice instead of opening a bubble whose only content
+    // would be an error revealed after a click — this is the fix for "AI is
+    // broken / there's no button" (AI-01/02/03 in AUDIT.md).
+    const openAIBubble = useCallback(() => {
+        const t = textareaRef.current;
+        if (!t) return;
+        if (!aiConfig?.endpoint) {
+            onNotice?.("AI isn't set up yet — add an endpoint in Settings → AI to enable AI assist.");
+            return;
+        }
+        const selStart = t.selectionStart;
+        const selEnd = t.selectionEnd;
+        const lineIdx = t.value.slice(0, selStart).split("\n").length - 1;
+        const rect = t.getBoundingClientRect();
+        const y = rect.top + EDITOR_PADDING + lineIdx * EDITOR_LINE_HEIGHT - t.scrollTop + EDITOR_LINE_HEIGHT + 4;
+        const x = rect.left + EDITOR_PADDING + 12;
+        setAIBubble({ x, y, selStart, selEnd, text: t.value.slice(selStart, selEnd) });
+    }, [aiConfig, onNotice]);
+
+    // Let App-level surfaces (e.g. the command palette) open the AI bubble without
+    // threading editor internals upward. We focus the textarea first because the
+    // palette held focus while open; the textarea's selection range survives blur.
+    useEffect(() => {
+        const handler = () => {
+            textareaRef.current?.focus();
+            openAIBubble();
+        };
+        window.addEventListener("marklite:ai-assist", handler);
+        return () => window.removeEventListener("marklite:ai-assist", handler);
+    }, [openAIBubble]);
+
     const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         const state = getState();
         if (!state) return;
@@ -268,14 +305,7 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
             (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === "j" || e.key === "J" || e.code === "KeyJ"));
         if (isAiCombo) {
             e.preventDefault();
-            const t = textareaRef.current;
-            if (!t) return;
-            const lineIdx = t.value.slice(0, state.selStart).split("\n").length - 1;
-            const rect = t.getBoundingClientRect();
-            const y = rect.top + EDITOR_PADDING + lineIdx * EDITOR_LINE_HEIGHT - t.scrollTop + EDITOR_LINE_HEIGHT + 4;
-            const x = rect.left + EDITOR_PADDING + 12;
-            const text = state.text.slice(state.selStart, state.selEnd);
-            setAIBubble({ x, y, selStart: state.selStart, selEnd: state.selEnd, text });
+            openAIBubble();
             return;
         }
 
@@ -361,7 +391,7 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
                 return;
             }
         }
-    }, [applyResult, getState]);
+    }, [applyResult, getState, openAIBubble]);
 
     // Handle paste events — order: image → smart paste rules → default text.
     const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -999,6 +1029,7 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
                     getTextarea={() => textareaRef.current}
                     apply={applyResult}
                     insert={insertAtCaret}
+                    onAIAssist={openAIBubble}
                 />
             )}
             <div className="flex flex-1 overflow-hidden relative">

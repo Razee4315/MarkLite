@@ -8,6 +8,10 @@ interface FormatToolbarProps {
     apply: (r: EditorResult) => void;
     /** Insert plain text at the caret. */
     insert: (text: string) => void;
+    /** Open the AI assist bubble on the current selection. Renders an AI button
+     *  when provided — the primary visible affordance for the AI feature
+     *  (keyboard-only before; see AI-01 in AUDIT.md). */
+    onAIAssist?: () => void;
 }
 
 interface ToolButtonProps {
@@ -33,7 +37,7 @@ function ToolButton({ icon, title, onClick }: ToolButtonProps) {
 
 const Sep = () => <div className="w-px h-5 bg-[var(--border)] mx-0.5" />;
 
-export function FormatToolbar({ getTextarea, apply, insert }: FormatToolbarProps) {
+export function FormatToolbar({ getTextarea, apply, insert, onAIAssist }: FormatToolbarProps) {
     const wrap = (left: string, right: string, ph: string) => () => {
         const t = getTextarea();
         if (!t) return;
@@ -122,6 +126,12 @@ export function FormatToolbar({ getTextarea, apply, insert }: FormatToolbarProps
             <ToolButton icon="data_object" title="Code block" onClick={codeBlock} />
             <ToolButton icon="table_chart" title="Insert table" onClick={insertTable} />
             <ToolButton icon="horizontal_rule" title="Horizontal rule" onClick={insertHr} />
+            {onAIAssist && (
+                <>
+                    <Sep />
+                    <ToolButton icon="auto_awesome" title="AI assist (Alt+J)" onClick={onAIAssist} />
+                </>
+            )}
         </div>
     );
 }

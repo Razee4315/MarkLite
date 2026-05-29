@@ -84,6 +84,11 @@ const getWordCount = (text: string): number => {
   return text.trim().split(/\s+/).length;
 };
 
+// Platform-aware AI shortcut hint. Windows uses Alt+J because WebView2 reserves
+// Ctrl+J for its Downloads UI before the page sees it; macOS shows ⌘J. (AI-02.)
+const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
+const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
+
 /**
  * Returns a value that lags behind `value` by `delay` ms. Each new `value`
  * resets the timer, so during continuous typing the returned value is stable
@@ -641,6 +646,12 @@ function AppContent() {
     showToast(message, 'error');
   }, [showToast]);
 
+  // Neutral info toast (distinct from error). Used e.g. when AI assist is
+  // invoked before it's configured, so the action isn't a silent no-op.
+  const handleNotice = useCallback((message: string) => {
+    showToast(message, 'info');
+  }, [showToast]);
+
   // Stable export-result callbacks so TitleBar's props are reference-equal
   // across renders. Inline arrows here would re-create the closures on every
   // App render and defeat any downstream memoization.
@@ -897,6 +908,22 @@ function AppContent() {
       });
     }
 
+    // === AI === only when a buffer exists. The command palette is the
+    // always-reachable entry point for AI assist (the toolbar AI button is
+    // hidden when the toolbar is off). Dispatches a window event the editor
+    // listens for; if AI isn't configured the editor shows a guiding notice.
+    if (hasFile) {
+      items.push({
+        id: "ai.assist",
+        label: "AI assist on selection",
+        hint: AI_SHORTCUT,
+        section: "AI",
+        icon: "auto_awesome",
+        keywords: "ai rewrite shorten expand continue translate assistant gpt llm",
+        run: () => window.dispatchEvent(new CustomEvent("marklite:ai-assist")),
+      });
+    }
+
     // === Toggles ===
     items.push({
       id: "toggle.typewriter",
@@ -1051,6 +1078,7 @@ function AppContent() {
                 onSelectionChange={handleSelectionChange}
                 onImagePaste={handleImagePaste}
                 onError={handleError}
+                onNotice={handleNotice}
                 filePath={filePath}
                 onScrollFraction={onCodeScrollFraction}
                 registerScroller={registerCodeScroller}
