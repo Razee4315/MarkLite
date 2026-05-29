@@ -45,6 +45,47 @@ The three problems you reported are all genuine. Two of them (typing slowness an
 
 ---
 
+## ✅ Remediation status
+
+All findings below were implemented on branch **`audit/full-remediation`** (PR #39),
+pushed incrementally with GitHub Actions (tsc + `vite build` + 60 Vitest tests +
+`cargo check` on Windows & Linux) green on every commit.
+
+| ID | Status | Notes |
+|---|---|---|
+| AI-01/02/03 | ✅ Done | Toolbar ✨ button + command-palette entry + unconfigured-AI toast; Alt+J documented (Windows). |
+| AI-04 | ✅ Done | Ready/Not-configured/Invalid badge, Test-connection button, persist-on-change, mapped 401/404/429/5xx errors. |
+| PREVIEW-01 | ✅ Done | `startTransition` render + size-scaled debounce (80/160/250 ms). |
+| PREVIEW-02 | ✅ Done | `detect:false` pinned explicitly. **Correction:** rehype-highlight v7 already defaults `detect:false` (no full-language auto-detect), and v7 ignores unknown languages gracefully — the original "auto-detect every tick" premise was inaccurate; the real lever was PREVIEW-01. |
+| PREVIEW-03 | ✅ Done | Mermaid SVG cache (theme+source key) + `memo` + theme-aware re-render. |
+| PREVIEW-04 | ✅ Done | rAF-throttled scroll sync + cached scroll extent (ResizeObserver); editor mirror stays synchronous. |
+| PREVIEW-05 | ✅ Done (scoped) | `data-source-line` anchors + accurate top-visible-line reporting (status bar + TOC). Cross-pane *scroll* kept fraction-based — deliberate low-risk choice on the freshly migrated editor; the anchors are the foundation for full line-anchored scrolling later. |
+| PREVIEW-06 | ✅ Done | `handleTaskToggle` reads content via ref → stable components map; stateless renderers hoisted. |
+| **EDITOR-00** | ✅ Done — **needs runtime verification** | Migrated to **CodeMirror 6**. Caret + glyphs are one layer (cursor drift impossible), viewport-only rendering (fast on large files). Builds green; GUI behavior must be verified by running the app (CI can't exercise the webview). |
+| EDITOR-01..05 | ✅ Resolved by EDITOR-00 | Virtualization, gutter, selection-restore, per-keystroke scans — all obsolete under CM6. |
+| CURSOR-01..03 | ✅ Resolved by EDITOR-00 | Wrap-mismatch, DPI sub-pixel drift, font-load flash — eliminated by the single-layer editor. |
+| SECURITY-01 | ✅ Done | AI key in OS keychain (`keyring`), sync cache + localStorage fallback, one-time migration. |
+| SECURITY-02 | ✅ Done | Image reads via validated Rust `read_image_file`; broad `fs:allow-read **` removed (fs plugin now write-only for exports). |
+| SECURITY-03 | ✅ Done | Explicit "text leaves your machine" notice + local-provider recommendation in Settings → AI. |
+| SECURITY-04 | ✅ Monitored | Deps current (mermaid 11, katex 0.16, tauri 2); `securityLevel:strict` + CSP retained. No change needed. |
+| SECURITY-05 | ✅ Done (images) | `read_image_file` canonicalizes + containment-checks → blocks symlink escapes for images. Markdown `read_file` still follows symlinks intentionally (user explicitly opens those files; rejecting would break legit symlinked notes). |
+| UX-01 | ✅ Done | `attachFocusTrap` now restores focus to the trigger on close; dialogs trap before focusing their input. |
+| UX-02 | ✅ Done | Shared `Modal` primitive (role + aria-modal + Esc + trap + restore); UnsavedChangesDialog migrated. Settings/CommandPalette keep bespoke layouts but follow the same a11y contract. |
+| UX-03 | ✅ Done | Dedicated "AI" section in the cheatsheet noting toolbar/palette entries. |
+| UX-04 | ✅ Done | aria-modal via Modal; Esc hints present; StatusBar already `role="status"`. AIBubble left as a non-modal popover (aria-modal would be semantically wrong for a non-blocking bubble). |
+| UX-05 | ⚪ Deferred | Button-size consistency is purely cosmetic; left as-is to avoid churn across TitleBar/StatusBar/Toolbar. Tracked for a future polish pass. |
+| UX-06 | ✅ Done | Subtle "rendering" bar for large-doc preview renders (gated to avoid flicker). |
+| QUALITY-01 | ✅ Done | Vitest + RTL; 60 tests (editorActions/smartPaste/frontmatter/persistence/scrollSync/aiAssist/documentStats + AIBubble); CI test step. E2E/Playwright noted as a future addition (needs a running webview CI can't yet provide). |
+| QUALITY-02 | ✅ Done | Path-regex manualChunks split mermaid/katex/highlight. |
+| QUALITY-03 | ✅ Done | Lazy alternate fonts; only Inter + JetBrains Mono + icons eager. |
+| QUALITY-04 | ⚪ Process | Branch pruning — repo housekeeping, not a code change. |
+
+**Verification gap to be aware of:** this environment cannot run the GUI, so the
+CodeMirror editor (EDITOR-00) and the live scroll-sync feel were verified to
+**compile and build green** but not exercised at runtime. Please run the app and
+sanity-check typing, selection, caret position, wrap toggle, slash menu, AI bubble
+(Alt+J), find/replace, and split-view scrolling before relying on it.
+
 ## Table of contents
 
 1. [Project overview](#1-project-overview)
