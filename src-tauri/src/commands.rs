@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tauri::ipc::Response;
 use thiserror::Error;
 
 /// Hard ceiling on text-file content. 50 MB easily covers any sane markdown
@@ -284,9 +285,104 @@ pub async fn save_image(
     Ok(format!("./images/{}", safe_name))
 }
 
+/// Reject a relative image path that tries to escape the document folder or name
+/// an absolute location. Mirrors the front-end `isUnsafeRelativePath` guard so the
+/// boundary is enforced in Rust too — the front-end is not a trust boundary.
+fn validate_rel_path(rel: &str) -> Result<(), CommandError> {
+    if rel.is_empty() || rel.contains('\0') {
+        return Err(CommandError::ReadError("Invalid image path".to_string()));
+    }
+    // Reject Windows drive-letter prefixes (e.g. "C:/...") explicitly — on a
+    // non-Windows host they don't parse as an absolute Prefix component, so the
+    // checks below would miss them.
+    let b = rel.as_bytes();
+    if b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':' {
+        return Err(CommandError::ReadError("Image path must be relative".to_string()));
+    }
+    let p = std::path::Path::new(rel);
+    if p.is_absolute() {
+        return Err(CommandError::ReadError("Image path must be relative".to_string()));
+    }
+    for comp in p.components() {
+        match comp {
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(CommandError::ReadError(
+                    "Image path escapes the document folder".to_string(),
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Read an image that lives under `base_dir` (the open markdown file's directory)
+/// and return its raw bytes. Replaces the front-end's `plugin-fs` readFile so we
+/// no longer need a broad `fs:allow-read **` capability (SECURITY-02). Validates
+/// the relative path, enforces the image size cap, and canonicalizes both base
+/// and target to guarantee the resolved file is still inside `base_dir` — which
+/// also blocks symlinked escapes (SECURITY-05). Bytes are returned via
+/// `tauri::ipc::Response` so large images skip JSON-array serialization.
+#[tauri::command]
+pub async fn read_image_file(base_dir: String, rel_path: String) -> Result<Response, CommandError> {
+    validate_rel_path(&rel_path)?;
+    let base = PathBuf::from(&base_dir);
+    let full = base.join(&rel_path);
+
+    let metadata = tokio::fs::metadata(&full)
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?;
+    if metadata.len() > MAX_IMAGE_BYTES as u64 {
+        return Err(CommandError::TooLarge(format!(
+            "Image is {} MB; maximum is {} MB",
+            metadata.len() / (1024 * 1024),
+            MAX_IMAGE_BYTES / (1024 * 1024),
+        )));
+    }
+
+    // canonicalize() resolves symlinks; the containment check then guarantees the
+    // real file is inside the document folder.
+    let canon_base = tokio::fs::canonicalize(&base)
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?;
+    let canon_full = tokio::fs::canonicalize(&full)
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?;
+    if !canon_full.starts_with(&canon_base) {
+        return Err(CommandError::ReadError(
+            "Image path escapes the document folder".to_string(),
+        ));
+    }
+
+    let data = tokio::fs::read(&canon_full)
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?;
+    Ok(Response::new(data))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::sanitize_image_name;
+    use super::{sanitize_image_name, validate_rel_path};
+
+    #[test]
+    fn rel_path_accepts_safe_relatives() {
+        assert!(validate_rel_path("images/foo.png").is_ok());
+        assert!(validate_rel_path("foo.png").is_ok());
+        assert!(validate_rel_path("a/b/c.webp").is_ok());
+    }
+
+    #[test]
+    fn rel_path_rejects_escapes_and_absolutes() {
+        assert!(validate_rel_path("").is_err());
+        assert!(validate_rel_path("../foo.png").is_err());
+        assert!(validate_rel_path("images/../../secret").is_err());
+        assert!(validate_rel_path("/etc/passwd").is_err());
+        assert!(validate_rel_path("\0").is_err());
+        // Windows absolute / drive-prefixed paths.
+        assert!(validate_rel_path("C:/Windows/system.ini").is_err());
+    }
 
     #[test]
     fn accepts_basename() {

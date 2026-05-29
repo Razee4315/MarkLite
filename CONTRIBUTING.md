@@ -30,6 +30,24 @@ bun run tauri build
 - **Rust**: Follow standard Rust conventions. Run `cargo fmt` before committing.
 - **CSS**: Use Tailwind CSS utilities and CSS variables for theming.
 
+## Security: file-system access
+
+The Tauri `fs` plugin is granted **write-only** permissions (used by HTML/PDF
+export to a path the user explicitly chooses in a save dialog). All **reads** go
+through Rust commands so the boundary is enforced in Rust, not in the (untrusted)
+front-end:
+
+- `read_file` / `get_file_info` — markdown content the user explicitly opens.
+- `read_image_file` — preview images, restricted to the open document's folder.
+
+**When adding a new Tauri command that takes a path from the front-end or from
+document content, you MUST validate it**: reject `..` segments, absolute paths,
+and drive-letter prefixes, then `canonicalize()` and confirm the result is still
+inside the expected base directory before touching the file. Never widen the
+`fs:scope` to grant the webview broad read access — that scope exists only for
+the dialog-driven export-write flow. See `validate_rel_path` / `read_image_file`
+in `src-tauri/src/commands.rs` for the pattern.
+
 ## Commit Messages
 
 Write clear, concise commit messages that describe what changed and why:
