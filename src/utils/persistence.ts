@@ -78,13 +78,55 @@ export const setSpellCheck = (v: boolean): void => safeSet(KEY_SPELL_CHECK, v);
 const KEY_AI_ENDPOINT = "marklite:aiEndpoint";
 const KEY_AI_MODEL = "marklite:aiModel";
 const KEY_AI_API_KEY = "marklite:aiApiKey";
+
+// AI API key now lives in the OS keychain (SECURITY-01), accessed via the
+// get_ai_key / set_ai_key Tauri commands. To keep getAIConfig() synchronous (it
+// seeds React useState initializers), the key is mirrored into a module cache
+// that initAIKey() hydrates once at startup. A localStorage fallback covers
+// environments without a keychain (e.g. a headless Linux box) so AI never
+// silently breaks.
+let cachedAIKey = "";
+let aiKeyLoaded = false;
+
+export async function initAIKey(): Promise<void> {
+    if (aiKeyLoaded) return;
+    aiKeyLoaded = true;
+    try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        cachedAIKey = await invoke<string>("get_ai_key");
+        // One-time migration: move any legacy plaintext key into the keychain.
+        if (!cachedAIKey) {
+            const legacy = safeGet<string>(KEY_AI_API_KEY, "");
+            if (legacy) {
+                cachedAIKey = legacy;
+                try {
+                    await invoke("set_ai_key", { key: legacy });
+                    localStorage.removeItem(KEY_AI_API_KEY);
+                } catch {/* keychain unavailable — leave the localStorage copy */}
+            }
+        }
+    } catch {
+        // No keychain available — fall back to the legacy localStorage value.
+        cachedAIKey = safeGet<string>(KEY_AI_API_KEY, "");
+    }
+}
+
 export const getAIConfig = (): { endpoint: string; model: string; apiKey: string } => ({
     endpoint: safeGet<string>(KEY_AI_ENDPOINT, ""),
     model: safeGet<string>(KEY_AI_MODEL, ""),
-    apiKey: safeGet<string>(KEY_AI_API_KEY, ""),
+    // Prefer the hydrated keychain value; fall back to a (legacy) localStorage
+    // key before initAIKey() has resolved or when no keychain is present.
+    apiKey: cachedAIKey || safeGet<string>(KEY_AI_API_KEY, ""),
 });
+
 export const setAIConfig = (cfg: { endpoint: string; model: string; apiKey: string }): void => {
     safeSet(KEY_AI_ENDPOINT, cfg.endpoint);
     safeSet(KEY_AI_MODEL, cfg.model);
-    safeSet(KEY_AI_API_KEY, cfg.apiKey);
+    cachedAIKey = cfg.apiKey;
+    // Persist the key to the OS keychain; on failure fall back to localStorage so
+    // the setting still survives a restart.
+    import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke("set_ai_key", { key: cfg.apiKey }))
+        .then(() => { try { localStorage.removeItem(KEY_AI_API_KEY); } catch {/* ignore */} })
+        .catch(() => safeSet(KEY_AI_API_KEY, cfg.apiKey));
 };

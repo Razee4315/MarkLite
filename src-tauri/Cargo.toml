@@ -26,3 +26,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["fs"] }
+# OS keychain for the AI API key (SECURITY-01). Pure-Rust backends: Windows
+# Credential Manager, macOS Keychain, and Linux Secret Service (zbus + crypto-rust,
+# no system C libs needed at build time).
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }

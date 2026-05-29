@@ -54,6 +54,7 @@ import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
   getAIConfig,
+  initAIKey,
   getLastFile,
   getSavedViewMode,
   getSpellCheck,
@@ -312,6 +313,12 @@ function AppContent() {
       if (cancel) cancel(id);
       else window.clearTimeout(id);
     };
+  }, []);
+
+  // Hydrate the AI API key from the OS keychain on launch, then refresh the
+  // config so the editor's AI bubble has the key ready. SECURITY-01.
+  useEffect(() => {
+    initAIKey().then(() => setAiConfigState(getAIConfig()));
   }, []);
 
   useEffect(() => {

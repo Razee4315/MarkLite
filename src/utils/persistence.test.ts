@@ -45,12 +45,24 @@ describe("split ratio", () => {
 });
 
 describe("AI config", () => {
-    it("round-trips endpoint/model/key", () => {
-        setAIConfig({ endpoint: "https://x/v1/chat/completions", model: "m", apiKey: "k" });
-        expect(getAIConfig()).toEqual({ endpoint: "https://x/v1/chat/completions", model: "m", apiKey: "k" });
+    it("round-trips endpoint and model via localStorage", () => {
+        setAIConfig({ endpoint: "https://x/v1/chat/completions", model: "m", apiKey: "" });
+        const cfg = getAIConfig();
+        expect(cfg.endpoint).toBe("https://x/v1/chat/completions");
+        expect(cfg.model).toBe("m");
     });
-    it("returns empty strings when unset", () => {
-        expect(getAIConfig()).toEqual({ endpoint: "", model: "", apiKey: "" });
+    it("mirrors the API key into the in-memory cache synchronously", () => {
+        // The key is keychain-backed (SECURITY-01); setAIConfig updates a sync
+        // cache that getAIConfig reads, so the value is available immediately
+        // even though the keychain write happens asynchronously.
+        setAIConfig({ endpoint: "e", model: "m", apiKey: "secret" });
+        expect(getAIConfig().apiKey).toBe("secret");
+    });
+    it("reports empty endpoint/model when unset", () => {
+        setAIConfig({ endpoint: "", model: "", apiKey: "" });
+        const cfg = getAIConfig();
+        expect(cfg.endpoint).toBe("");
+        expect(cfg.model).toBe("");
     });
 });
 

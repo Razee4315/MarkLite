@@ -362,6 +362,40 @@ pub async fn read_image_file(base_dir: String, rel_path: String) -> Result<Respo
     Ok(Response::new(data))
 }
 
+// ===== AI API key — OS keychain (SECURITY-01) =====
+//
+// Stored in the platform credential store instead of plaintext localStorage.
+// The front end keeps endpoint + model in localStorage (non-secret) and routes
+// only the key through these commands, with a localStorage fallback on the JS
+// side when no keychain is available (e.g. a headless Linux box).
+const AI_KEY_SERVICE: &str = "marklite";
+const AI_KEY_ACCOUNT: &str = "ai-api-key";
+
+#[tauri::command]
+pub fn get_ai_key() -> Result<String, String> {
+    let entry = keyring::Entry::new(AI_KEY_SERVICE, AI_KEY_ACCOUNT).map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(p) => Ok(p),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn set_ai_key(key: String) -> Result<(), String> {
+    let entry = keyring::Entry::new(AI_KEY_SERVICE, AI_KEY_ACCOUNT).map_err(|e| e.to_string())?;
+    if key.is_empty() {
+        // Empty key == "clear it". A missing entry is already the desired state.
+        match entry.delete_credential() {
+            Ok(()) => Ok(()),
+            Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        entry.set_password(&key).map_err(|e| e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{sanitize_image_name, validate_rel_path};

@@ -365,7 +365,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
                                         <strong>Privacy:</strong> your selected text is sent <strong>unencrypted</strong> to the endpoint you configure above.
                                         For private notes, use a local provider (e.g. Ollama at <code>http://localhost:11434/v1/chat/completions</code>) so nothing leaves your machine.
-                                        The API key is stored in localStorage on this machine only — <strong>not encrypted</strong>.
+                                        The API key is stored in your operating system's keychain (Windows Credential Manager, macOS Keychain, or Linux Secret Service), not in plaintext.
                                     </p>
                                 </div>
                             </>
