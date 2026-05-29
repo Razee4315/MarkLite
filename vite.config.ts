@@ -43,18 +43,26 @@ export default defineConfig(async () => ({
     chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // React + react-dom + react/jsx-runtime — never split apart in
-          // practice, so keep them together. ~150 kB minified.
-          react: ["react", "react-dom", "react/jsx-runtime"],
-          // Markdown rendering pipeline. Big (~250 kB combined) and rarely
-          // changes per release. Loaded the moment a file is open, but at
-          // least it isn't blocking the welcome screen anymore.
-          markdown: [
-            "react-markdown",
-            "remark-gfm",
-            "rehype-highlight",
-          ],
+        // Path-regex chunking (function form) for precise control — the object
+        // form matches by substring and could miscategorise (e.g. "react" vs
+        // "react-markdown"). Only big, clearly-isolated packages are rerouted;
+        // everything else follows Rollup's default vendor chunking so shared
+        // deps (micromark/unist/hast, used by both markdown and katex) aren't
+        // duplicated. QUALITY-02.
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return;
+          // React core — never split apart in practice. ~150 kB minified.
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react";
+          // Mermaid (~580 kB) — only ever loaded via dynamic import, so this
+          // stays an async chunk off the cold-start path.
+          if (/[\\/]node_modules[\\/]mermaid[\\/]/.test(id)) return "mermaid";
+          // KaTeX + its remark/rehype glue — also dynamically imported (math docs only).
+          if (/[\\/]node_modules[\\/](katex|rehype-katex|remark-math)[\\/]/.test(id)) return "katex";
+          // highlight.js + lowlight + rehype-highlight — split out of the
+          // markdown chunk so the syntax-highlighting payload caches separately.
+          if (/[\\/]node_modules[\\/](rehype-highlight|lowlight|highlight\.js)[\\/]/.test(id)) return "highlight";
+          // Markdown rendering pipeline. Rarely changes per release.
+          if (/[\\/]node_modules[\\/](react-markdown|remark-gfm)[\\/]/.test(id)) return "markdown";
         },
       },
     },

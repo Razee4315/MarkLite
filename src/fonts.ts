@@ -64,33 +64,57 @@ if (typeof document !== "undefined") {
     }
 }
 
-// Merriweather — serif option
-import "@fontsource/merriweather/latin-300.css";
-import "@fontsource/merriweather/latin-400.css";
-import "@fontsource/merriweather/latin-700.css";
-
-// Lora — serif option
-import "@fontsource/lora/latin-400.css";
-import "@fontsource/lora/latin-500.css";
-import "@fontsource/lora/latin-600.css";
-import "@fontsource/lora/latin-700.css";
-
-// Source Serif 4 — serif option
-import "@fontsource/source-serif-4/latin-300.css";
-import "@fontsource/source-serif-4/latin-400.css";
-import "@fontsource/source-serif-4/latin-500.css";
-import "@fontsource/source-serif-4/latin-600.css";
-import "@fontsource/source-serif-4/latin-700.css";
-
-// Fira Sans — sans option
-import "@fontsource/fira-sans/latin-300.css";
-import "@fontsource/fira-sans/latin-400.css";
-import "@fontsource/fira-sans/latin-500.css";
-import "@fontsource/fira-sans/latin-600.css";
-import "@fontsource/fira-sans/latin-700.css";
+// Alternate body fonts (Merriweather, Lora, Source Serif 4, Fira Sans) are NOT
+// imported eagerly anymore — see ensureFontLoaded() below. Inter is the default,
+// so a typical session shipped four extra families' CSS + woff2 for nothing.
+// QUALITY-03.
 
 // Material Symbols Outlined — every UI icon. The package ships the variable
 // woff2 with the wght axis (100..700); FILL/GRAD/opsz are tuned via inline
 // `font-variation-settings` in `index.css`, so the same icon glyphs render
 // even when offline.
 import "material-symbols/outlined.css";
+
+// On-demand loaders for the alternate body fonts. Each resolves to a separate
+// async chunk so the woff2 + CSS only download when the user actually selects
+// the family (or on launch if it was their persisted choice). QUALITY-03.
+const FONT_LOADERS: Record<string, () => Promise<unknown>> = {
+    merriweather: () => Promise.all([
+        import("@fontsource/merriweather/latin-300.css"),
+        import("@fontsource/merriweather/latin-400.css"),
+        import("@fontsource/merriweather/latin-700.css"),
+    ]),
+    lora: () => Promise.all([
+        import("@fontsource/lora/latin-400.css"),
+        import("@fontsource/lora/latin-500.css"),
+        import("@fontsource/lora/latin-600.css"),
+        import("@fontsource/lora/latin-700.css"),
+    ]),
+    "source-serif": () => Promise.all([
+        import("@fontsource/source-serif-4/latin-300.css"),
+        import("@fontsource/source-serif-4/latin-400.css"),
+        import("@fontsource/source-serif-4/latin-500.css"),
+        import("@fontsource/source-serif-4/latin-600.css"),
+        import("@fontsource/source-serif-4/latin-700.css"),
+    ]),
+    "fira-sans": () => Promise.all([
+        import("@fontsource/fira-sans/latin-300.css"),
+        import("@fontsource/fira-sans/latin-400.css"),
+        import("@fontsource/fira-sans/latin-500.css"),
+        import("@fontsource/fira-sans/latin-600.css"),
+        import("@fontsource/fira-sans/latin-700.css"),
+    ]),
+};
+
+// Inter ships eagerly above; mark it loaded so we never try to fetch it.
+const loadedFonts = new Set<string>(["inter"]);
+
+/** Ensure a body font family's @fontsource CSS is loaded. Idempotent; a no-op
+ *  for the default Inter and for unknown families. */
+export function ensureFontLoaded(family: string): void {
+    if (loadedFonts.has(family)) return;
+    const loader = FONT_LOADERS[family];
+    if (!loader) return;
+    loadedFonts.add(family);
+    loader().catch(() => loadedFonts.delete(family));
+}

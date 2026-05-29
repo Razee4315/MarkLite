@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { ensureFontLoaded } from '../fonts';
 
 export type Theme = 'dark' | 'light' | 'paper' | 'github';
 export type FontFamily = 'inter' | 'merriweather' | 'lora' | 'source-serif' | 'fira-sans';
@@ -60,8 +61,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(FONT_SIZE_STORAGE_KEY, newSize);
     };
 
-    // Apply theme, font, and font size to document in a single effect
+    // Apply theme, font, and font size to document in a single effect. Also
+    // lazy-load the chosen body font's CSS (no-op for the eager Inter default).
+    // Runs on mount too, so a persisted non-default font is fetched on launch.
     useEffect(() => {
+        ensureFontLoaded(font);
         const el = document.documentElement;
         el.setAttribute('data-theme', theme);
         el.setAttribute('data-font', font);
