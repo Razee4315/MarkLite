@@ -3,14 +3,21 @@ export type ViewMode = "preview" | "code" | "split";
 interface ModeToggleProps {
     mode: ViewMode;
     onSetMode: (mode: ViewMode) => void;
+    /** Shift left when the AI panel is open so the toggle isn't hidden behind it. */
+    aiPanelOpen?: boolean;
 }
 
 const buttonBase =
     "btn-press flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-200";
 
-export function ModeToggle({ mode, onSetMode }: ModeToggleProps) {
+export function ModeToggle({ mode, onSetMode, aiPanelOpen }: ModeToggleProps) {
     return (
-        <div className="fixed bottom-8 right-8 z-50" role="group" aria-label="View mode toggle">
+        <div
+            className="fixed bottom-8 z-50"
+            style={{ right: aiPanelOpen ? "calc(400px + 2rem)" : "2rem", transition: "right 0.15s ease" }}
+            role="group"
+            aria-label="View mode toggle"
+        >
             <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-full p-1.5 flex items-center shadow-2xl backdrop-blur-sm transition-colors animate-fade-in">
                 <button
                     onClick={() => onSetMode("preview")}
