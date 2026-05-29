@@ -8,7 +8,12 @@ import {
     getSpellCheck, setSpellCheck,
 } from "../utils/persistence";
 import { attachFocusTrap } from "../utils/focusTrap";
-import { isValidEndpoint } from "../utils/aiAssist";
+import { isValidEndpoint, runAIAction } from "../utils/aiAssist";
+
+// Platform-aware AI shortcut hint (Windows/Linux: Alt+J; macOS: ⌘J). Windows
+// can't use Ctrl+J because WebView2 reserves it for its Downloads UI.
+const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
+const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -85,6 +90,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     const [ai, setAi] = useState(getAIConfig);
     const aiEndpointInvalid = ai.endpoint.length > 0 && !isValidEndpoint(ai.endpoint);
+    const aiConfigured = !!ai.endpoint && !aiEndpointInvalid && !!ai.model;
+
+    // Connection-test state for the "Test connection" button (AI-04).
+    const [aiTest, setAiTest] = useState<{ state: "idle" | "testing" | "ok" | "error"; msg?: string }>({ state: "idle" });
+
+    // Update an AI field, clear any stale test result, and persist immediately
+    // (when the endpoint is empty or valid) so edits survive a close-before-blur.
+    const updateAi = (patch: Partial<typeof ai>) => {
+        const next = { ...ai, ...patch };
+        setAi(next);
+        setAiTest({ state: "idle" });
+        if (!next.endpoint || isValidEndpoint(next.endpoint)) setAIConfig(next);
+    };
+
+    const testAIConnection = async () => {
+        setAiTest({ state: "testing" });
+        try {
+            await runAIAction("continue", "Reply with: OK", ai);
+            setAiTest({ state: "ok" });
+        } catch (e) {
+            setAiTest({ state: "error", msg: (e as Error).message });
+        }
+    };
 
     const fire = (event: string, enabled: boolean) =>
         window.dispatchEvent(new CustomEvent(event, { detail: { enabled } }));
@@ -264,17 +292,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         {section === "ai" && (
                             <>
-                                <p className="text-sm text-[var(--text-secondary)]">
-                                    Configure an OpenAI-compatible endpoint to enable inline AI assist (Rewrite / Expand / Continue) in the editor.
-                                </p>
+                                <div className="flex items-start justify-between gap-3">
+                                    <p className="text-sm text-[var(--text-secondary)]">
+                                        Configure an OpenAI-compatible endpoint to enable inline AI assist
+                                        (Rewrite / Shorten / Expand / Continue / Translate). Open it in the editor
+                                        with <kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">{AI_SHORTCUT}</kbd>,
+                                        the <span className="material-symbols-outlined text-[14px] align-middle">auto_awesome</span> toolbar button,
+                                        or the command palette.
+                                    </p>
+                                    <span
+                                        className={`shrink-0 px-2 py-0.5 rounded-[var(--radius-pill)] text-[11px] font-medium border ${aiEndpointInvalid
+                                            ? "text-[var(--danger)] border-[var(--danger)]"
+                                            : aiConfigured
+                                                ? "text-[var(--status-saved)] border-[var(--status-saved)]"
+                                                : "text-[var(--status-unsaved)] border-[var(--status-unsaved)]"
+                                            }`}
+                                    >
+                                        {aiEndpointInvalid ? "Invalid endpoint" : aiConfigured ? "Ready" : "Not configured"}
+                                    </span>
+                                </div>
                                 <div className="space-y-3">
                                     <label className="block">
                                         <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Endpoint URL</span>
                                         <input
                                             type="url"
                                             value={ai.endpoint}
-                                            onChange={(e) => setAi({ ...ai, endpoint: e.target.value })}
-                                            onBlur={() => { if (!aiEndpointInvalid) setAIConfig(ai); }}
+                                            onChange={(e) => updateAi({ endpoint: e.target.value })}
                                             placeholder="https://api.openai.com/v1/chat/completions"
                                             aria-invalid={aiEndpointInvalid}
                                             className={`mt-1 w-full px-3 py-2 text-sm bg-[var(--bg-input)] border rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none font-mono ${aiEndpointInvalid ? "border-[var(--danger)] focus:border-[var(--danger)]" : "border-[var(--border)] focus:border-[var(--accent)]"}`}
@@ -288,8 +331,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                         <input
                                             type="text"
                                             value={ai.model}
-                                            onChange={(e) => setAi({ ...ai, model: e.target.value })}
-                                            onBlur={() => setAIConfig(ai)}
+                                            onChange={(e) => updateAi({ model: e.target.value })}
                                             placeholder="gpt-4o-mini, claude-haiku-4-5, llama3, …"
                                             className="mt-1 w-full px-3 py-2 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] font-mono"
                                         />
@@ -299,14 +341,31 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                         <input
                                             type="password"
                                             value={ai.apiKey}
-                                            onChange={(e) => setAi({ ...ai, apiKey: e.target.value })}
-                                            onBlur={() => setAIConfig(ai)}
-                                            placeholder="(stored locally)"
+                                            onChange={(e) => updateAi({ apiKey: e.target.value })}
+                                            placeholder="(optional for local providers)"
                                             className="mt-1 w-full px-3 py-2 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] font-mono"
                                         />
                                     </label>
-                                    <p className="text-[11px] text-[var(--text-muted)]">
-                                        Stored in localStorage on this machine only — <strong>not encrypted</strong>. Anyone with access to your user profile can read it. Use a local provider (e.g. Ollama at <code>http://localhost:11434/v1/chat/completions</code>) for full privacy.
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={testAIConnection}
+                                            disabled={!aiConfigured || aiTest.state === "testing"}
+                                            className="px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50 transition-colors"
+                                        >
+                                            {aiTest.state === "testing" ? "Testing…" : "Test connection"}
+                                        </button>
+                                        {aiTest.state === "ok" && (
+                                            <span className="text-[12px] text-[var(--status-saved)]">✓ Connection OK</span>
+                                        )}
+                                        {aiTest.state === "error" && (
+                                            <span className="text-[12px] text-[var(--danger)] truncate" title={aiTest.msg}>{aiTest.msg}</span>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                                        <strong>Privacy:</strong> your selected text is sent <strong>unencrypted</strong> to the endpoint you configure above.
+                                        For private notes, use a local provider (e.g. Ollama at <code>http://localhost:11434/v1/chat/completions</code>) so nothing leaves your machine.
+                                        The API key is stored in localStorage on this machine only — <strong>not encrypted</strong>.
                                     </p>
                                 </div>
                             </>

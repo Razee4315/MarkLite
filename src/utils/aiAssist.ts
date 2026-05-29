@@ -100,8 +100,24 @@ export async function runAIAction(
     }
 
     if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`AI request failed (${res.status}): ${body.slice(0, 200)}`);
+        // Map common HTTP statuses to actionable messages instead of dumping a
+        // raw status + body the user can't interpret (AI-04). The body snippet
+        // is appended on a second line for debugging when present.
+        const body = await res.text().catch(() => "");
+        const detail = body.trim().slice(0, 200);
+        let msg: string;
+        if (res.status === 401 || res.status === 403) {
+            msg = "API key invalid or unauthorized — check Settings → AI.";
+        } else if (res.status === 404) {
+            msg = "Endpoint not found (404) — check the URL in Settings → AI.";
+        } else if (res.status === 429) {
+            msg = "Rate limited (429) — wait a moment and try again.";
+        } else if (res.status >= 500) {
+            msg = `AI service unavailable (${res.status}). Try again later.`;
+        } else {
+            msg = `AI request failed (${res.status}).`;
+        }
+        throw new Error(detail ? `${msg}\n${detail}` : msg);
     }
 
     const data = await res.json();
