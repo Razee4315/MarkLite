@@ -580,10 +580,13 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
     // one line off from the click. Setting overlay.scrollTop in the same
     // synchronous turn as the scroll event keeps the two layers in
     // lockstep, so clicks always land where the user expects.
+    const scrollRafRef = useRef(0);
     const handleTextareaScroll = useCallback((e: React.UIEvent<HTMLTextAreaElement>) => {
         const t = e.currentTarget;
         const top = t.scrollTop;
         const left = t.scrollLeft;
+        // Synchronous mirror — caret/glyph alignment depends on the overlay and
+        // gutter tracking the textarea in the SAME turn as the scroll event.
         if (highlightRef.current) {
             highlightRef.current.scrollTop = top;
             highlightRef.current.scrollLeft = left;
@@ -591,15 +594,22 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
         if (gutterRef.current) {
             gutterRef.current.scrollTop = top;
         }
-        if (onScrollFraction) {
-            const max = t.scrollHeight - t.clientHeight;
-            onScrollFraction(max > 0 ? top / max : 0);
-        }
-        // Virtualization window is recomputed on every scroll event; the
-        // hysteresis inside guarantees we only call setState when the
-        // visible window has genuinely moved.
-        recomputeVisibleRef.current();
+        // Cross-pane fraction notify + virtualization recompute are coalesced to
+        // one per animation frame so fast scrolling doesn't thrash layout (the
+        // synchronous mirror above is intentionally exempt). PREVIEW-04.
+        if (scrollRafRef.current) return;
+        scrollRafRef.current = requestAnimationFrame(() => {
+            scrollRafRef.current = 0;
+            const el = textareaRef.current;
+            if (!el) return;
+            if (onScrollFraction) {
+                const max = el.scrollHeight - el.clientHeight;
+                onScrollFraction(max > 0 ? el.scrollTop / max : 0);
+            }
+            recomputeVisibleRef.current();
+        });
     }, [onScrollFraction]);
+    useEffect(() => () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); }, []);
 
     // Register an imperative scroller so external code (split-view sync) can
     // drive our scroll position by fraction without touching internals.

@@ -712,20 +712,34 @@ function MarkdownPreviewImpl({
         startBodyTransition(() => setRenderedBody(renderBody));
     }, [renderBody]);
 
+    // Cached scroll extent (scrollHeight - clientHeight). Reading scrollHeight in
+    // the scroll handler forces a synchronous reflow on every event; instead we
+    // refresh it via ResizeObserver + on content change and read the cache in the
+    // hot path. PREVIEW-04.
+    const scrollMaxRef = useRef(0);
+    const refreshScrollMax = useCallback(() => {
+        const el = mainRef.current;
+        if (el) scrollMaxRef.current = el.scrollHeight - el.clientHeight;
+    }, []);
+
     // Track scroll: update active-line indicator + report fraction for split-sync.
+    // Coalesced to one update per animation frame so fast scrolling can't fire the
+    // cross-pane sync (and its layout writes) many times per frame. PREVIEW-04.
+    const scrollRafRef = useRef(0);
     const handleScroll = useCallback(() => {
-        const element = mainRef.current;
-        if (!element) return;
-
-        const scrollTop = element.scrollTop;
-        const scrollHeight = element.scrollHeight - element.clientHeight;
-        const fraction = scrollHeight > 0 ? scrollTop / scrollHeight : 0;
-
-        if (onLineChange) {
-            const currentLine = scrollHeight <= 0 ? 1 : Math.max(1, Math.ceil(fraction * lineCount));
-            onLineChange(currentLine);
-        }
-        onScrollFraction?.(fraction);
+        if (scrollRafRef.current) return;
+        scrollRafRef.current = requestAnimationFrame(() => {
+            scrollRafRef.current = 0;
+            const element = mainRef.current;
+            if (!element) return;
+            const max = scrollMaxRef.current;
+            const fraction = max > 0 ? element.scrollTop / max : 0;
+            if (onLineChange) {
+                const currentLine = max <= 0 ? 1 : Math.max(1, Math.ceil(fraction * lineCount));
+                onLineChange(currentLine);
+            }
+            onScrollFraction?.(fraction);
+        });
     }, [lineCount, onLineChange, onScrollFraction]);
 
     // Set up scroll listener
@@ -740,6 +754,21 @@ function MarkdownPreviewImpl({
             element.removeEventListener("scroll", handleScroll);
         };
     }, [handleScroll]);
+
+    // Refresh the cached scroll extent on pane resize (split-divider drag, window
+    // resize) and whenever the rendered body changes height. ResizeObserver fires
+    // on box-size changes; the renderedBody effect covers content growth (which
+    // changes scrollHeight without changing the element's own box). PREVIEW-04.
+    useEffect(() => {
+        refreshScrollMax();
+        const el = mainRef.current;
+        if (!el || typeof ResizeObserver === "undefined") return;
+        const ro = new ResizeObserver(refreshScrollMax);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [refreshScrollMax]);
+    useEffect(() => { refreshScrollMax(); }, [renderedBody, refreshScrollMax]);
+    useEffect(() => () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); }, []);
 
     // Register imperative scroller for split-view sync
     useEffect(() => {
