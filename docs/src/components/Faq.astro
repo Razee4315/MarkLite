@@ -1,0 +1,72 @@
+---
+import { Icon } from "astro-icon/components";
+
+const faqs = [
+  {
+    q: "Is MarkLite really free?",
+    a: "Yes — free for personal use, with no account and no telemetry. It's source-available; commercial use requires written permission from the author.",
+  },
+  {
+    q: "Which platforms are supported?",
+    a: "Prebuilt binaries ship for Windows (10/11) and Linux (.deb, .rpm, .AppImage). macOS isn't prebuilt yet, but Tauri supports it — you can build from source in a couple of commands.",
+  },
+  {
+    q: "Does it send my notes anywhere?",
+    a: "No. MarkLite is a native app that works fully offline and your files stay on your machine. The only network calls are ones you opt into — like connecting an AI provider.",
+  },
+  {
+    q: "Do I need an API key to use the AI features?",
+    a: "Only if you want them. The AI assistant is optional and bring-your-own-model: point it at any OpenAI-compatible endpoint (OpenAI, Gemini, Ollama, llama.cpp). Your key is stored in the OS keychain. Everything else works without it.",
+  },
+  {
+    q: "What Markdown features does it support?",
+    a: "GitHub Flavored Markdown, KaTeX math, mhchem chemistry, Mermaid diagrams, syntax-highlighted code, task lists, tables, wikilinks, slash commands, and frontmatter — rendered live as you type.",
+  },
+  {
+    q: "How is it so small and fast?",
+    a: "It's built with Tauri + Rust instead of bundling a whole browser like Electron apps do, so it starts fast and stays light on memory.",
+  },
+];
+---
+
+<section id="faq" class="py-24 md:py-32">
+  <div class="mx-auto max-w-3xl px-5">
+    <div class="text-center" data-reveal>
+      <p class="eyebrow justify-center">FAQ</p>
+      <h2 class="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">Good questions</h2>
+    </div>
+
+    <div class="mt-12 divide-y divide-line" data-reveal>
+      {faqs.map((f) => (
+        <details class="faq group py-5">
+          <summary
+            class="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-lg font-medium"
+          >
+            {f.q}
+            <Icon
+              name="lucide:plus"
+              class="h-5 w-5 shrink-0 text-fg-dim transition-transform duration-300 group-open:rotate-45"
+            />
+          </summary>
+          <p class="mt-3 text-[15px] leading-relaxed text-fg-muted">{f.a}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<script type="application/ld+json" set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+})} />
+
+<style>
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+</style>

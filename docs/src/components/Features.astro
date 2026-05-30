@@ -1,0 +1,90 @@
+---
+import { Icon } from "astro-icon/components";
+
+const features = [
+  {
+    icon: "lucide:sparkles",
+    title: "AI assistant — Ask & Agent",
+    desc: "Chat about your document, or let Agent mode propose edits as an inline diff you accept or reject — per change. Bring your own model: OpenAI, Gemini, Ollama, llama.cpp.",
+    span: true,
+    accent: "cyan",
+  },
+  {
+    icon: "lucide:columns-2",
+    title: "Reader · Code · Split",
+    desc: "Toggle rendered reading, raw code, and a split view with bidirectional scroll sync.",
+  },
+  {
+    icon: "lucide:sigma",
+    title: "Math & chemistry",
+    desc: "KaTeX for inline and block math, plus mhchem for equations, ions, and isotopes — rare in a lightweight editor.",
+  },
+  {
+    icon: "lucide:workflow",
+    title: "Mermaid diagrams",
+    desc: "Flowcharts, sequence, class, state, gantt, ER, and mindmaps render right in the preview.",
+  },
+  {
+    icon: "lucide:slash",
+    title: "Slash commands",
+    desc: "Type / for headings, lists, tables, math, callouts, and more — no syntax to memorize.",
+  },
+  {
+    icon: "lucide:link",
+    title: "Wikilinks & outline",
+    desc: "[[other-file]] links resolve in the folder, with an outline pane that follows your cursor.",
+  },
+  {
+    icon: "lucide:command",
+    title: "Command palette",
+    desc: "Ctrl+P to jump to any command, file, heading, or toggle. Find & Replace with regex too.",
+  },
+  {
+    icon: "lucide:palette",
+    title: "Themes & typography",
+    desc: "Four themes (Dark, Light, Paper, GitHub), five fonts, three sizes, focus & typewriter modes.",
+  },
+  {
+    icon: "lucide:zap",
+    title: "Native & private",
+    desc: "Built with Tauri + Rust — small, fast, offline. No accounts, no tracking, files stay local.",
+  },
+];
+---
+
+<section id="features" class="relative py-24 md:py-32">
+  <div class="mx-auto max-w-6xl px-5">
+    <div class="max-w-2xl" data-reveal>
+      <p class="eyebrow">Features</p>
+      <h2 class="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">
+        Everything you need, nothing you don't
+      </h2>
+      <p class="mt-4 text-lg text-fg-muted">
+        A focused writing surface with the power features pros expect — and a few you won't find
+        elsewhere.
+      </p>
+    </div>
+
+    <div class="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {features.map((f) => (
+        <article
+          class={`card ring-glow p-6 ${f.span ? "sm:col-span-2" : ""}`}
+          data-reveal
+        >
+          <span
+            class={`inline-flex h-11 w-11 items-center justify-center rounded-xl border border-line ${
+              f.accent === "cyan" ? "text-cyan" : "text-brand"
+            }`}
+            style={`background: color-mix(in srgb, ${
+              f.accent === "cyan" ? "var(--color-cyan)" : "var(--color-brand)"
+            } 12%, transparent)`}
+          >
+            <Icon name={f.icon} class="h-5 w-5" />
+          </span>
+          <h3 class="mt-5 text-lg font-semibold tracking-tight">{f.title}</h3>
+          <p class="mt-2 text-[15px] leading-relaxed text-fg-muted">{f.desc}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

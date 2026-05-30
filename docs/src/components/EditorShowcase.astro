@@ -1,0 +1,49 @@
+---
+import { Image } from "astro:assets";
+import { Icon } from "astro-icon/components";
+import AppWindow from "./AppWindow.astro";
+import showcase from "../assets/screenshots/showcase-dark.png";
+
+const chips = [
+  { icon: "lucide:sigma", label: "KaTeX math + mhchem" },
+  { icon: "lucide:workflow", label: "Mermaid diagrams" },
+  { icon: "lucide:code", label: "Syntax highlighting" },
+];
+---
+
+<section id="editor" class="relative overflow-hidden py-24 md:py-32">
+  <div class="aurora" style="opacity:.25" data-parallax="4"></div>
+  <div class="relative z-10 mx-auto max-w-6xl px-5">
+    <div class="mx-auto max-w-2xl text-center" data-reveal>
+      <p class="eyebrow justify-center">See it in action</p>
+      <h2 class="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">
+        Type Markdown. Watch it <span class="text-gradient">come alive.</span>
+      </h2>
+      <p class="mt-4 text-lg text-fg-muted">
+        Equations, chemical reactions, diagrams, and code — all rendered live in the preview as you
+        write, with the raw source one keystroke away.
+      </p>
+    </div>
+
+    <div class="relative mx-auto mt-14 max-w-5xl" data-reveal>
+      <AppWindow label=".shots / Getting Started.md — Split view">
+        <Image
+          src={showcase}
+          alt="MarkLite preview rendering an integral equation, a balanced chemical reaction, a Mermaid flowchart, and a syntax-highlighted TypeScript code block"
+          widths={[760, 1100, 1600, 1920]}
+          sizes="(max-width: 1024px) 100vw, 1024px"
+          loading="lazy"
+          class="w-full"
+        />
+      </AppWindow>
+
+      <div class="mt-6 flex flex-wrap justify-center gap-2.5">
+        {chips.map((c) => (
+          <span class="pill">
+            <Icon name={c.icon} class="h-4 w-4 text-brand" /> {c.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>

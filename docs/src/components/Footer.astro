@@ -1,0 +1,43 @@
+---
+import { Icon } from "astro-icon/components";
+const base = import.meta.env.BASE_URL;
+const repo = "https://github.com/Razee4315/MarkLite";
+const year = new Date().getFullYear();
+
+const links = [
+  { href: repo, label: "GitHub" },
+  { href: `${repo}/releases`, label: "Releases" },
+  { href: `${repo}/blob/main/CONTRIBUTING.md`, label: "Contribute" },
+  { href: `${repo}/blob/main/LICENSE`, label: "License" },
+  { href: "https://www.linkedin.com/in/saqlainrazee/", label: "LinkedIn" },
+];
+---
+
+<footer class="border-t border-line py-14">
+  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-8 px-5 md:flex-row">
+    <div class="flex items-center gap-3">
+      <img src={`${base}icon.svg`} alt="MarkLite logo" width="30" height="30" class="h-[30px] w-[30px]" />
+      <div>
+        <div class="font-semibold tracking-tight">MarkLite</div>
+        <div class="text-sm text-fg-dim">© {year} Saqlain Abbas · Source-available</div>
+      </div>
+    </div>
+
+    <nav class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+      {links.map((l) => (
+        <a href={l.href} rel="noopener" class="text-fg-muted transition-colors hover:text-fg">
+          {l.label}
+        </a>
+      ))}
+    </nav>
+
+    <a
+      href={repo}
+      rel="noopener"
+      aria-label="Star MarkLite on GitHub"
+      class="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-fg-muted transition-colors hover:border-white/25 hover:text-fg"
+    >
+      <Icon name="lucide:star" class="h-4 w-4" /> Star on GitHub
+    </a>
+  </div>
+</footer>

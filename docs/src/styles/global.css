@@ -1,0 +1,375 @@
+@import "tailwindcss";
+
+/* ============================================================
+   MarkLite — landing page design system
+   Dark, editorial, with the brand's orange (#FF8C00) + cyan (#00E5FF).
+   ============================================================ */
+
+@theme {
+  /* Ink / surfaces — a warm near-black, layered */
+  --color-ink-950: #060608;
+  --color-ink-900: #0a0a0d;
+  --color-ink-850: #0f0f14;
+  --color-ink-800: #14141a;
+  --color-ink-700: #1c1c24;
+  --color-ink-600: #2a2a34;
+
+  --color-line: #20202a;
+  --color-line-soft: #16161d;
+
+  --color-fg: #f7f7fa;
+  --color-fg-muted: #a7a7b4;
+  --color-fg-dim: #6c6c7a;
+
+  /* Brand */
+  --color-brand: #ff8c00;
+  --color-brand-soft: #ffab40;
+  --color-cyan: #00e5ff;
+  --color-cyan-soft: #5cf2ff;
+
+  /* Semantic */
+  --color-ok: #2ea043;
+  --color-warn: #f59e0b;
+
+  /* Typography */
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Easing */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* AI inline-diff palette (mirrors the app's editor diff colors) */
+:root {
+  --diff-add-bg: rgba(46, 160, 67, 0.2);
+  --diff-add-border: #2ea043;
+  --diff-del-bg: rgba(248, 81, 73, 0.18);
+  --diff-del-border: #f85149;
+  --diff-del-text: #ff7b72;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-ink-950);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-brand) 30%, transparent);
+  color: #fff;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* Custom scrollbar — matches the dark surface */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ink-950);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-700);
+  border: 3px solid var(--color-ink-950);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-600);
+}
+
+/* ===== Type helpers ===== */
+.font-serif-display {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, var(--color-brand) 0%, var(--color-brand-soft) 40%, var(--color-cyan) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* ===== Backdrop layers ===== */
+
+/* Animated aurora glow used behind the hero */
+.aurora {
+  position: absolute;
+  inset: -40% -10% auto -10%;
+  height: 80vh;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(70px);
+  opacity: 0.55;
+  background:
+    radial-gradient(40% 50% at 22% 30%, color-mix(in srgb, var(--color-brand) 70%, transparent), transparent 70%),
+    radial-gradient(38% 48% at 78% 28%, color-mix(in srgb, var(--color-cyan) 60%, transparent), transparent 70%),
+    radial-gradient(45% 55% at 50% 70%, color-mix(in srgb, var(--color-brand) 30%, transparent), transparent 75%);
+  animation: aurora-drift 16s var(--ease-out-expo) infinite alternate;
+}
+
+@keyframes aurora-drift {
+  0% { transform: translate3d(-3%, 0, 0) scale(1); }
+  100% { transform: translate3d(3%, 2%, 0) scale(1.1); }
+}
+
+/* Subtle dotted grid */
+.grid-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--color-fg) 6%, transparent) 1px, transparent 0);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+}
+
+/* Film grain for a tactile, premium feel */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ===== Surfaces ===== */
+.card {
+  position: relative;
+  background: linear-gradient(180deg, var(--color-ink-850), var(--color-ink-900));
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+}
+
+.glass {
+  background: color-mix(in srgb, var(--color-ink-900) 70%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.hairline {
+  border: 1px solid var(--color-line);
+}
+
+/* Gradient ring on hover for feature cards */
+.ring-glow {
+  position: relative;
+  isolation: isolate;
+  transition: transform 0.35s var(--ease-out-expo), border-color 0.35s ease;
+}
+.ring-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(130deg, var(--color-brand), transparent 40%, transparent 60%, var(--color-cyan));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  z-index: -1;
+}
+.ring-glow:hover {
+  transform: translateY(-4px);
+}
+.ring-glow:hover::before {
+  opacity: 1;
+}
+
+/* ===== Buttons ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.4rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1;
+  border: 1px solid transparent;
+  transition: transform 0.18s var(--ease-out-expo), box-shadow 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+  white-space: nowrap;
+}
+.btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.btn-primary {
+  color: #1a1000;
+  background: linear-gradient(180deg, var(--color-brand-soft), var(--color-brand));
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--color-brand) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px -8px color-mix(in srgb, var(--color-brand) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.btn-ghost {
+  color: var(--color-fg);
+  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
+  border-color: var(--color-line);
+}
+.btn-ghost:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-fg) 28%, transparent);
+  background: color-mix(in srgb, var(--color-fg) 9%, transparent);
+}
+
+/* ===== Eyebrow / pill ===== */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-fg-dim);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--color-fg-muted);
+  border: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-fg) 4%, transparent);
+}
+
+/* ===== Scroll-reveal (driven by GSAP) =====
+   Only hide when JS is confirmed (the .js class is set synchronously in <head>
+   before first paint). No-JS users — and search crawlers — get visible content. */
+.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(24px);
+  will-change: transform, opacity;
+}
+.js [data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* ===== App window chrome (wraps screenshots + the live mock) ===== */
+.window {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid var(--color-line);
+  background: var(--color-ink-850);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 40px 120px -40px rgba(0, 0, 0, 0.9),
+    0 12px 40px -20px color-mix(in srgb, var(--color-brand) 22%, transparent);
+  overflow: hidden;
+}
+.window-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 38px;
+  padding: 0 0.85rem;
+  border-bottom: 1px solid var(--color-line-soft);
+  background: color-mix(in srgb, var(--color-ink-900) 80%, #000);
+}
+.window-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .aurora {
+    animation: none !important;
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  background: var(--color-brand);
+  vertical-align: text-bottom;
+  margin-left: 1px;
+  animation: blink 1.05s step-end infinite;
+}
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.float {
+  animation: float-y 6s ease-in-out infinite;
+}
+
+/* ===== Lenis smooth scroll ===== */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}

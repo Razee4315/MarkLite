@@ -1,0 +1,38 @@
+---
+import { Icon } from "astro-icon/components";
+const repo = "https://github.com/Razee4315/MarkLite";
+const tech = ["Tauri", "Rust", "React", "TypeScript", "Vite", "CodeMirror 6"];
+---
+
+<section class="relative py-24 md:py-32">
+  <div class="mx-auto max-w-4xl px-5 text-center">
+    <div class="card relative overflow-hidden p-10 md:p-14" data-reveal>
+      <div class="grid-bg" style="opacity:.6"></div>
+      <div class="relative z-10">
+        <p class="eyebrow justify-center">
+          <Icon name="lucide:git-fork" class="h-4 w-4" /> Open source
+        </p>
+        <h2 class="mt-4 text-3xl font-extrabold tracking-tight md:text-4xl">
+          Built in the open — contributions welcome
+        </h2>
+        <p class="mx-auto mt-4 max-w-xl text-lg text-fg-muted">
+          MarkLite is source-available and free for personal use. Star it, file an issue, or pick
+          up a <code class="rounded bg-white/5 px-1.5 py-0.5 text-sm text-brand-soft">good first issue</code>.
+        </p>
+        <div class="mt-8 flex flex-wrap justify-center gap-3">
+          <a href={repo} rel="noopener" class="btn btn-primary text-base">
+            <Icon name="lucide:github" class="h-[18px] w-[18px]" /> View on GitHub
+          </a>
+          <a href={`${repo}/blob/main/CONTRIBUTING.md`} rel="noopener" class="btn btn-ghost text-base">
+            Contributing guide
+          </a>
+        </div>
+        <div class="mt-9 flex flex-wrap justify-center gap-2">
+          {tech.map((t) => (
+            <span class="rounded-full border border-line px-3 py-1 text-xs text-fg-dim">{t}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

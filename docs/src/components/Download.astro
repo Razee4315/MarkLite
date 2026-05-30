@@ -1,0 +1,72 @@
+---
+import { Icon } from "astro-icon/components";
+const releases = "https://github.com/Razee4315/MarkLite/releases/latest";
+const repo = "https://github.com/Razee4315/MarkLite";
+
+const platforms = [
+  {
+    icon: "lucide:monitor",
+    os: "Windows",
+    note: "Windows 10 / 11 (64-bit).",
+    formats: ".exe installer · .msi",
+    href: releases,
+    cta: "Download for Windows",
+    primary: true,
+  },
+  {
+    icon: "lucide:terminal",
+    os: "Linux",
+    note: "Debian/Ubuntu, Fedora, or any distro via AppImage.",
+    formats: ".deb · .rpm · .AppImage",
+    href: releases,
+    cta: "Download for Linux",
+    primary: true,
+  },
+  {
+    icon: "lucide:apple",
+    os: "macOS",
+    note: "No prebuilt binary yet — build from source in a couple of commands.",
+    formats: "Tauri supports macOS — help us ship a build!",
+    href: `${repo}#development`,
+    cta: "Build from source",
+    primary: false,
+  },
+];
+---
+
+<section id="download" class="relative overflow-hidden py-24 md:py-32">
+  <div class="aurora" style="opacity:.3;height:60vh" data-parallax="5"></div>
+  <div class="relative z-10 mx-auto max-w-6xl px-5">
+    <div class="mx-auto max-w-2xl text-center" data-reveal>
+      <p class="eyebrow justify-center">Download</p>
+      <h2 class="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">
+        Get MarkLite — it's free
+      </h2>
+      <p class="mt-4 text-lg text-fg-muted">
+        Free for personal use. Grab the latest release for your platform — no account required.
+      </p>
+    </div>
+
+    <div class="mt-12 grid gap-4 md:grid-cols-3">
+      {platforms.map((p) => (
+        <article class="card flex flex-col p-7" data-reveal>
+          <div class="flex items-center gap-3">
+            <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-line text-fg">
+              <Icon name={p.icon} class="h-5 w-5" />
+            </span>
+            <h3 class="text-xl font-semibold">{p.os}</h3>
+          </div>
+          <p class="mt-4 flex-1 text-[15px] text-fg-muted">{p.note}</p>
+          <a
+            href={p.href}
+            rel="noopener"
+            class={`btn mt-6 w-full justify-center ${p.primary ? "btn-primary" : "btn-ghost"}`}
+          >
+            {p.cta}
+          </a>
+          <p class="mt-3 text-center text-xs text-fg-dim">{p.formats}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,80 @@
+---
+import { Image } from "astro:assets";
+import { Icon } from "astro-icon/components";
+import AppWindow from "./AppWindow.astro";
+import splitDark from "../assets/screenshots/split-dark.png";
+
+const repo = "https://github.com/Razee4315/MarkLite";
+const releases = "https://github.com/Razee4315/MarkLite/releases/latest";
+---
+
+<header id="top" class="relative overflow-hidden pt-32 pb-20 md:pt-40 md:pb-28">
+  <div class="aurora" data-parallax="6"></div>
+  <div class="grid-bg"></div>
+
+  <div class="relative z-10 mx-auto max-w-6xl px-5 text-center">
+    <a
+      href={`${repo}/releases/latest`}
+      rel="noopener"
+      class="pill mb-7 hover:border-white/25"
+      data-reveal
+    >
+      <span class="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-ok)]"></span>
+      v1.0.0 is out · Free &amp; open source
+      <Icon name="lucide:arrow-right" class="h-3.5 w-3.5 opacity-60" />
+    </a>
+
+    <h1
+      class="mx-auto max-w-4xl text-balance text-5xl font-extrabold leading-[1.04] tracking-tight md:text-7xl"
+      data-reveal
+    >
+      The markdown editor that
+      <span class="font-serif-display italic text-gradient">stays out of your way</span>
+    </h1>
+
+    <p class="mx-auto mt-6 max-w-2xl text-balance text-lg text-fg-muted md:text-xl" data-reveal>
+      MarkLite renders your Markdown beautifully while keeping the raw text one keystroke away.
+      Live preview, split view, math, diagrams, and an optional AI assistant — in a fast native
+      app, not a browser tab.
+    </p>
+
+    <div class="mt-9 flex flex-wrap items-center justify-center gap-3" data-reveal>
+      <a href="#download" class="btn btn-primary text-base">
+        <Icon name="lucide:download" class="h-[18px] w-[18px]" /> Download free
+      </a>
+      <a href={repo} rel="noopener" class="btn btn-ghost text-base">
+        <Icon name="lucide:star" class="h-[18px] w-[18px]" /> Star on GitHub
+      </a>
+    </div>
+    <p class="mt-4 text-sm text-fg-dim" data-reveal>
+      No account. No telemetry. Your files stay on your machine.
+    </p>
+  </div>
+
+  <!-- Product shot -->
+  <div class="relative z-10 mx-auto mt-16 max-w-5xl px-5 [perspective:1800px]" data-reveal>
+    <AppWindow label=".shots / Getting Started.md — MarkLite" tilt={true} class="mx-auto">
+      <Image
+        src={splitDark}
+        alt="MarkLite in split view: syntax-highlighted Markdown source on the left, live-rendered preview with a table, task list and callout on the right"
+        widths={[760, 1100, 1600, 1920]}
+        sizes="(max-width: 1024px) 100vw, 1024px"
+        loading="eager"
+        class="w-full"
+      />
+    </AppWindow>
+
+    <!-- floating feature chips -->
+    <div
+      class="float absolute -left-3 top-1/3 hidden rounded-xl border border-line bg-ink-850/90 px-3 py-2 text-xs text-fg-muted shadow-xl backdrop-blur md:flex md:items-center md:gap-2"
+      style="animation-delay:-2s"
+    >
+      <Icon name="lucide:columns-2" class="h-4 w-4 text-brand" /> Split view + scroll sync
+    </div>
+    <div
+      class="float absolute -right-3 bottom-1/4 hidden rounded-xl border border-line bg-ink-850/90 px-3 py-2 text-xs text-fg-muted shadow-xl backdrop-blur md:flex md:items-center md:gap-2"
+    >
+      <Icon name="lucide:sparkles" class="h-4 w-4 text-cyan" /> AI Agent edits
+    </div>
+  </div>
+</header>
