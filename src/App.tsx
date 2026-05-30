@@ -143,6 +143,11 @@ function AppContent() {
   const [wordWrapEnabled, setWordWrapEnabled] = useState<boolean>(() => getWordWrap());
   const [spellCheckEnabled, setSpellCheckEnabled] = useState<boolean>(() => getSpellCheck());
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
+  // True only while the launch-time "restore last file" is still resolving. Lets
+  // us show a neutral splash instead of flashing the WelcomeScreen for a frame
+  // before the restored editor mounts (the "looks broken, then the file appears"
+  // flicker). Starts false when there's nothing to restore.
+  const [booting, setBooting] = useState<boolean>(() => !!getLastFile());
   // Editor selection range. Collapsed (start === end) means no selection;
   // when start < end we surface a "N words selected" chip in the status bar.
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
@@ -359,7 +364,10 @@ function AppContent() {
           if (/too large/i.test(msg)) {
             showToast(`Could not restore last file: ${msg}`, "error");
           }
-        });
+        })
+        .finally(() => setBooting(false));
+    } else {
+      setBooting(false);
     }
     // Run only once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1099,13 +1107,21 @@ function AppContent() {
       />
 
       {!hasFile ? (
-        <WelcomeScreen
-          onOpenFile={handleOpenFile}
-          onNewFile={handleNewFile}
-          onOpenSettings={() => setShowSettings(true)}
-          onFileDrop={handleFileDrop}
-          onOpenRecent={loadFile}
-        />
+        booting ? (
+          // Neutral splash while the last-opened file is being restored — avoids
+          // a one-frame WelcomeScreen flash before the editor mounts.
+          <div className="flex-1 flex items-center justify-center bg-[var(--bg-primary)]">
+            <span className="material-symbols-outlined text-[28px] text-[var(--text-muted)] animate-spin">progress_activity</span>
+          </div>
+        ) : (
+          <WelcomeScreen
+            onOpenFile={handleOpenFile}
+            onNewFile={handleNewFile}
+            onOpenSettings={() => setShowSettings(true)}
+            onFileDrop={handleFileDrop}
+            onOpenRecent={loadFile}
+          />
+        )
       ) : (
         <>
           {/* Split-aware layout. Both views always mounted; CSS toggles their display

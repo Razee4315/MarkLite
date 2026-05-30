@@ -131,8 +131,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
         >
             {/* Header */}
             <div className="h-10 shrink-0 px-3 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-titlebar)]">
-                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] no-select">
-                    <span className="material-symbols-outlined text-[18px] text-[var(--accent)]">auto_awesome</span>
+                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] no-select tracking-tight">
                     <span>AI Assistant</span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -182,10 +181,15 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                         </button>
                     </div>
                 ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center gap-2 text-sm text-[var(--text-secondary)] px-4">
-                        <span className="material-symbols-outlined text-[32px] opacity-40">forum</span>
-                        <p>Ask anything about <strong>{fileName || "this note"}</strong> — summarize it, find something, or get suggestions.</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">Switch to <strong>Agent</strong> mode to make edits — you'll review each change before it's applied.</p>
+                    <div className="flex flex-col items-center justify-center h-full text-center gap-1.5 px-6">
+                        <p className="text-sm font-medium text-[var(--text-primary)]">
+                            {mode === "agent" ? "What should I change?" : "Ask about this note"}
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                            {mode === "agent"
+                                ? "I'll propose edits you can review and accept."
+                                : "Summaries, questions, suggestions — anything."}
+                        </p>
                     </div>
                 ) : (
                     messages.map((m, i) => (
@@ -218,27 +222,30 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
 
             {/* Input */}
             {configured && (
-                <div className="shrink-0 border-t border-[var(--border)] p-2">
-                    <div className="flex items-end gap-2 bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-md)] px-2 py-1.5 focus-within:border-[var(--accent)] transition-colors">
+                <div className="shrink-0 p-3 pt-2">
+                    <div className="ai-composer flex items-end gap-2 bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-lg)] px-3 py-2 shadow-sm transition-all duration-150">
                         <textarea
                             ref={inputRef}
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={onKeyDown}
                             rows={1}
-                            placeholder={mode === "agent" ? "Tell the AI what to change…" : "Ask about this note…"}
-                            className="flex-1 bg-transparent text-sm text-[var(--text-primary)] outline-none resize-none max-h-32 placeholder:text-[var(--text-muted)]"
+                            placeholder={mode === "agent" ? "Describe the change…" : "Ask about this note…"}
+                            className="flex-1 bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none focus:outline-none focus-visible:outline-none resize-none max-h-40 placeholder:text-[var(--text-muted)] py-0.5"
                         />
                         {busy ? (
-                            <button onClick={stop} title="Stop" aria-label="Stop generating" className="w-7 h-7 rounded-[var(--radius-sm)] bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center">
+                            <button onClick={stop} title="Stop" aria-label="Stop generating" className="shrink-0 w-8 h-8 rounded-[var(--radius-md)] bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center hover:bg-[var(--border)] transition-colors">
                                 <span className="material-symbols-outlined text-[18px]">stop</span>
                             </button>
                         ) : (
-                            <button onClick={send} disabled={!input.trim()} title="Send" aria-label="Send" className="w-7 h-7 rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-text)] flex items-center justify-center disabled:opacity-40">
+                            <button onClick={send} disabled={!input.trim()} title="Send (Enter)" aria-label="Send" className="shrink-0 w-8 h-8 rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-text)] flex items-center justify-center enabled:hover:opacity-90 enabled:active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                                 <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
                             </button>
                         )}
                     </div>
+                    <p className="px-1 pt-1.5 text-[10px] text-[var(--text-muted)] no-select">
+                        <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline
+                    </p>
                 </div>
             )}
         </aside>

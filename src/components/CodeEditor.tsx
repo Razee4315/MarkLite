@@ -14,7 +14,7 @@ import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { unifiedMergeView } from "@codemirror/merge";
+import { unifiedMergeView, getChunks } from "@codemirror/merge";
 import { tags as t } from "@lezer/highlight";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage } from "../utils/imageUtils";
 import {
@@ -428,6 +428,17 @@ function CodeEditorImpl({
                 changes: { from: 0, to: view.state.doc.length, insert: reviewDoc },
                 effects: mergeCompRef.current.reconfigure(unifiedMergeView({ original: reviewOriginalRef.current })),
             });
+            // Bring the first proposed change into view so the user sees the diff
+            // immediately instead of having to hunt for it (the change may be far
+            // down a long document). Runs after the merge field computes chunks.
+            requestAnimationFrame(() => {
+                const v = viewRef.current;
+                if (!v) return;
+                const chunks = getChunks(v.state)?.chunks;
+                if (chunks && chunks.length) {
+                    v.dispatch({ effects: EditorView.scrollIntoView(chunks[0].fromB, { y: "center" }) });
+                }
+            });
         } else if (reviewingRef.current) {
             reviewingRef.current = false;
             lastReviewRef.current = null;
@@ -550,12 +561,12 @@ function CodeEditorImpl({
         <main className="flex-1 flex flex-col overflow-hidden relative">
             {reviewActive && (
                 <div className="flex items-center gap-2 px-3 h-9 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--accent)] text-xs no-select">
-                    <span className="material-symbols-outlined text-[16px] text-[var(--accent)]">auto_awesome</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse"></span>
                     <span className="text-[var(--text-primary)] font-medium">AI suggested changes</span>
-                    <span className="text-[var(--text-muted)] hidden sm:inline">— review each, or:</span>
-                    <div className="ml-auto flex items-center gap-2">
-                        <button onClick={rejectAllChanges} className="px-2 py-1 rounded-[var(--radius-sm)] text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors">Reject all</button>
-                        <button onClick={acceptAllChanges} className="px-2 py-1 rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90 transition-colors">Accept all</button>
+                    <span className="text-[var(--text-muted)] hidden sm:inline">— accept or reject each below, or all at once:</span>
+                    <div className="ml-auto flex items-center gap-1.5">
+                        <button onClick={rejectAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors">Reject all</button>
+                        <button onClick={acceptAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90 transition-colors">Accept all</button>
                     </div>
                 </div>
             )}

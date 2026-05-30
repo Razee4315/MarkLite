@@ -817,3 +817,115 @@ select:focus-visible,
 .hljs-literal {
   color: var(--syntax-h1);
 }
+
+/* ===== AI composer (panel input) =====
+   A modern focus state: when the textarea inside is focused, the whole composer
+   lifts with an accent border + soft accent glow. We suppress the textarea's own
+   focus-visible outline (the stray "blue box") since the wrapper owns the ring.
+   color-mix gives a theme-tinted glow from the single --accent variable; on the
+   rare webview that lacks it, the property is ignored and the border still
+   highlights — no broken state. */
+.ai-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.ai-composer textarea:focus,
+.ai-composer textarea:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
+/* ===== AI inline diff review (@codemirror/merge unified view) =====
+   The merge package injects a base theme whose diff tints are ~8% opacity —
+   essentially invisible on the near-black editor background, which made it look
+   like "nothing changed until you Accept all". We override with clearly visible,
+   theme-agnostic green (added) / red (removed) so the proposed edits read at a
+   glance. Selectors carry a `.cm-editor` ancestor + !important so they win over
+   the runtime-injected base theme regardless of stylesheet insertion order. */
+:root {
+  --diff-add-bg: rgba(46, 160, 67, 0.20);
+  --diff-add-border: #2ea043;
+  --diff-del-bg: rgba(248, 81, 73, 0.18);
+  --diff-del-border: #f85149;
+  --diff-del-text: #ff7b72;
+}
+
+[data-theme="light"],
+[data-theme="github"],
+[data-theme="paper"] {
+  --diff-add-bg: rgba(46, 160, 67, 0.16);
+  --diff-add-border: #2da44e;
+  --diff-del-bg: rgba(207, 34, 46, 0.12);
+  --diff-del-border: #cf222e;
+  --diff-del-text: #cf222e;
+}
+
+/* Inserted / changed lines in the proposed document */
+.cm-editor .cm-changedLine,
+.cm-editor .cm-inlineChangedLine,
+.cm-editor .cm-insertedLine {
+  background-color: var(--diff-add-bg) !important;
+  box-shadow: inset 2px 0 0 var(--diff-add-border);
+}
+
+/* Inline changed text — make the highlight solid, not a thin underline */
+.cm-editor .cm-changedText {
+  background: var(--diff-add-bg) !important;
+  border-radius: 2px;
+}
+
+/* Removed text shown as a block widget above the change */
+.cm-editor .cm-deletedChunk {
+  background-color: var(--diff-del-bg) !important;
+  box-shadow: inset 2px 0 0 var(--diff-del-border);
+  padding: 1px 6px;
+}
+
+.cm-editor .cm-deletedChunk .cm-deletedText,
+.cm-editor .cm-deletedLine {
+  background: transparent !important;
+  color: var(--diff-del-text) !important;
+  text-decoration: line-through;
+  text-decoration-color: var(--diff-del-border);
+}
+
+/* Per-change accept / reject controls inside a deleted chunk */
+.cm-editor .cm-deletedChunk .cm-chunkButtons {
+  gap: 4px;
+}
+
+.cm-editor .cm-deletedChunk .cm-chunkButtons button {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  opacity: 0.92;
+  transition: opacity 0.12s ease, transform 0.1s ease;
+}
+
+.cm-editor .cm-deletedChunk .cm-chunkButtons button:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.cm-editor .cm-deletedChunk .cm-chunkButtons button[name="accept"] {
+  background: var(--diff-add-border) !important;
+}
+
+.cm-editor .cm-deletedChunk .cm-chunkButtons button[name="reject"] {
+  background: var(--diff-del-border) !important;
+}
+
+/* Diff gutter markers pick up the accent so they're visible on every theme */
+.cm-editor .cm-changedLineGutter,
+.cm-editor .cm-inlineChangedLineGutter {
+  background-color: var(--diff-add-border);
+}
+
+.cm-editor .cm-deletedLineGutter {
+  background-color: var(--diff-del-border);
+}

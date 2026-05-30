@@ -73,6 +73,14 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 - **Wikilinks** `[[other-file]]` resolve in the same folder
 - **Frontmatter** rendered as an editable Properties card
 
+### AI assistant
+
+- **AI side panel** — open it from the **AI** button next to Export (or `Alt+J` / `⌘J`). A VS Code-style chat docked on the right; content reflows beside it.
+- **Ask mode** — chat about the current document: summarize it, find something, ask questions. Answers stream in live.
+- **Agent mode** — describe a change in plain language and the AI proposes edits. They appear as an **inline diff in the editor** (green added / red removed) which you **review and accept or reject** — per change, or all at once. Nothing is written until you approve.
+- **Selection assist** — select text and press `Alt+J` / `⌘J` to rewrite, shorten, expand, continue, or translate it in place.
+- **Bring your own model** — works with any OpenAI-compatible endpoint: OpenAI, Google Gemini (OpenAI-compat), Ollama, llama.cpp, and more. Configure it in **Settings → AI**; your API key is stored in the OS keychain.
+
 ### Files & workflow
 
 - **Command palette** (Ctrl+P) — search commands, files, headings, toggles
@@ -92,7 +100,6 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 - **Five fonts** — Inter, Merriweather, Lora, Source Serif, Fira Sans
 - **Three font sizes**
 - **WCAG-friendly** — visible focus rings, `prefers-reduced-motion` respected
-- **AI assist** (optional) — Ctrl+J on a selection; configure any OpenAI-compatible endpoint (Ollama, llama.cpp, OpenAI, etc.) in Settings → AI
 
 ### Platform
 
@@ -152,7 +159,7 @@ A few essentials — press `?` inside the app for the full searchable list.
 | Find / Replace | Ctrl+F / Ctrl+H |
 | Bold / Italic / Link | Ctrl+B / Ctrl+I / Ctrl+K |
 | Toggle blockquote | Ctrl+/ |
-| AI assist | Ctrl+J (macOS/Linux) · Alt+J (Windows) |
+| AI panel / assist | Alt+J (Windows) · ⌘J (macOS/Linux) |
 
 ## Tech Stack
 
