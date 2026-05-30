@@ -1,6 +1,6 @@
 [package]
 name = "marklite"
-version = "0.6.22"
+version = "1.0.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

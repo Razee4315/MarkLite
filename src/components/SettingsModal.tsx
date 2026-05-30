@@ -36,18 +36,20 @@ const themes: Array<{ id: Theme; name: string; colors: [string, string]; textCol
     { id: "github", name: "GitHub", colors: ["#ffffff", "#f6f8fa"], textColor: "#1f2328", icon: "github" },
 ];
 
-const fonts: Array<{ id: FontFamily; name: string }> = [
-    { id: "inter", name: "Inter" },
-    { id: "merriweather", name: "Merriweather" },
-    { id: "lora", name: "Lora" },
-    { id: "source-serif", name: "Source Serif" },
-    { id: "fira-sans", name: "Fira Sans" },
+// `stack` mirrors the --font-body value each `[data-font]` sets in index.css, so
+// each option can preview itself in its own typeface.
+const fonts: Array<{ id: FontFamily; name: string; kind: string; stack: string }> = [
+    { id: "inter", name: "Inter", kind: "Sans-serif", stack: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+    { id: "merriweather", name: "Merriweather", kind: "Serif", stack: "'Merriweather', Georgia, 'Times New Roman', serif" },
+    { id: "lora", name: "Lora", kind: "Serif", stack: "'Lora', Georgia, 'Times New Roman', serif" },
+    { id: "source-serif", name: "Source Serif", kind: "Serif", stack: "'Source Serif 4', Georgia, 'Times New Roman', serif" },
+    { id: "fira-sans", name: "Fira Sans", kind: "Sans-serif", stack: "'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
 ];
 
-const fontSizes: Array<{ id: FontSize; name: string }> = [
-    { id: "small", name: "Small" },
-    { id: "medium", name: "Medium" },
-    { id: "large", name: "Large" },
+const fontSizes: Array<{ id: FontSize; name: string; sample: number }> = [
+    { id: "small", name: "Small", sample: 13 },
+    { id: "medium", name: "Medium", sample: 16 },
+    { id: "large", name: "Large", sample: 19 },
 ];
 
 interface ToggleRowProps {
@@ -64,14 +66,18 @@ function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
             role="switch"
             aria-checked={checked}
             onClick={() => onChange(!checked)}
-            className="w-full flex items-center justify-between gap-4 px-3 py-2.5 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] transition-colors text-left"
+            className="group w-full flex items-center justify-between gap-4 px-3.5 py-3 hover:bg-[var(--bg-hover)] transition-colors text-left"
         >
             <div className="flex flex-col items-start min-w-0">
-                <span className="text-sm text-[var(--text-primary)]">{label}</span>
-                <span className="text-[11px] text-[var(--text-muted)]">{description}</span>
+                <span className="text-sm font-medium text-[var(--text-primary)]">{label}</span>
+                <span className="text-[11px] text-[var(--text-muted)] mt-0.5">{description}</span>
             </div>
-            <span className={`relative inline-block w-9 h-5 rounded-full shrink-0 transition-colors ${checked ? "bg-[var(--accent)]" : "bg-[var(--border)]"}`}>
-                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? "translate-x-4" : ""}`} />
+            <span
+                className={`relative inline-block w-[42px] h-[24px] rounded-full shrink-0 transition-colors duration-200 ${checked ? "bg-[var(--accent)]" : "bg-[var(--text-muted)]/45 group-hover:bg-[var(--text-muted)]/60"}`}
+            >
+                <span
+                    className={`absolute top-[3px] left-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.3)] transition-transform duration-200 ease-out ${checked ? "translate-x-[18px]" : "translate-x-0"}`}
+                />
             </span>
         </button>
     );
@@ -236,33 +242,50 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     <section>
                                         <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Font</h3>
                                         <div className="grid grid-cols-2 gap-2">
-                                            {fonts.map((f) => (
-                                                <button
-                                                    key={f.id}
-                                                    onClick={() => setFont(f.id)}
-                                                    className={`px-3 py-2 rounded-[var(--radius-md)] text-sm text-left transition-colors ${font === f.id
-                                                        ? "bg-[var(--accent)] text-[var(--accent-text)]"
-                                                        : "hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
-                                                        }`}
-                                                >{f.name}</button>
-                                            ))}
+                                            {fonts.map((f) => {
+                                                const active = font === f.id;
+                                                return (
+                                                    <button
+                                                        key={f.id}
+                                                        onClick={() => setFont(f.id)}
+                                                        aria-pressed={active}
+                                                        className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-[var(--radius-md)] border text-left transition-all ${active
+                                                            ? "border-[var(--accent)] bg-[var(--bg-hover)] ring-1 ring-[var(--accent)]"
+                                                            : "border-[var(--border)] hover:border-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+                                                            }`}
+                                                    >
+                                                        <span className="min-w-0">
+                                                            <span className="block text-[15px] leading-tight text-[var(--text-primary)] truncate" style={{ fontFamily: f.stack }}>{f.name}</span>
+                                                            <span className="block text-[10px] text-[var(--text-muted)] mt-0.5">{f.kind}</span>
+                                                        </span>
+                                                        {active && <span className="material-symbols-outlined text-[18px] text-[var(--accent)] shrink-0">check</span>}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </section>
                                 )}
                                 {matches("size") && (
                                     <section>
                                         <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Font size</h3>
-                                        <div className="flex gap-2">
-                                            {fontSizes.map((s) => (
-                                                <button
-                                                    key={s.id}
-                                                    onClick={() => setFontSize(s.id)}
-                                                    className={`flex-1 px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors ${fontSize === s.id
-                                                        ? "bg-[var(--accent)] text-[var(--accent-text)]"
-                                                        : "hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
-                                                        }`}
-                                                >{s.name}</button>
-                                            ))}
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {fontSizes.map((s) => {
+                                                const active = fontSize === s.id;
+                                                return (
+                                                    <button
+                                                        key={s.id}
+                                                        onClick={() => setFontSize(s.id)}
+                                                        aria-pressed={active}
+                                                        className={`flex flex-col items-center justify-center gap-1 py-3 rounded-[var(--radius-md)] border transition-all ${active
+                                                            ? "border-[var(--accent)] bg-[var(--bg-hover)] ring-1 ring-[var(--accent)]"
+                                                            : "border-[var(--border)] hover:border-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+                                                            }`}
+                                                    >
+                                                        <span className="leading-none text-[var(--text-primary)]" style={{ fontSize: s.sample }}>Aa</span>
+                                                        <span className="text-[11px] text-[var(--text-secondary)]">{s.name}</span>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </section>
                                 )}
@@ -270,7 +293,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         )}
 
                         {section === "editor" && (
-                            <>
+                            <div className="rounded-[var(--radius-lg)] border border-[var(--border)] divide-y divide-[var(--border-subtle)] overflow-hidden">
                                 {matches("typewriter") && (
                                     <ToggleRow label="Typewriter mode" description="Keep caret vertically centered" checked={typewriter}
                                         onChange={(v) => { setTypewriterLocal(v); setTypewriterMode(v); fire("marklite:typewriter-toggle", v); }} />
@@ -287,7 +310,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     <ToggleRow label="Spell check" description="Underline misspelled words while you type" checked={spellCheck}
                                         onChange={(v) => { setSpellCheckLocal(v); setSpellCheck(v); fire("marklite:spellcheck-toggle", v); }} />
                                 )}
-                            </>
+                            </div>
                         )}
 
                         {section === "ai" && (

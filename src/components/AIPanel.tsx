@@ -45,6 +45,18 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
     }, [messages]);
     useEffect(() => () => abortRef.current?.abort(), []);
 
+    // Auto-grow the composer as the user types more lines (up to a max, then
+    // scroll). Without this the single-row textarea just scrolls internally and
+    // hides earlier lines. Reset to one row when cleared.
+    const AI_INPUT_MAX_PX = 168;
+    useEffect(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = Math.min(el.scrollHeight, AI_INPUT_MAX_PX) + "px";
+        el.style.overflowY = el.scrollHeight > AI_INPUT_MAX_PX ? "auto" : "hidden";
+    }, [input]);
+
     const send = useCallback(async () => {
         const text = input.trim();
         if (!text || busy) return;
@@ -231,7 +243,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                             onKeyDown={onKeyDown}
                             rows={1}
                             placeholder={mode === "agent" ? "Describe the change…" : "Ask about this note…"}
-                            className="flex-1 bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none focus:outline-none focus-visible:outline-none resize-none max-h-40 placeholder:text-[var(--text-muted)] py-0.5"
+                            className="flex-1 block w-full bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none focus:outline-none focus-visible:outline-none resize-none placeholder:text-[var(--text-muted)] py-0.5"
                         />
                         {busy ? (
                             <button onClick={stop} title="Stop" aria-label="Stop generating" className="shrink-0 w-8 h-8 rounded-[var(--radius-md)] bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center hover:bg-[var(--border)] transition-colors">

@@ -14,7 +14,7 @@ import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { unifiedMergeView, getChunks } from "@codemirror/merge";
+import { unifiedMergeView, getChunks, getOriginalDoc } from "@codemirror/merge";
 import { tags as t } from "@lezer/highlight";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage } from "../utils/imageUtils";
 import {
@@ -242,9 +242,20 @@ function CodeEditorImpl({
         ]));
 
         const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
-            // Suppress propagation while an AI review is active — the doc shows the
-            // PROPOSED text then, which mustn't be committed until accept/reject.
-            if (update.docChanged && !reviewingRef.current) {
+            if (reviewingRef.current) {
+                // During an AI review the editor shows the full PROPOSED text, but
+                // the preview should show "original + the changes accepted so far".
+                // @codemirror/merge's acceptChunk folds an accepted change into its
+                // original document (rejectChunk reverts the editor doc instead), so
+                // getOriginalDoc() IS exactly that running result — sync it to the
+                // preview so accepting/rejecting a single change updates it live.
+                let accepted: string | null = null;
+                try { accepted = getOriginalDoc(update.state).toString(); } catch { /* merge field not ready */ }
+                if (accepted !== null && accepted !== lastEmittedRef.current) {
+                    lastEmittedRef.current = accepted;
+                    onChangeRef.current?.(accepted);
+                }
+            } else if (update.docChanged) {
                 const value = update.state.doc.toString();
                 lastEmittedRef.current = value;
                 onChangeRef.current?.(value);
@@ -471,7 +482,10 @@ function CodeEditorImpl({
             effects: mergeCompRef.current.reconfigure([]),
         });
         lastEmittedRef.current = orig;
-        onReviewResolve?.(null);
+        // Pass the original explicitly (not null): the preview was live-tracking the
+        // accepted-so-far document during review, so we must reset it all the way
+        // back, not leave it on a partially-accepted state.
+        onReviewResolve?.(orig);
     }, [onReviewResolve]);
 
     // Scroll-fraction sync (rAF-throttled — PREVIEW-04) + imperative scroller.
