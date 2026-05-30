@@ -48,7 +48,9 @@ const faqs = [
               class="h-5 w-5 shrink-0 text-fg-dim transition-transform duration-300 group-open:rotate-45"
             />
           </summary>
-          <p class="mt-3 text-[15px] leading-relaxed text-fg-muted">{f.a}</p>
+          <div class="faq-content overflow-hidden">
+            <p class="pt-3 text-[15px] leading-relaxed text-fg-muted">{f.a}</p>
+          </div>
         </details>
       ))}
     </div>
@@ -64,6 +66,44 @@ const faqs = [
     acceptedAnswer: { "@type": "Answer", text: f.a },
   })),
 })} />
+
+<script>
+  // Smooth open/close for the native <details> accordion via the Web Animations
+  // API. Falls back to the instant native toggle under reduced-motion.
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll<HTMLDetailsElement>("details.faq").forEach((d) => {
+    const summary = d.querySelector("summary");
+    const content = d.querySelector<HTMLElement>(".faq-content");
+    if (!summary || !content) return;
+    let anim: Animation | null = null;
+    const easing = "cubic-bezier(0.16, 1, 0.3, 1)";
+
+    summary.addEventListener("click", (e) => {
+      if (reduce) return; // native toggle
+      e.preventDefault();
+      anim?.cancel();
+      if (!d.open) {
+        d.open = true;
+        const h = content.offsetHeight;
+        anim = content.animate(
+          [{ height: "0px", opacity: 0 }, { height: `${h}px`, opacity: 1 }],
+          { duration: 300, easing },
+        );
+        anim.onfinish = () => (content.style.height = "");
+      } else {
+        const h = content.offsetHeight;
+        anim = content.animate(
+          [{ height: `${h}px`, opacity: 1 }, { height: "0px", opacity: 0 }],
+          { duration: 240, easing },
+        );
+        anim.onfinish = () => {
+          d.open = false;
+          content.style.height = "";
+        };
+      }
+    });
+  });
+</script>
 
 <style>
   .faq summary::-webkit-details-marker {

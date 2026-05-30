@@ -112,11 +112,29 @@ canvas {
 }
 
 .text-gradient {
-  background: linear-gradient(100deg, var(--color-brand) 0%, var(--color-brand-soft) 40%, var(--color-cyan) 100%);
+  /* Warm -> light -> cool, routed through a light midtone so orange never
+     blends into cyan through a muddy grey-green. */
+  background: linear-gradient(100deg, #ff8c00 0%, #ffb15a 28%, #ffe1bf 47%, #bfeef2 62%, #38d9f0 82%, #00e5ff 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+}
+
+/* Slow flowing variant for the hero headline (palindrome gradient loops seamlessly) */
+.text-gradient-flow {
+  background-image: linear-gradient(100deg, #ff8c00, #ffb15a, #ffe1bf, #bfeef2, #00e5ff, #bfeef2, #ffe1bf, #ffb15a, #ff8c00);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  will-change: background-position;
+  animation: text-flow 12s linear infinite;
+}
+@keyframes text-flow {
+  from { background-position: 0% 50%; }
+  to { background-position: -200% 50%; }
 }
 
 .text-balance {
@@ -133,11 +151,11 @@ canvas {
   pointer-events: none;
   z-index: 0;
   filter: blur(70px);
-  opacity: 0.55;
+  opacity: 0.7;
   background:
-    radial-gradient(40% 50% at 22% 30%, color-mix(in srgb, var(--color-brand) 70%, transparent), transparent 70%),
-    radial-gradient(38% 48% at 78% 28%, color-mix(in srgb, var(--color-cyan) 60%, transparent), transparent 70%),
-    radial-gradient(45% 55% at 50% 70%, color-mix(in srgb, var(--color-brand) 30%, transparent), transparent 75%);
+    radial-gradient(40% 50% at 22% 28%, color-mix(in srgb, var(--color-brand) 75%, transparent), transparent 70%),
+    radial-gradient(38% 48% at 80% 26%, color-mix(in srgb, var(--color-cyan) 62%, transparent), transparent 70%),
+    radial-gradient(50% 60% at 50% 72%, color-mix(in srgb, var(--color-brand) 32%, transparent), transparent 75%);
   animation: aurora-drift 16s var(--ease-out-expo) infinite alternate;
 }
 
@@ -155,6 +173,24 @@ canvas {
   background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--color-fg) 6%, transparent) 1px, transparent 0);
   background-size: 34px 34px;
   mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+}
+
+/* Cursor-reactive glow in the hero — positioned by motion.ts on pointer move */
+.hero-spot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 620px;
+  height: 620px;
+  margin: -310px 0 0 -310px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-brand) 18%, transparent), transparent 62%);
+  filter: blur(40px);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  will-change: transform;
 }
 
 /* Film grain for a tactile, premium feel */

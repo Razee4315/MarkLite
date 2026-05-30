@@ -92,6 +92,21 @@ export function initMotion(): void {
     }
   }
 
+  /* ---- Cursor-reactive glow in the hero ---- */
+  const spot = document.querySelector<HTMLElement>("[data-hero-spot]");
+  const hero = document.querySelector<HTMLElement>("#top");
+  if (spot && hero && window.matchMedia("(pointer: fine)").matches) {
+    const xTo = gsap.quickTo(spot, "x", { duration: 0.7, ease: "power3.out" });
+    const yTo = gsap.quickTo(spot, "y", { duration: 0.7, ease: "power3.out" });
+    hero.addEventListener("pointermove", (e) => {
+      const r = hero.getBoundingClientRect();
+      xTo(e.clientX - r.left);
+      yTo(e.clientY - r.top);
+      spot.style.opacity = "1";
+    });
+    hero.addEventListener("pointerleave", () => (spot.style.opacity = "0"));
+  }
+
   /* Recalculate once fonts settle to avoid trigger drift */
   if (document.fonts?.ready) document.fonts.ready.then(() => ScrollTrigger.refresh());
 }
