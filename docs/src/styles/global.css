@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 /* ============================================================
-   MarkLite — landing page design system
+   MarkLite, landing page design system
    Dark, editorial, with the brand's orange (#FF8C00) + cyan (#00E5FF).
    ============================================================ */
 
 @theme {
-  /* Ink / surfaces — a warm near-black, layered */
+  /* Ink / surfaces, a warm near-black, layered */
   --color-ink-950: #060608;
   --color-ink-900: #0a0a0d;
   --color-ink-850: #0f0f14;
@@ -87,7 +87,7 @@ canvas {
   max-width: 100%;
 }
 
-/* Custom scrollbar — matches the dark surface */
+/* Custom scrollbar, matches the dark surface */
 ::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -175,7 +175,7 @@ canvas {
   mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
 }
 
-/* Cursor-reactive glow in the hero — positioned by motion.ts on pointer move */
+/* Cursor-reactive glow in the hero, positioned by motion.ts on pointer move */
 .hero-spot {
   position: absolute;
   top: 0;
@@ -314,7 +314,7 @@ canvas {
 
 /* ===== Scroll-reveal (driven by GSAP) =====
    Only hide when JS is confirmed (the .js class is set synchronously in <head>
-   before first paint). No-JS users — and search crawlers — get visible content. */
+   before first paint). No-JS users, and search crawlers, get visible content. */
 .js [data-reveal] {
   opacity: 0;
   transform: translateY(24px);

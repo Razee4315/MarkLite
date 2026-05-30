@@ -9,7 +9,7 @@ interface Props {
 }
 
 const {
-  title = "MarkLite — The minimal markdown editor that stays out of your way",
+  title = "MarkLite: The minimal markdown editor that stays out of your way",
   description = "A fast, native, open-source Markdown editor with live preview, split view, KaTeX math, chemistry equations, Mermaid diagrams, slash commands, and an optional AI assistant. Free for Windows & Linux. Built with Tauri + Rust + React.",
 } = Astro.props;
 
@@ -47,7 +47,7 @@ const version = "1.0.0";
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="MarkLite" />
-    <meta property="og:title" content="MarkLite — Minimal Open-Source Markdown Editor" />
+    <meta property="og:title" content="MarkLite: Minimal Open-Source Markdown Editor" />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
@@ -56,11 +56,11 @@ const version = "1.0.0";
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="MarkLite — Minimal Open-Source Markdown Editor" />
+    <meta name="twitter:title" content="MarkLite: Minimal Open-Source Markdown Editor" />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
 
-    <!-- Structured data — only facts we can stand behind, no fabricated ratings. -->
+    <!-- Structured data, only facts we can stand behind, no fabricated ratings. -->
     <script type="application/ld+json" set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
