@@ -23,6 +23,10 @@
   <a href="CONTRIBUTING.md"><b>Contribute</b></a>
 </p>
 
+<p align="center">
+  <img src="images/split-view.png" width="860" alt="MarkLite in split view — Markdown source on the left, live preview with a table, task list and callout on the right">
+</p>
+
 ## Why MarkLite?
 
 As a developer, I frequently work with markdown files for documentation, notes, and project READMEs. The frustration of opening `.md` files in Notepad or basic text editors, only to see raw, unformatted text with all the symbols and syntax cluttering the content, inspired me to build MarkLite.
@@ -31,37 +35,25 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 
 ## Screenshots
 
-### Themes
-
-| Dark Theme | Light Theme |
-|:----------:|:-----------:|
-| <img src="images/black-theme.png" width="400" alt="Dark Theme"> | <img src="images/white-theme.png" width="400" alt="Light Theme"> |
+**Math, chemistry, diagrams, and code — all rendered live as you type.**
 
 <p align="center">
-  <img src="images/paper-theme.png" width="500" alt="Paper Theme">
-  <br>
-  <em>Paper Theme</em>
+  <img src="images/showcase.png" width="860" alt="MarkLite preview rendering an integral equation, a balanced chemical reaction, a Mermaid flowchart, and a syntax-highlighted code block">
 </p>
 
-### Features in Action
+### Four themes
 
-<p align="center">
-  <img src="images/code-mode.png" width="600" alt="Code Mode">
-  <br>
-  <em>Code Mode with Syntax Highlighting</em>
-</p>
+| Dark | Light |
+|:----:|:-----:|
+| <img src="images/theme-dark.png" width="420" alt="MarkLite Dark theme"> | <img src="images/theme-light.png" width="420" alt="MarkLite Light theme"> |
+| **Paper** | **GitHub** |
+| <img src="images/theme-paper.png" width="420" alt="MarkLite Paper theme"> | <img src="images/theme-github.png" width="420" alt="MarkLite GitHub theme"> |
 
-<p align="center">
-  <img src="images/folder-with-reader-mode.png" width="600" alt="File Explorer">
-  <br>
-  <em>File Explorer Panel</em>
-</p>
+### File explorer &amp; command palette
 
-<p align="center">
-  <img src="images/table-of-content-with-reader-mode.png" width="600" alt="Table of Contents">
-  <br>
-  <em>Table of Contents Panel</em>
-</p>
+| File explorer | Command palette |
+|:-------------:|:---------------:|
+| <img src="images/file-explorer.png" width="420" alt="MarkLite file explorer with reader mode"> | <img src="images/command-palette.png" width="420" alt="MarkLite command palette"> |
 
 ## Features
 
