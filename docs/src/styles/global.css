@@ -301,21 +301,6 @@ canvas {
     0 12px 40px -20px color-mix(in srgb, var(--color-brand) 22%, transparent);
   overflow: hidden;
 }
-.window-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  height: 38px;
-  padding: 0 0.85rem;
-  border-bottom: 1px solid var(--color-line-soft);
-  background: color-mix(in srgb, var(--color-ink-900) 80%, #000);
-}
-.window-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 999px;
-}
-
 /* ===== Reduced motion ===== */
 @media (prefers-reduced-motion: reduce) {
   html {

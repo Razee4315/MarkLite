@@ -1,20 +1,14 @@
 ---
+// Frame for product screenshots and the AI mock. The captured screenshots
+// already include MarkLite's own title bar + window controls, so this is just
+// a rounded, shadowed bezel — no duplicate (and non-native) chrome on top.
 interface Props {
-  label?: string;
+  label?: string; // accepted for caller compatibility; not rendered
   class?: string;
-  tilt?: boolean;
 }
-const { label = "MarkLite", class: klass = "", tilt = false } = Astro.props;
+const { class: klass = "" } = Astro.props;
 ---
 
-<div class={`window ${klass}`} data-tilt={tilt ? "" : undefined}>
-  <div class="window-bar no-select">
-    <span class="window-dot" style="background:#ff5f57"></span>
-    <span class="window-dot" style="background:#febc2e"></span>
-    <span class="window-dot" style="background:#28c840"></span>
-    <span class="ml-2 truncate text-xs text-fg-dim">{label}</span>
-  </div>
-  <div class="relative">
-    <slot />
-  </div>
+<div class={`window ${klass}`}>
+  <slot />
 </div>

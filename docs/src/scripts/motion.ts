@@ -92,27 +92,6 @@ export function initMotion(): void {
     }
   }
 
-  /* ---- Subtle 3D tilt on the hero window (pointer only) ---- */
-  if (window.matchMedia("(pointer: fine)").matches) {
-    gsap.utils.toArray<HTMLElement>("[data-tilt]").forEach((el) => {
-      const rotX = gsap.quickTo(el, "rotationX", { duration: 0.6, ease: "power3.out" });
-      const rotY = gsap.quickTo(el, "rotationY", { duration: 0.6, ease: "power3.out" });
-      gsap.set(el, { transformPerspective: 1800, transformOrigin: "center" });
-      const area = el.parentElement || el;
-      area.addEventListener("pointermove", (e) => {
-        const r = area.getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width - 0.5;
-        const py = (e.clientY - r.top) / r.height - 0.5;
-        rotY(px * 6);
-        rotX(-py * 5);
-      });
-      area.addEventListener("pointerleave", () => {
-        rotY(0);
-        rotX(0);
-      });
-    });
-  }
-
   /* Recalculate once fonts settle to avoid trigger drift */
   if (document.fonts?.ready) document.fonts.ready.then(() => ScrollTrigger.refresh());
 }
