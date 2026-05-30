@@ -1,0 +1,25 @@
+{
+  "version": "0.6.21",
+  "description": "A minimal, distraction-free Markdown editor with live preview, math, diagrams, and an optional AI assistant.",
+  "homepage": "https://github.com/Razee4315/MarkLite",
+  "license": "Freeware",
+  "notes": "MarkLite is free for personal use. Commercial use requires permission from the author.",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/Razee4315/MarkLite/releases/download/v0.6.21/MarkLite_0.6.21_x64-setup.exe#/dl.7z",
+      "hash": "2f93b39ab58bb661167a108455c43f7e969cb92419293a0447f2ae64a344e37f"
+    }
+  },
+  "bin": "MarkLite.exe",
+  "shortcuts": [
+    ["MarkLite.exe", "MarkLite"]
+  ],
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/Razee4315/MarkLite/releases/download/v$version/MarkLite_$version_x64-setup.exe#/dl.7z"
+      }
+    }
+  }
+}

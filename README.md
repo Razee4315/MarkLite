@@ -3,7 +3,25 @@
   <h1 align="center">MarkLite</h1>
 </p>
 
-A minimal, distraction-free markdown editor built with Tauri, React, and TypeScript.
+<p align="center">
+  <strong>A minimal, distraction-free markdown editor</strong> — live preview, math, diagrams, and an optional AI assistant. Built with Tauri, React, and TypeScript.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Razee4315/MarkLite/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Razee4315/MarkLite?color=2ea043&label=download"></a>
+  <a href="https://github.com/Razee4315/MarkLite/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Razee4315/MarkLite/total?color=2ea043"></a>
+  <a href="https://github.com/Razee4315/MarkLite/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Razee4315/MarkLite?style=flat"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-555">
+  <img alt="License" src="https://img.shields.io/badge/license-source--available-blue">
+  <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20%2B%20Rust-FFC131">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Razee4315/MarkLite/releases/latest"><b>⬇ Download</b></a> ·
+  <a href="https://razee4315.github.io/MarkLite/"><b>Website</b></a> ·
+  <a href="#features"><b>Features</b></a> ·
+  <a href="CONTRIBUTING.md"><b>Contribute</b></a>
+</p>
 
 ## Why MarkLite?
 
@@ -162,7 +180,14 @@ A few essentials — press `?` inside the app for the full searchable list.
 
 ## Contributing
 
-Contributions are welcome. Please read the [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a pull request.
+Contributions are very welcome — code, docs, bug reports, or ideas.
+
+- 🌱 **New here?** Browse [`good first issue`](https://github.com/Razee4315/MarkLite/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — small, scoped tasks to get started.
+- 🗺️ See the [Roadmap](ROADMAP.md) for where MarkLite is headed and where help is wanted.
+- 📦 Want to help with distribution? See [`packaging/`](packaging/) (winget, Scoop, and more).
+- 📋 Please read the [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before opening a pull request.
+
+Even a ⭐ helps others discover the project.
 
 ## Author
 
