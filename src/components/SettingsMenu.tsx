@@ -6,6 +6,7 @@ const themes: { id: Theme; name: string; colors: [string, string]; textColor: st
     { id: 'light', name: 'Light', colors: ['#ffffff', '#f5f5f5'], textColor: '#171717' },
     { id: 'paper', name: 'Paper', colors: ['#f5f0e6', '#ebe5d8'], textColor: '#3d3d3d' },
     { id: 'github', name: 'GitHub', colors: ['#ffffff', '#f6f8fa'], textColor: '#1f2328', icon: 'github' },
+    { id: "dracula", name: "Dracula", colors: ["#282a36", "#44475a"], textColor: "#f8f8f2",},
 ];
 
 const fonts: { id: FontFamily; name: string; family: string }[] = [

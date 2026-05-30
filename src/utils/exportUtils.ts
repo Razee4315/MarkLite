@@ -69,6 +69,22 @@ const themeColors: Record<Theme, Record<string, string>> = {
         syntaxLink: '#0969da',
         syntaxBold: '#1f2328',
     },
+    dracula: {
+        bgPrimary: '#282a36',
+        bgSecondary: '#343746',
+        textPrimary: '#f8f8f2',
+        textSecondary: '#d6d6d6',
+        border: '#44475a',
+        codeBg: '#21222c',
+        codeText: '#f8f8f2',
+        blockquoteBg: 'rgba(68, 71, 90, 0.35)',
+        accent: '#bd93f9',
+        syntaxH1: '#ff79c6',
+        syntaxH2: '#ff79c6',
+        syntaxH3: '#bd93f9',
+        syntaxLink: '#8be9fd',
+        syntaxBold: '#f8f8f2',
+    },
 };
 
 // Font family definitions

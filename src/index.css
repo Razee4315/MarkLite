@@ -191,6 +191,54 @@
   --selection-text: #ffffff;
 }
 
+/* Dracula Theme */
+[data-theme="dracula"] {
+  --bg-primary: #282a36;
+  --bg-secondary: #343746;
+  --bg-titlebar: #21222c;
+  --bg-editor: #282a36;
+  --bg-gutter: #21222c;
+  --bg-hover: #44475a;
+  --bg-input: #343746;
+
+  --text-primary: #f8f8f2;
+  --text-secondary: #d6d6d6;
+  --text-muted: #6272a4;
+
+  --accent: #bd93f9;
+  --accent-hover: #a679f7;
+  --accent-text: #f8f8f2;
+
+  --border: #44475a;
+  --border-subtle: #3a3d4d;
+
+  --code-bg: #21222c;
+  --code-text: #f8f8f2;
+  --blockquote-bg: rgba(68, 71, 90, 0.35);
+
+  --syntax-h1: #ff79c6;
+  --syntax-h2: #ff79c6;
+  --syntax-h3: #bd93f9;
+  --syntax-link: #8be9fd;
+  --syntax-bold: #f8f8f2;
+  --syntax-list: #ffb86c;
+  --syntax-number: #bd93f9;
+  --syntax-quote: #6272a4;
+  --syntax-code: #50fa7b;
+
+  --status-saved: #50fa7b;
+  --status-unsaved: #ffb86c;
+  --danger: #ff5555;
+
+  --scrollbar-track: #21222c;
+  --scrollbar-thumb: #44475a;
+  --scrollbar-hover: #6272a4;
+
+  --selection-bg: #44475a;
+  --selection-text: #f8f8f2;
+}
+
+
 /* ===== Design Tokens ===== */
 :root {
   /* Radius scale — replace ad-hoc rounded-{lg,xl,full} usage with these */
