@@ -86,6 +86,8 @@ jobs:
             args: ''
           - platform: ubuntu-24.04
             args: ''
+          - platform: macos-latest
+            args: ''
 
     runs-on: ${{ matrix.platform }}
 
@@ -136,6 +138,7 @@ jobs:
             ### Installation
             - **Windows:** `.msi` (recommended) or `.exe` (NSIS installer)
             - **Linux:** `.deb` or `.AppImage`
+            - **macOS:** `.dmg`
 
             See the [CHANGELOG](https://github.com/Razee4315/MarkLite/blob/main/CHANGELOG.md) for details.
           args: ${{ matrix.args }}
