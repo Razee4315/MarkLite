@@ -10,7 +10,7 @@ interface FormatToolbarProps {
     insert: (text: string) => void;
     /** Open the AI assist bubble on the current selection. Renders an AI button
      *  when provided — the primary visible affordance for the AI feature
-     *  (keyboard-only before; see AI-01 in AUDIT.md). */
+     *  (it was keyboard-only before). */
     onAIAssist?: () => void;
 }
 
