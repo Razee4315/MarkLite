@@ -67,6 +67,7 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 - **Slash commands** — type `/` at line start for headings, lists, tables, math, mermaid, callouts, and more
 - **Auto-pair** brackets, quotes, and code marks; **list/quote continuation** on Enter
 - **Tab in tables** moves between cells; auto-creates new rows
+- **Visual table editing**: a toolbar appears when the caret is in a table, with buttons to add or delete rows and columns, set column alignment, and tidy the layout
 - **Find & Replace** (Ctrl+F / Ctrl+H) with regex and match counter
 - **Smart paste** — URL → link, rich HTML → markdown, TSV → GFM table
 

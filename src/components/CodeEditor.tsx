@@ -29,7 +29,9 @@ import { FindReplaceBar } from "./FindReplaceBar";
 import { FormatToolbar } from "./FormatToolbar";
 import { SlashMenu, type SlashCommand } from "./SlashMenu";
 import { AIBubble } from "./AIBubble";
+import { TableToolbar } from "./TableToolbar";
 import { pasteUrlOnSelection, pasteUrlAutolink, pasteTsvAsTable, htmlToMarkdown } from "../utils/smartPaste";
+import { applyTableOp, findTableAt, locateCell, type Align } from "../utils/tableModel";
 import type { Scroller } from "../utils/scrollSync";
 
 interface CodeEditorProps {
@@ -162,6 +164,8 @@ function CodeEditorImpl({
     const [slashQuery, setSlashQuery] = useState("");
     const [aiBubble, setAIBubble] = useState<{ x: number; y: number; selStart: number; selEnd: number; text: string } | null>(null);
     const [reviewActive, setReviewActive] = useState(false);
+    // Floating table toolbar: set when the caret is inside a markdown table.
+    const [tableUI, setTableUI] = useState<{ x: number; y: number; align: Align } | null>(null);
 
     // Latest props read by the once-created CodeMirror extensions, kept in refs so
     // the view never has to be torn down and rebuilt on a callback/flag change.
@@ -267,6 +271,7 @@ function CodeEditorImpl({
                 const sel = update.state.selection.main;
                 onSelectionChangeRef.current?.(sel.from, sel.to);
                 detectSlash(update.view);
+                detectTable(update.view);
                 // Typewriter mode: recenter only while TYPING (docChanged), not on
                 // mouse clicks / arrow navigation — clicking shouldn't yank the
                 // viewport around.
@@ -355,6 +360,21 @@ function CodeEditorImpl({
                 }
             }
         }
+    }
+
+    // Show the floating table toolbar when the caret is inside a markdown table.
+    // Cheap guard first (current line has a pipe) so we only pay the full-doc scan
+    // on the rare pipe-line case, not on every cursor move.
+    function detectTable(view: EditorView) {
+        if (reviewingRef.current) { setTableUI(null); return; }
+        const head = view.state.selection.main.head;
+        if (!view.state.doc.lineAt(head).text.includes("|")) { setTableUI(null); return; }
+        const region = findTableAt(view.state.doc.toString(), head);
+        if (!region) { setTableUI(null); return; }
+        const { colIndex } = locateCell(region, head);
+        const coords = view.coordsAtPos(region.from);
+        if (!coords) { setTableUI(null); return; }
+        setTableUI({ x: coords.left, y: coords.top, align: region.model.aligns[colIndex] ?? "none" });
     }
 
     function handlePaste(event: ClipboardEvent, view: EditorView): boolean {
@@ -577,7 +597,7 @@ function CodeEditorImpl({
                 <div className="flex items-center gap-2 px-3 h-9 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--accent)] text-xs no-select">
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse"></span>
                     <span className="text-[var(--text-primary)] font-medium">AI suggested changes</span>
-                    <span className="text-[var(--text-muted)] hidden sm:inline">— accept or reject each below, or all at once:</span>
+                    <span className="text-[var(--text-muted)] hidden sm:inline">accept or reject each below, or all at once:</span>
                     <div className="ml-auto flex items-center gap-1.5">
                         <button onClick={rejectAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors">Reject all</button>
                         <button onClick={acceptAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90 transition-colors">Accept all</button>
@@ -627,6 +647,20 @@ function CodeEditorImpl({
                             v?.focus();
                         }}
                         onClose={() => setAIBubble(null)}
+                    />
+                )}
+
+                {tableUI && (
+                    <TableToolbar
+                        anchor={{ x: tableUI.x, y: tableUI.y }}
+                        activeAlign={tableUI.align}
+                        onOp={(op) => {
+                            const v = viewRef.current;
+                            if (!v) return;
+                            const r = applyTableOp(toEdState(v), op);
+                            if (r) applyResultToView(v, r);
+                            v.focus();
+                        }}
                     />
                 )}
             </div>
