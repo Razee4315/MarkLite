@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <strong>A minimal, distraction-free markdown editor</strong> — live preview, math, diagrams, and an optional AI assistant. Built with Tauri, React, and TypeScript.
+  <strong>A no-setup Markdown editor</strong>: open a file and write, with live preview, math, chemistry, and diagrams as you type, plus an optional free AI that proposes edits you accept or reject inline. Built with Tauri, React, and TypeScript.
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@
 
 As a developer, I frequently work with markdown files for documentation, notes, and project READMEs. The frustration of opening `.md` files in Notepad or basic text editors, only to see raw, unformatted text with all the symbols and syntax cluttering the content, inspired me to build MarkLite.
 
-I wanted a simple, lightweight solution that renders markdown beautifully while still giving me quick access to the raw code when I need to edit. No bloated features, no complex setup, just a clean interface that lets me focus on my content.
+I wanted something you just open and write in: it renders Markdown beautifully while keeping the raw text one keystroke away. Tools like Obsidian are powerful, but vaults, graphs, and plugins are overkill if you only want to open a file and edit it. MarkLite stays out of that complexity and adds the things I actually reach for: math and chemistry that render live, and an optional free AI (bring your own model) that proposes edits you accept or reject right in the text.
 
 ## Screenshots
 
@@ -197,4 +197,4 @@ Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
 
 ## License
 
-MarkLite is licensed under the **[Apache License 2.0](LICENSE)** — free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.
+MarkLite is licensed under the **[Apache License 2.0](LICENSE)**: free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.
