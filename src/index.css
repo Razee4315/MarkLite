@@ -683,14 +683,42 @@ select:focus-visible,
   color: var(--text-primary);
 }
 
-.markdown-body ul,
-.markdown-body ol {
+/* Tailwind v4 Preflight resets `ul, ol { list-style: none }`, so the markers
+   must be re-declared here or every bullet/number in the preview disappears. */
+.markdown-body ul {
+  list-style-type: disc;
   padding-left: 1.5rem;
   margin-bottom: 1rem;
 }
 
+.markdown-body ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.markdown-body ul ul {
+  list-style-type: circle;
+}
+
+.markdown-body ul ul ul {
+  list-style-type: square;
+}
+
 .markdown-body li {
   margin-bottom: 0.25rem;
+}
+
+.markdown-body li::marker {
+  color: var(--syntax-list);
+}
+
+/* GFM task lists ([ ] / [x]) render as <ul class="contains-task-list"> with a
+   checkbox per item — keep those flush and bullet-free so the checkbox stands
+   alone (GitHub-style), without a stray disc beside it. */
+.markdown-body ul.contains-task-list {
+  list-style-type: none;
+  padding-left: 0;
 }
 
 .markdown-body blockquote {
