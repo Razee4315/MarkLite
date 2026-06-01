@@ -752,13 +752,16 @@ function AppContent() {
         if (s.hasFile) s.handleToggleTOC();
         return;
       }
-      // Ctrl+O - Open file (without Shift)
-      if (e.ctrlKey && !e.shiftKey && e.key === "o") {
+      // Ctrl+O - Open file (without Shift). Match both cases so CapsLock
+      // (where an unshifted key reports uppercase) doesn't dead-zone it.
+      if (e.ctrlKey && !e.shiftKey && (e.key === "o" || e.key === "O")) {
         e.preventDefault();
         s.handleOpenFile();
       }
-      // Ctrl+S - Save file
-      if (e.ctrlKey && !e.shiftKey && e.key === "s") {
+      // Ctrl+S - Save file. Match "s" AND "S": with CapsLock on, an unshifted
+      // Ctrl+S reports e.key === "S", which previously fell through and made
+      // the keypress silently do nothing (while Ctrl+Shift+S still worked).
+      if (e.ctrlKey && !e.shiftKey && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
         if (s.hasFile || s.content) s.handleSaveFile();
       }
@@ -767,13 +770,13 @@ function AppContent() {
         e.preventDefault();
         if (s.hasFile || s.content) s.handleSaveAs();
       }
-      // Ctrl+N - New file
-      if (e.ctrlKey && !e.shiftKey && e.key === "n") {
+      // Ctrl+N - New file (case-insensitive for the CapsLock case)
+      if (e.ctrlKey && !e.shiftKey && (e.key === "n" || e.key === "N")) {
         e.preventDefault();
         s.handleNewFile();
       }
-      // Ctrl+E - Toggle preview/code mode (without Shift)
-      if (e.ctrlKey && !e.shiftKey && e.key === "e") {
+      // Ctrl+E - Toggle preview/code mode (without Shift, case-insensitive)
+      if (e.ctrlKey && !e.shiftKey && (e.key === "e" || e.key === "E")) {
         e.preventDefault();
         if (s.hasFile) s.handleToggleMode();
       }
