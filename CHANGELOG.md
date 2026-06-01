@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Heading anchor links give feedback.** Clicking the link icon next to a
   heading now copies a section link and shows a checkmark, instead of appearing
   to do nothing when the heading is already at the top of the view.
+- **Alt+J opens the AI side panel.** With no text selected it now opens the
+  docked AI panel (previously it only opened the inline selection bubble); with
+  a selection it still opens selection-assist in place.
 
 ### Fixed — Click after scroll lands on the right line
 

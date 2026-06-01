@@ -292,6 +292,9 @@ function AppContent() {
       ["marklite:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
       // Opened from the title-bar settings dropdown's "More settings…" entry.
       ["marklite:open-settings", () => setShowSettings(true)],
+      // Alt+J with no selection opens the docked AI side panel. The editor's
+      // ai-assist handler decides bubble (selection) vs panel (no selection).
+      ["marklite:toggle-ai-panel", () => setShowAIPanel((v) => !v)],
     ];
     handlers.forEach(([k, h]) => window.addEventListener(k, h));
 

@@ -543,9 +543,22 @@ function CodeEditorImpl({
         return () => registerScroller(null);
     }, [registerScroller]);
 
-    // Let App-level surfaces (command palette) open the AI bubble.
+    // Alt+J (and the command palette's "AI assist") is selection-aware, matching
+    // the docs: with text selected it opens the inline selection-assist bubble;
+    // with no selection it opens the docked AI side panel (chat about the doc).
+    // App owns the panel's open state, so we ask it to toggle via an event.
     useEffect(() => {
-        const handler = () => { viewRef.current?.focus(); openAIBubble(); };
+        const handler = () => {
+            const view = viewRef.current;
+            if (!view) return;
+            const sel = view.state.selection.main;
+            if (sel.from !== sel.to) {
+                view.focus();
+                openAIBubble();
+            } else {
+                window.dispatchEvent(new CustomEvent("marklite:toggle-ai-panel"));
+            }
+        };
         window.addEventListener("marklite:ai-assist", handler);
         return () => window.removeEventListener("marklite:ai-assist", handler);
     }, [openAIBubble]);
