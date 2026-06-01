@@ -11,10 +11,12 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
 import { ModeToggle, type ViewMode } from "./components/ModeToggle";
-import { Toast, ToastType } from "./components/Toast";
+import { Toast } from "./components/Toast";
 import { SplitDivider } from "./components/SplitDivider";
 import { createScrollSync } from "./utils/scrollSync";
 import { type PaletteCommand } from "./components/CommandPalette";
+import { useToast } from "./hooks/useToast";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -167,8 +169,8 @@ function AppContent() {
   // Preview scroll position
   const [previewLine, setPreviewLine] = useState(1);
 
-  // Toast notification state
-  const [toast, setToast] = useState<{ message: string; isVisible: boolean; type: ToastType }>({ message: '', isVisible: false, type: 'success' });
+  // Toast notifications (state + show/hide helpers live in a hook).
+  const { toast, showToast, hideToast } = useToast();
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
@@ -241,11 +243,6 @@ function AppContent() {
   );
   // Average adult reading speed for prose: ~200 wpm.
   const readingTimeMin = useMemo(() => wordCount / 200, [wordCount]);
-
-  // Show toast helper
-  const showToast = useCallback((message: string, type: ToastType = 'success') => {
-    setToast({ message, isVisible: true, type });
-  }, []);
 
   // Load file from path (with unsaved changes check)
   const loadFileDirect = useCallback(async (path: string) => {
@@ -712,131 +709,15 @@ function AppContent() {
     [showToast]
   );
 
-  // Hide toast
-  const hideToast = useCallback(() => {
-    // Bail out when the toast is already hidden — without this guard, a
-    // duplicate hide call (e.g. from a quick second toast cancelling the
-    // first) allocates a fresh object even though `isVisible: false` was
-    // already true, triggering a Toast re-render that schedules a fresh
-    // pair of fade/hide timers.
-    setToast(prev => prev.isVisible ? { ...prev, isVisible: false } : prev);
-  }, []);
-
-  // Keyboard shortcuts
-  // Keyboard shortcut handler. Mounted once on app start; reads the latest
-  // values for handlers + hasFile/content via a ref so the listener doesn't
-  // need to be removed and re-added on every keystroke (which the previous
-  // dep-array form did because `content` was listed as a dep).
-  const shortcutsRef = useRef({
+  // App-wide keyboard shortcuts (window-level, mounted once). See the hook.
+  useGlobalShortcuts({
     handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile,
     handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
+    openCheatsheet: () => setShowCheatsheet(true),
+    openPalette: () => setShowPalette(true),
+    openSettings: () => setShowSettings(true),
     hasFile, content,
   });
-  shortcutsRef.current = {
-    handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile,
-    handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
-    hasFile, content,
-  };
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const s = shortcutsRef.current;
-      // Ctrl+Shift+E - Toggle file explorer (check before Ctrl+E)
-      if (e.ctrlKey && e.shiftKey && e.key === "E") {
-        e.preventDefault();
-        if (s.hasFile) s.handleToggleFileExplorer();
-        return;
-      }
-      // Ctrl+Shift+O - Toggle TOC (check before Ctrl+O)
-      if (e.ctrlKey && e.shiftKey && e.key === "O") {
-        e.preventDefault();
-        if (s.hasFile) s.handleToggleTOC();
-        return;
-      }
-      // Ctrl+O - Open file (without Shift). Match both cases so CapsLock
-      // (where an unshifted key reports uppercase) doesn't dead-zone it.
-      if (e.ctrlKey && !e.shiftKey && (e.key === "o" || e.key === "O")) {
-        e.preventDefault();
-        s.handleOpenFile();
-      }
-      // Ctrl+S - Save file. Match "s" AND "S": with CapsLock on, an unshifted
-      // Ctrl+S reports e.key === "S", which previously fell through and made
-      // the keypress silently do nothing (while Ctrl+Shift+S still worked).
-      if (e.ctrlKey && !e.shiftKey && (e.key === "s" || e.key === "S")) {
-        e.preventDefault();
-        if (s.hasFile || s.content) s.handleSaveFile();
-      }
-      // Ctrl+Shift+S - Save As
-      if (e.ctrlKey && e.shiftKey && (e.key === "s" || e.key === "S")) {
-        e.preventDefault();
-        if (s.hasFile || s.content) s.handleSaveAs();
-      }
-      // Ctrl+N - New file (case-insensitive for the CapsLock case)
-      if (e.ctrlKey && !e.shiftKey && (e.key === "n" || e.key === "N")) {
-        e.preventDefault();
-        s.handleNewFile();
-      }
-      // Ctrl+E - Toggle preview/code mode (without Shift, case-insensitive)
-      if (e.ctrlKey && !e.shiftKey && (e.key === "e" || e.key === "E")) {
-        e.preventDefault();
-        if (s.hasFile) s.handleToggleMode();
-      }
-      // Ctrl+\ - Toggle split view
-      if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
-        e.preventDefault();
-        if (s.hasFile) s.handleToggleSplit();
-      }
-      // ? — Show cheatsheet (only when no input is focused)
-      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement | null;
-        const isTyping = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-        if (!isTyping) {
-          e.preventDefault();
-          setShowCheatsheet(true);
-        }
-      }
-      // Ctrl+P / Ctrl+Shift+P — command palette
-      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
-        e.preventDefault();
-        setShowPalette(true);
-      }
-      // Ctrl+, — Settings
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
-        e.preventDefault();
-        setShowSettings(true);
-      }
-      // AI assist — Alt+J everywhere, ⌘+J on macOS. Handled here (window level)
-      // rather than only in the editor so it fires regardless of focus; the
-      // editor opens the bubble via the marklite:ai-assist listener. (Ctrl+J is
-      // reserved by WebView2 on Windows, hence Alt+J there.)
-      const isAltJ = e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === "j" || e.key === "J" || e.code === "KeyJ");
-      const isCmdJ = e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === "j" || e.key === "J");
-      if (isAltJ || isCmdJ) {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent("marklite:ai-assist"));
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    // Defense-in-depth for Ctrl+J: Edge/Chrome/WebView2 treat Ctrl+J as a
-    // "browser accelerator" for Downloads. On WebView2 (Windows) the page
-    // never sees this keydown, so JS can't help — users have Alt+J as the
-    // working alias there. On WebKitGTK (Linux) and WKWebView (macOS) the
-    // event DOES reach the page; we capture-phase preventDefault here so the
-    // host webview's default action is suppressed regardless of which
-    // element is focused (textarea, palette input, settings, etc.).
-    const blockCtrlJ = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "j" || e.key === "J")) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", blockCtrlJ, { capture: true });
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keydown", blockCtrlJ, { capture: true } as EventListenerOptions);
-    };
-  }, []);
 
   // Get export HTML from the visible preview on demand (avoids duplicate rendering)
   const getExportHtml = useCallback((): string => {
