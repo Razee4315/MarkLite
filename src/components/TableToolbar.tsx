@@ -46,8 +46,9 @@ export function TableToolbar({ anchor, activeAlign, onOp }: TableToolbarProps) {
         let left = anchor.x;
         if (left + rect.width + margin > vw) left = Math.max(margin, vw - rect.width - margin);
         if (left < margin) left = margin;
-        let top = anchor.y - rect.height - 6; // above the table
-        if (top < margin) top = anchor.y + 24; // no room above: drop below the header row
+        // Float just above the table, but never tuck under the ~48px app title
+        // bar (where it would cover the window controls) for a top-of-doc table.
+        const top = Math.max(48, anchor.y - rect.height - 6);
         setAdjusted({ left, top });
     }, [anchor]);
 
