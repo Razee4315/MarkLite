@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Visual table editor.** A floating toolbar appears when the caret is inside a
+  Markdown table, with buttons to insert or delete rows and columns, set
+  per-column alignment, and tidy (re-align) the layout. Built on a pure,
+  fully tested table model, so editing a table no longer means hand-aligning pipes.
+
+### Changed
+
+- **Relicensed to Apache 2.0.** MarkLite moved from the previous custom
+  non-commercial terms to the Apache License 2.0: free for both personal and
+  commercial use, with an explicit patent grant. See `LICENSE` and `NOTICE`.
+- **Sharper positioning.** The hero, README, and site now lead with what is
+  genuinely different (no-setup single-file editing, a free bring-your-own-model
+  AI that proposes edits as accept-or-reject diffs, live math and chemistry)
+  instead of generic "minimal / lightweight" claims.
+
+### Fixed
+
+- **List bullets and numbers now render in the preview.** Tailwind v4's base
+  reset had stripped the list markers, leaving lists indented but marker-less.
+- **Ctrl+S (and Ctrl+O / N / E) work with CapsLock on.** An unshifted Ctrl+S
+  reports `e.key === "S"`, which previously fell through and did nothing.
+- **Heading anchor links give feedback.** Clicking the link icon next to a
+  heading now copies a section link and shows a checkmark, instead of appearing
+  to do nothing when the heading is already at the top of the view.
+
 ### Fixed — Click after scroll lands on the right line
 
 - Scrolling and immediately clicking (or double-clicking) used to land
