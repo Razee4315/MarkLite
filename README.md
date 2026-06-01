@@ -12,7 +12,7 @@
   <a href="https://github.com/Razee4315/MarkLite/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Razee4315/MarkLite/total?color=2ea043"></a>
   <a href="https://github.com/Razee4315/MarkLite/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Razee4315/MarkLite?style=flat"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-555">
-  <img alt="License" src="https://img.shields.io/badge/license-source--available-blue">
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20%2B%20Rust-FFC131">
 </p>
 
@@ -197,8 +197,4 @@ Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
 
 ## License
 
-This project is **source available** with restricted commercial use:
-- **Personal use** - Free to use, copy, and modify
-- **Commercial use** - Requires written permission from the author
-
-See the [LICENSE](LICENSE) file for full details.
+MarkLite is licensed under the **[Apache License 2.0](LICENSE)** — free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.

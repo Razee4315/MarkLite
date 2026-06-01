@@ -85,6 +85,12 @@ Feature requests are welcome. Please provide:
 - Use case and benefits
 - Any implementation ideas you have
 
+## License
+
+By contributing, you agree that your contributions will be licensed under the
+project's [Apache License 2.0](LICENSE), per Section 5 of that license. No
+separate CLA is required.
+
 ## Questions
 
 For questions, please open an issue or contact the maintainer at saqlainrazee@gmail.com.
