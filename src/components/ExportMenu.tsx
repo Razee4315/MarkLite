@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import iconExportPdf from '../assets/mascot/icon-export-pdf.png';
+import iconPaperPlane from '../assets/mascot/icon-paper-plane.png';
 
 // Heavy export deps (jsPDF pulls in ~200 kB of html2canvas; jsPDF itself is
 // another big bundle) only matter when the user actually exports. We import
@@ -107,17 +109,17 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                     <button
                         role="menuitem"
                         onClick={() => handleExport('html')}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
                     >
-                        <span className="material-symbols-outlined text-[18px]">code</span>
+                        <img src={iconPaperPlane} alt="" aria-hidden="true" draggable={false} className="w-6 h-6 object-contain select-none" />
                         <span>HTML</span>
                     </button>
                     <button
                         role="menuitem"
                         onClick={() => handleExport('pdf')}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
                     >
-                        <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                        <img src={iconExportPdf} alt="" aria-hidden="true" draggable={false} className="w-6 h-6 object-contain select-none" />
                         <span>PDF</span>
                     </button>
                 </div>

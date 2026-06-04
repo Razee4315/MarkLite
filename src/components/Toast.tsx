@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import iconCheckBadge from '../assets/mascot/icon-check-badge.png';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -31,9 +32,7 @@ export function Toast({ message, isVisible, onHide, duration = 2000, type = 'suc
 
     const iconMap = {
         success: (
-            <svg className="w-4 h-4 text-[var(--status-saved)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+            <img src={iconCheckBadge} alt="" aria-hidden="true" draggable={false} className="w-5 h-5 object-contain select-none" />
         ),
         error: (
             <svg className="w-4 h-4 text-[var(--danger)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">

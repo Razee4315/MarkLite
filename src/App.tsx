@@ -537,6 +537,17 @@ function AppContent() {
     }
   }, [content, originalContent, startBlankFile]);
 
+  // "Replay the welcome tour" from Settings → About. The tour spotlights
+  // editor chrome, so make sure a buffer exists before showing it.
+  useEffect(() => {
+    const h = () => {
+      if (!hasFile) handleNewFile();
+      setShowTour(true);
+    };
+    window.addEventListener("marklite:replay-tour", h);
+    return () => window.removeEventListener("marklite:replay-tour", h);
+  }, [hasFile, handleNewFile]);
+
   // Open file dialog
   const handleOpenFile = useCallback(async () => {
     try {
