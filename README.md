@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/public/readme-banner.png" alt="The MarkLite paper mascot walking with its pencil, book, flask, diagram, magnifier, and rocket" width="100%">
+</p>
+
+<p align="center">
   <img src="public/icon.svg" width="80" alt="MarkLite Logo">
   <h1 align="center">MarkLite</h1>
 </p>
