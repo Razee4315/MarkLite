@@ -1,5 +1,7 @@
 ---
+import { Image } from "astro:assets";
 import { Icon } from "astro-icon/components";
+import iconGithubPaper from "../assets/mascot/icon-github-paper.png";
 const repo = "https://github.com/Razee4315/MarkLite";
 const tech = ["Tauri", "Rust", "React", "TypeScript", "Vite", "CodeMirror 6"];
 ---
@@ -9,6 +11,14 @@ const tech = ["Tauri", "Rust", "React", "TypeScript", "Vite", "CodeMirror 6"];
     <div class="card relative overflow-hidden p-10 md:p-14" data-reveal>
       <div class="grid-bg" style="opacity:.6"></div>
       <div class="relative z-10">
+        <Image
+          src={iconGithubPaper}
+          alt=""
+          aria-hidden="true"
+          widths={[128]}
+          sizes="64px"
+          class="mx-auto mb-4 h-16 w-16 select-none object-contain"
+        />
         <p class="mono-label justify-center">
           <span class="tok-mark">//</span> open source
         </p>
@@ -17,7 +27,7 @@ const tech = ["Tauri", "Rust", "React", "TypeScript", "Vite", "CodeMirror 6"];
         </h2>
         <p class="mx-auto mt-4 max-w-xl text-lg text-fg-muted">
           MarkLite is free and open source under Apache 2.0, for personal and commercial use alike. Star it, file an issue, or pick
-          up a <code class="rounded bg-fg/5 px-1.5 py-0.5 text-sm text-brand-soft">good first issue</code>.
+          up a <code class="rounded bg-fg/5 px-1.5 py-0.5 text-sm text-[#d97700]">good first issue</code>.
         </p>
         <div class="mt-8 flex flex-wrap justify-center gap-3">
           <a href={repo} rel="noopener" class="btn btn-primary text-base">

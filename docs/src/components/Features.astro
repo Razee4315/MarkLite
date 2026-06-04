@@ -82,26 +82,53 @@ const rows = [
       </p>
     </div>
 
-    <div class="matrix mt-12" data-reveal>
+    <!-- Big-icon card grid: the illustrated icon set carries the section -->
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {rows.map((r) => (
-        <div class="matrix-row">
-          <div class="flex items-center gap-3">
+        <article class="feature-card card flex flex-col p-6" data-reveal>
+          <div class="flex items-start justify-between gap-3">
             <Image
               src={r.img}
               alt=""
               aria-hidden="true"
-              widths={[80]}
-              sizes="36px"
-              class="h-9 w-9 shrink-0 select-none object-contain"
+              widths={[128, 256]}
+              sizes="64px"
+              class="feature-icon h-16 w-16 shrink-0 select-none object-contain"
             />
-            <h3 class="font-medium tracking-tight">{r.title}</h3>
-          </div>
-          <p class="text-[15px] leading-relaxed text-fg-muted">{r.desc}</p>
-          <div class="md:text-right">
             <span class={`kbd ${r.accent === "cyan" ? "!text-cyan" : ""}`}>{r.kbd}</span>
           </div>
-        </div>
+          <h3 class="mt-4 font-semibold tracking-tight">{r.title}</h3>
+          <p class="mt-1.5 text-[15px] leading-relaxed text-fg-muted">{r.desc}</p>
+        </article>
       ))}
     </div>
   </div>
 </section>
+
+<style>
+  /* Gentle lift + icon wiggle on hover; the icons do the personality work */
+  .feature-card {
+    transition: transform 0.25s var(--ease-out-expo), box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+  .feature-card:hover {
+    transform: translateY(-4px);
+    border-color: color-mix(in srgb, var(--color-brand) 35%, var(--color-line));
+    box-shadow: 0 18px 40px -22px rgba(43, 36, 32, 0.3);
+  }
+  .feature-icon {
+    transition: transform 0.25s var(--ease-out-expo);
+  }
+  .feature-card:hover .feature-icon {
+    transform: rotate(-4deg) scale(1.08);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .feature-card,
+    .feature-icon {
+      transition: none;
+    }
+    .feature-card:hover,
+    .feature-card:hover .feature-icon {
+      transform: none;
+    }
+  }
+</style>

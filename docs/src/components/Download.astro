@@ -49,15 +49,16 @@ const platforms = [
       </p>
     </div>
 
-    <!-- Confetti send-off: the mascot celebrating your download decision -->
-    <div class="mt-10" data-reveal>
+    <!-- Confetti send-off: the mascot celebrating your download decision.
+         Shown UNCROPPED: the scene's own paper background blends with the page. -->
+    <div class="mx-auto mt-10 max-w-3xl" data-reveal>
       <Image
         src={sceneCelebration}
         alt="The MarkLite mascot jumping with confetti and paper planes"
         widths={[760, 1100, 1600]}
-        sizes="(max-width: 1024px) 100vw, 1024px"
+        sizes="(max-width: 1024px) 100vw, 768px"
         loading="lazy"
-        class="aspect-[3/1] w-full rounded-2xl border border-line object-cover"
+        class="w-full rounded-2xl border border-line"
       />
     </div>
 
