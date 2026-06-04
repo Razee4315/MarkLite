@@ -1,6 +1,8 @@
 ---
+import { Image } from "astro:assets";
 import { Icon } from "astro-icon/components";
 import AppWindow from "./AppWindow.astro";
+import mascotWizard from "../assets/mascot/mascot-wizard.png";
 
 const points = [
   {
@@ -60,8 +62,18 @@ const points = [
     </div>
 
     <!-- Live Agent inline-diff mock -->
-    <div data-reveal>
-      <AppWindow label="notes.md">
+    <div class="relative" data-reveal>
+      <!-- Wizard mascot peeking from behind the window, mid-spell -->
+      <Image
+        src={mascotWizard}
+        alt=""
+        aria-hidden="true"
+        widths={[192]}
+        sizes="96px"
+        class="pointer-events-none absolute -top-16 right-10 z-0 h-24 w-24 rotate-3 select-none"
+        loading="lazy"
+      />
+      <AppWindow label="notes.md" class="editor-light relative z-10">
         <div class="bg-ink-900 p-3 font-mono text-[13px] leading-relaxed">
           <!-- composer -->
           <div class="ai-composer-demo mb-3 flex items-center gap-2 rounded-lg border border-line bg-ink-850 px-3 py-2">

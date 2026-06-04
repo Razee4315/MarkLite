@@ -4,6 +4,7 @@ import readerDark from "../assets/screenshots/reader-dark.png";
 import readerLight from "../assets/screenshots/reader-light.png";
 import readerPaper from "../assets/screenshots/reader-paper.png";
 import readerGithub from "../assets/screenshots/reader-github.png";
+import mascotPaint from "../assets/mascot/mascot-paint.png";
 
 const themes = [
   { id: "paper", label: "Paper", img: readerPaper, swatch: ["#f5f0e6", "#5c4033"] },
@@ -14,7 +15,17 @@ const themes = [
 ---
 
 <section id="themes" class="theme-stage stage-paper py-24 md:py-32" data-theme-stage>
-  <div class="mx-auto max-w-5xl px-5">
+  <div class="relative mx-auto max-w-5xl px-5">
+    <!-- Painter mascot, fresh coat of cyan in hand -->
+    <Image
+      src={mascotPaint}
+      alt=""
+      aria-hidden="true"
+      widths={[224]}
+      sizes="112px"
+      class="pointer-events-none absolute right-8 top-0 hidden h-28 w-28 -rotate-2 select-none md:block"
+      loading="lazy"
+    />
     <div class="max-w-2xl" data-reveal>
       <p class="mono-label" style="color:color-mix(in srgb, var(--stage-fg) 55%, transparent)">
         <span style="color:var(--color-brand)">##</span> themes

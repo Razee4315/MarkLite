@@ -1,58 +1,67 @@
 ---
-import { Icon } from "astro-icon/components";
+import { Image } from "astro:assets";
+import iconSparkles from "../assets/mascot/icon-sparkles.png";
+import iconSplitView from "../assets/mascot/icon-split-view.png";
+import iconMath from "../assets/mascot/icon-math.png";
+import iconDiagram from "../assets/mascot/icon-diagram.png";
+import iconSlash from "../assets/mascot/icon-slash.png";
+import iconLinkPages from "../assets/mascot/icon-link-pages.png";
+import iconPalette from "../assets/mascot/icon-command-palette.png";
+import iconMoonSun from "../assets/mascot/icon-moon-sun.png";
+import iconBolt from "../assets/mascot/icon-bolt.png";
 
 const rows = [
   {
-    icon: "lucide:sparkles",
+    img: iconSparkles,
     title: "AI: Ask & Agent",
     desc: "Chat about your document, or let Agent propose edits as an inline diff you accept or reject. Bring your own model.",
     kbd: "Agent",
     accent: "cyan",
   },
   {
-    icon: "lucide:columns-2",
+    img: iconSplitView,
     title: "Reader · Code · Split",
     desc: "Rendered reading, raw source, or both side by side with bidirectional scroll sync.",
     kbd: "Ctrl+\\",
   },
   {
-    icon: "lucide:sigma",
+    img: iconMath,
     title: "Math & chemistry",
     desc: "KaTeX for inline and block math, plus mhchem for equations, ions, and isotopes.",
     kbd: "$ … $",
   },
   {
-    icon: "lucide:workflow",
+    img: iconDiagram,
     title: "Mermaid diagrams",
     desc: "Flowcharts, sequence, class, state, gantt, ER, and mindmaps render live in the preview.",
     kbd: "```mermaid",
   },
   {
-    icon: "lucide:slash",
+    img: iconSlash,
     title: "Slash commands",
     desc: "Type / for headings, lists, tables, math, callouts, and more. No syntax to memorize.",
     kbd: "/",
   },
   {
-    icon: "lucide:link",
+    img: iconLinkPages,
     title: "Wikilinks & outline",
     desc: "[[other-file]] links resolve in the folder, with an outline pane that follows your cursor.",
     kbd: "[[ ]]",
   },
   {
-    icon: "lucide:command",
+    img: iconPalette,
     title: "Command palette",
     desc: "Jump to any command, file, heading, or toggle. Find & Replace with regex too.",
     kbd: "Ctrl+P",
   },
   {
-    icon: "lucide:palette",
+    img: iconMoonSun,
     title: "Themes & typography",
     desc: "Four themes, five fonts, three sizes, plus focus and typewriter modes.",
     kbd: "4 themes",
   },
   {
-    icon: "lucide:zap",
+    img: iconBolt,
     title: "Native & private",
     desc: "Built on Tauri + Rust: small, fast, offline. No accounts, no tracking, files stay local.",
     kbd: "Tauri",
@@ -77,9 +86,14 @@ const rows = [
       {rows.map((r) => (
         <div class="matrix-row">
           <div class="flex items-center gap-3">
-            <span class={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line ${r.accent === "cyan" ? "text-cyan" : "text-brand"}`}>
-              <Icon name={r.icon} class="h-4 w-4" />
-            </span>
+            <Image
+              src={r.img}
+              alt=""
+              aria-hidden="true"
+              widths={[80]}
+              sizes="36px"
+              class="h-9 w-9 shrink-0 select-none object-contain"
+            />
             <h3 class="font-medium tracking-tight">{r.title}</h3>
           </div>
           <p class="text-[15px] leading-relaxed text-fg-muted">{r.desc}</p>

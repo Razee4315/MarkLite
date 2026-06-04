@@ -58,14 +58,14 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* AI inline-diff palette (mirrors the app's editor diff colors) */
+/* AI inline-diff palette, tuned for the light page */
 :root {
-  --diff-add-bg: rgba(46, 160, 67, 0.2);
+  --diff-add-bg: rgba(46, 160, 67, 0.12);
   --diff-add-border: #2ea043;
-  --diff-add-text: #56d364;
-  --diff-del-bg: rgba(248, 81, 73, 0.18);
-  --diff-del-border: #f85149;
-  --diff-del-text: #ff7b72;
+  --diff-add-text: #1a7f37;
+  --diff-del-bg: rgba(209, 36, 47, 0.1);
+  --diff-del-border: #d1242f;
+  --diff-del-text: #b62324;
 }
 
 * {
@@ -282,6 +282,23 @@ canvas {
   height: 11px;
   border-radius: 999px;
   background: #2a2a34;
+}
+
+/* Light variant for UI mocks built from page tokens (not dark screenshots) */
+.editor-light {
+  border-color: var(--color-line);
+  background: var(--color-ink-850);
+  box-shadow:
+    0 24px 64px -28px rgba(43, 36, 32, 0.28),
+    0 8px 28px -14px color-mix(in srgb, var(--color-cyan) 18%, transparent);
+}
+.editor-light .editor-bar {
+  background: var(--color-ink-800);
+  border-color: var(--color-line);
+  color: var(--color-fg-dim);
+}
+.editor-light .editor-dots i {
+  background: var(--color-ink-600);
 }
 
 /* Line-number gutter (used by the footer's end-of-file motif) */
