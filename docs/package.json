@@ -6,6 +6,7 @@
     "@fontsource/instrument-serif": "^5.0.0",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@iconify-json/lucide": "^1.2.0",
+    "@iconify-json/simple-icons": "^1.2.85",
     "@tailwindcss/vite": "^4.0.0",
     "astro": "^5.0.0",
     "astro-icon": "^1.1.0",
