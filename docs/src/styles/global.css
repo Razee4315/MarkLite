@@ -1,48 +1,53 @@
 @import "tailwindcss";
 
 /* ============================================================
-   MarkLite, landing page design system, "The Living Document"
-   The page reads like one continuous editor: raw monospace source
-   on one side, a typeset rendered document on the other, divided by
-   a single orange -> cyan seam. Type triad does the talking:
+   MarkLite, landing page design system, "The Paper Playground"
+   (v2 of "The Living Document", flipped to light.)
+   The page IS the paper now: a warm bright sheet the mascot lives on,
+   with ink for text and the orange/cyan brand as crayon accents.
+   Type triad unchanged:
      mono  = the source / the machine        (JetBrains Mono)
      serif = the rendered, typeset document   (Instrument Serif)
      sans  = the quiet narrator / UI chrome    (Inter)
-   Dark by default, with one deliberate warm Paper defection.
+   NOTE: token NAMES keep their original ink-* identity so every
+   component keeps working; their VALUES are remapped to the light
+   ramp (ink-950 = page background = lightest). The old warm-paper
+   "defection" section is inverted too: .paper is now the one
+   deliberate DARK moment on the page.
    ============================================================ */
 
 @theme {
-  /* Ink / surfaces, a warm near-black, layered */
-  --color-ink-950: #060608;
-  --color-ink-900: #0a0a0d;
-  --color-ink-850: #0f0f14;
-  --color-ink-800: #14141a;
-  --color-ink-700: #1c1c24;
-  --color-ink-600: #2a2a34;
+  /* Surfaces, warm paper, layered (950 = page, 600 = strongest tint) */
+  --color-ink-950: #f7f1e5;
+  --color-ink-900: #faf5ec;
+  --color-ink-850: #fdfaf3;
+  --color-ink-800: #f0e9d9;
+  --color-ink-700: #e4dac4;
+  --color-ink-600: #d3c6a9;
 
-  --color-line: #20202a;
-  --color-line-soft: #16161d;
+  --color-line: #e2d7bf;
+  --color-line-soft: #ece3d0;
 
-  --color-fg: #f7f7fa;
-  --color-fg-muted: #a7a7b4;
-  --color-fg-dim: #6c6c7a;
+  --color-fg: #2b2420;
+  --color-fg-muted: #6f6149;
+  --color-fg-dim: #9b8c73;
 
-  /* Paper, the warm defection (one full section flips to this) */
-  --color-paper: #f5f0e6;
-  --color-paper-panel: #fbf6ea;
-  --color-paper-line: #e3d8c2;
-  --color-paper-ink: #2b2420;
-  --color-paper-muted: #6f6149;
+  /* Ink zone, the deliberate dark defection (was the warm Paper zone) */
+  --color-paper: #14141a;
+  --color-paper-panel: #1c1c24;
+  --color-paper-line: #2a2a34;
+  --color-paper-ink: #f7f7fa;
+  --color-paper-muted: #a7a7b4;
 
-  /* Brand */
+  /* Brand. Cyan deepened so it reads as text on paper. */
   --color-brand: #ff8c00;
   --color-brand-soft: #ffab40;
-  --color-cyan: #00e5ff;
-  --color-cyan-soft: #5cf2ff;
+  --color-cyan: #00a8c5;
+  --color-cyan-soft: #00e5ff;
 
   /* Semantic */
-  --color-ok: #2ea043;
-  --color-warn: #f59e0b;
+  --color-ok: #1f7a33;
+  --color-warn: #b45309;
 
   /* Typography, the triad */
   --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -86,7 +91,7 @@ body {
 
 ::selection {
   background: color-mix(in srgb, var(--color-brand) 30%, transparent);
-  color: #fff;
+  color: var(--color-fg);
 }
 
 a {
@@ -142,14 +147,16 @@ canvas {
   color: var(--color-fg-dim);
 }
 .tok-mark {
-  color: var(--color-brand);
+  /* Deepened from raw brand orange so small mono glyphs stay legible on paper */
+  color: #d97700;
 }
 .tok-mark-cyan {
   color: var(--color-cyan);
 }
 
 .text-gradient {
-  background: linear-gradient(100deg, #ff8c00 0%, #ffb15a 28%, #ffe1bf 47%, #bfeef2 62%, #38d9f0 82%, #00e5ff 100%);
+  /* Light-page variant: skips the pale mid-stops that vanish on paper */
+  background: linear-gradient(100deg, #d97700 0%, #ff8c00 32%, #00a8c5 72%, #007e9e 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -158,7 +165,7 @@ canvas {
 
 /* Slow flowing variant for the hero headline (palindrome gradient loops seamlessly) */
 .text-gradient-flow {
-  background-image: linear-gradient(100deg, #ff8c00, #ffb15a, #ffe1bf, #bfeef2, #00e5ff, #bfeef2, #ffe1bf, #ffb15a, #ff8c00);
+  background-image: linear-gradient(100deg, #d97700, #ff9a2e, #00a8c5, #00829e, #00a8c5, #ff9a2e, #d97700);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -181,7 +188,7 @@ canvas {
 
 /* ===== Backdrop layers ===== */
 
-/* Aurora glow, demoted to a faint warmth behind ink sections only */
+/* Aurora glow, now a soft watercolor wash on the paper */
 .aurora {
   position: absolute;
   inset: -40% -10% auto -10%;
@@ -189,7 +196,7 @@ canvas {
   pointer-events: none;
   z-index: 0;
   filter: blur(80px);
-  opacity: 0.4;
+  opacity: 0.18;
   background:
     radial-gradient(40% 50% at 22% 30%, color-mix(in srgb, var(--color-brand) 60%, transparent), transparent 70%),
     radial-gradient(38% 48% at 82% 26%, color-mix(in srgb, var(--color-cyan) 42%, transparent), transparent 70%);
@@ -241,16 +248,17 @@ canvas {
   border: 1px solid var(--color-line);
 }
 
-/* ===== The editor frame, the page's master device ===== */
+/* ===== The editor frame, the page's master device =====
+   Deliberately stays a DARK app window: the product screenshots are the
+   dark theme, and a real window sitting on the paper reads beautifully. */
 .editor {
   position: relative;
   border-radius: 14px;
-  border: 1px solid var(--color-line);
-  background: var(--color-ink-850);
+  border: 1px solid #20202a;
+  background: #0f0f14;
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
-    0 40px 120px -40px rgba(0, 0, 0, 0.9),
-    0 12px 40px -20px color-mix(in srgb, var(--color-brand) 18%, transparent);
+    0 30px 80px -32px rgba(43, 36, 32, 0.45),
+    0 10px 32px -16px color-mix(in srgb, var(--color-brand) 22%, transparent);
   overflow: hidden;
 }
 /* Window chrome bar: filename (mono) + traffic dots + view tabs */
@@ -259,11 +267,11 @@ canvas {
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid var(--color-line);
-  background: color-mix(in srgb, var(--color-ink-900) 80%, #000);
+  border-bottom: 1px solid #20202a;
+  background: #0a0a0d;
   font-family: var(--font-mono);
   font-size: 0.78rem;
-  color: var(--color-fg-dim);
+  color: #6c6c7a;
 }
 .editor-dots {
   display: inline-flex;
@@ -273,7 +281,7 @@ canvas {
   width: 11px;
   height: 11px;
   border-radius: 999px;
-  background: var(--color-ink-600);
+  background: #2a2a34;
 }
 
 /* Line-number gutter (used by the footer's end-of-file motif) */
