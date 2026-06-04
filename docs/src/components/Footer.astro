@@ -1,5 +1,7 @@
 ---
+import { Image } from "astro:assets";
 import { Icon } from "astro-icon/components";
+import mascotSleep from "../assets/mascot/mascot-sleep.png";
 const base = import.meta.env.BASE_URL;
 const repo = "https://github.com/Razee4315/MarkLite";
 const year = new Date().getFullYear();
@@ -13,7 +15,18 @@ const links = [
 ];
 ---
 
-<footer class="border-t border-line">
+<footer class="relative border-t border-line">
+  <!-- The mascot dozed off on the closing rule of the page. -->
+  <Image
+    src={mascotSleep}
+    alt=""
+    aria-hidden="true"
+    widths={[112]}
+    sizes="56px"
+    class="pointer-events-none absolute right-8 top-0 h-14 w-14 -translate-y-full select-none md:right-16"
+    loading="lazy"
+  />
+
   <!-- end-of-file motif -->
   <div class="mx-auto max-w-6xl px-5 pt-10 font-mono text-[13px] leading-relaxed" data-reveal>
     <div class="flex">

@@ -2,6 +2,7 @@
 import { Image } from "astro:assets";
 import { Icon } from "astro-icon/components";
 import splitDark from "../assets/screenshots/split-dark.png";
+import mascotWave from "../assets/mascot/mascot-wave.png";
 
 const repo = "https://github.com/Razee4315/MarkLite";
 const releases = "https://github.com/Razee4315/MarkLite/releases/latest";
@@ -53,6 +54,17 @@ const releases = "https://github.com/Razee4315/MarkLite/releases/latest";
     <!-- Real product screenshot -->
     <div class="relative mx-auto mt-16 max-w-5xl" data-reveal>
       <div class="shot-glow" aria-hidden="true"></div>
+      <!-- Mascot peeking over the window edge: lower half sits behind the
+           editor frame, so it reads as waving from behind the app. -->
+      <Image
+        src={mascotWave}
+        alt=""
+        aria-hidden="true"
+        widths={[160]}
+        sizes="80px"
+        class="mascot-peek pointer-events-none absolute right-8 z-0 h-20 w-20 select-none md:right-14 md:h-24 md:w-24"
+        loading="eager"
+      />
       <div class="editor relative">
         <Image
           src={splitDark}
@@ -71,6 +83,17 @@ const releases = "https://github.com/Razee4315/MarkLite/releases/latest";
 </header>
 
 <style>
+  /* Sits half-hidden behind the editor frame; tilted like it leaned over to wave. */
+  .mascot-peek {
+    top: -3.4rem;
+    rotate: -6deg;
+  }
+  @media (min-width: 768px) {
+    .mascot-peek {
+      top: -4.1rem;
+    }
+  }
+
   /* Brand glow behind the product shot, gives the hero depth without chrome cliches */
   .shot-glow {
     position: absolute;
