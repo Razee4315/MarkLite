@@ -1,5 +1,7 @@
 import { useMemo, useEffect, useRef, useState } from "react";
 import { attachFocusTrap } from "../utils/focusTrap";
+import mascotReading from "../assets/mascot/mascot-reading.png";
+import mascotMagnify from "../assets/mascot/mascot-magnify.png";
 
 interface TocItem {
     id: string;
@@ -182,14 +184,15 @@ export function TableOfContents({
             {/* Content */}
             <nav className="flex-1 min-h-0 overflow-y-auto" aria-label="Document headings">
                 {headings.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-32 text-[var(--text-secondary)] text-sm gap-2 px-4 text-center">
-                        <span className="material-symbols-outlined text-[32px] opacity-40">format_list_bulleted</span>
+                    <div className="flex flex-col items-center justify-center py-8 text-[var(--text-secondary)] text-sm gap-2 px-4 text-center">
+                        <img src={mascotReading} alt="" aria-hidden="true" draggable={false} className="w-20 h-20 object-contain select-none opacity-90" />
                         <span>No headings yet.</span>
                         <span className="text-[11px] text-[var(--text-muted)]">Type <code className="font-mono">#</code> to add one.</span>
                     </div>
                 ) : visible.length === 0 ? (
-                    <div className="flex items-center justify-center h-32 text-[var(--text-secondary)] text-sm">
-                        No matches
+                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-[var(--text-secondary)] text-sm">
+                        <img src={mascotMagnify} alt="" aria-hidden="true" draggable={false} className="w-20 h-20 object-contain select-none opacity-90" />
+                        <span>No matches</span>
                     </div>
                 ) : (
                     <ul className="py-2">

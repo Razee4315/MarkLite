@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { attachFocusTrap } from "../utils/focusTrap";
+import mascotCarry from "../assets/mascot/mascot-carry.png";
+import mascotShrug from "../assets/mascot/mascot-shrug.png";
 
 interface FileEntry {
     name: string;
@@ -124,12 +126,14 @@ export function FileExplorer({
                         Loading...
                     </div>
                 ) : error ? (
-                    <div className="flex items-center justify-center h-32 text-[var(--danger)] text-sm" role="alert">
-                        {error}
+                    <div className="flex flex-col items-center justify-center gap-3 py-10 text-sm" role="alert">
+                        <img src={mascotShrug} alt="" aria-hidden="true" draggable={false} className="w-20 h-20 object-contain select-none opacity-90" />
+                        <span className="text-[var(--danger)]">{error}</span>
                     </div>
                 ) : files.length === 0 ? (
-                    <div className="flex items-center justify-center h-32 text-[var(--text-secondary)] text-sm">
-                        No markdown files
+                    <div className="flex flex-col items-center justify-center gap-3 py-10 text-sm text-[var(--text-secondary)]">
+                        <img src={mascotCarry} alt="" aria-hidden="true" draggable={false} className="w-20 h-20 object-contain select-none opacity-90" />
+                        <span>No markdown files here</span>
                     </div>
                 ) : (
                     <ul className="py-2" role="listbox" aria-label="Markdown files">

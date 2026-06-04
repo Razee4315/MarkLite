@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { Modal } from "./Modal";
+import mascotSad from "../assets/mascot/mascot-sad.png";
 
 interface UnsavedChangesDialogProps {
     isOpen: boolean;
@@ -28,11 +29,13 @@ export function UnsavedChangesDialog({
             {/* Header */}
             <div className="px-5 pt-5 pb-3">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[var(--status-unsaved)]/20 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[var(--status-unsaved)] text-xl">
-                            warning
-                        </span>
-                    </div>
+                    <img
+                        src={mascotSad}
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                        className="w-12 h-12 object-contain select-none shrink-0"
+                    />
                     <div>
                         <h2 id="unsaved-dialog-title" className="text-base font-semibold text-[var(--text-primary)]">
                             Unsaved Changes

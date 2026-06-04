@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { streamChat, buildAskMessages, buildAgentMessages, parseEdits, type ChatMessage } from "../utils/aiChat";
 import type { AIConfig } from "../utils/aiAssist";
+import mascotWizard from "../assets/mascot/mascot-wizard.png";
 
 interface AIPanelProps {
     isOpen: boolean;
@@ -194,6 +195,13 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                     </div>
                 ) : messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center gap-1.5 px-6">
+                        <img
+                            src={mascotWizard}
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                            className="w-24 h-24 object-contain select-none mb-1"
+                        />
                         <p className="text-sm font-medium text-[var(--text-primary)]">
                             {mode === "agent" ? "What should I change?" : "Ask about this note"}
                         </p>
