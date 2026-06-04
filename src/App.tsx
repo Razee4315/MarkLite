@@ -77,6 +77,7 @@ import {
   setTypewriterMode,
   setWordWrap,
 } from "./utils/persistence";
+import { pickBootFile } from "./utils/boot";
 import { Tour } from "./components/Tour";
 
 interface FileData {
@@ -101,6 +102,13 @@ const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
 // Width of the right-side AI panel; the editor/preview area reserves this much
 // padding-right when it's open so content reflows beside it (not under it).
 const AI_PANEL_WIDTH = 400;
+
+// The launch-file resolution must run exactly once per webview load. React
+// StrictMode double-invokes effects in dev: without this guard the second run
+// would find the CLI file already consumed (the backend take()s it) and start
+// a racing last-session restore that can overwrite the just-opened file.
+// Module-level on purpose — StrictMode remounts share module state.
+let bootResolved = false;
 
 /**
  * Returns a value that lags behind `value` by `delay` ms. Each new `value`
@@ -149,11 +157,12 @@ function AppContent() {
   const [wordWrapEnabled, setWordWrapEnabled] = useState<boolean>(() => getWordWrap());
   const [spellCheckEnabled, setSpellCheckEnabled] = useState<boolean>(() => getSpellCheck());
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
-  // True only while the launch-time "restore last file" is still resolving. Lets
-  // us show a neutral splash instead of flashing the WelcomeScreen for a frame
-  // before the restored editor mounts (the "looks broken, then the file appears"
-  // flicker). Starts false when there's nothing to restore.
-  const [booting, setBooting] = useState<boolean>(() => !!getLastFile());
+  // True while the launch-time file resolution (OS-opened CLI file, then
+  // last-session restore) is still in flight. Shows a neutral splash instead
+  // of flashing the WelcomeScreen for a frame. Starts true unconditionally:
+  // whether a CLI file exists is only known after asking the backend, and the
+  // no-file case resolves in a couple of milliseconds anyway.
+  const [booting, setBooting] = useState<boolean>(true);
   // Editor selection range. Collapsed (start === end) means no selection;
   // when start < end we surface a "N words selected" chip in the status bar.
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
@@ -355,36 +364,58 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Restore last opened file once on app launch
-    const last = getLastFile();
-    if (last) {
-      // Fire-and-forget; failures are mostly silent (file may have been moved
-      // / deleted), but we DO surface a toast for the new TooLarge case so a
-      // user who suddenly can't reopen yesterday's file isn't left guessing.
-      invoke<FileData>("read_file", { path: last })
-        .then((fileData) => {
-          setFilePath(fileData.path);
-          setFileName(fileData.name);
-          setContent(fileData.content);
-          setOriginalContent(fileData.content);
-          setFileSize(fileData.size);
-          // Bump the recents entry's timestamp to "now" so it sorts as
-          // most-recent. Previously the restored file kept the stale openedAt
-          // from whenever it was originally opened, which made the welcome
-          // screen show "3d ago" for the file you'd just been editing.
-          addRecentFile(fileData.path, fileData.name);
-        })
-        .catch((err) => {
+    // Resolve the launch file once on app start. PULL model: ask the backend
+    // for an OS-opened file (double-clicked .md → CLI arg) when WE are ready,
+    // instead of the backend pushing an event after an arbitrary delay. The
+    // old push design raced the webview: on slow cold starts the event fired
+    // before the listener existed and was lost, so the last-session restore
+    // won and the app reopened the previous file instead of the clicked one.
+    if (bootResolved) return;
+    bootResolved = true;
+    (async () => {
+      let cliFile: string | null = null;
+      try {
+        cliFile = await invoke<string | null>("get_cli_file");
+      } catch {
+        // Browser dev mode / older backend without the command — restore only.
+      }
+
+      const target = pickBootFile(cliFile, getLastFile());
+      if (!target.path) {
+        setBooting(false);
+        return;
+      }
+
+      try {
+        const fileData = await invoke<FileData>("read_file", { path: target.path });
+        setFilePath(fileData.path);
+        setFileName(fileData.name);
+        setContent(fileData.content);
+        setOriginalContent(fileData.content);
+        setFileSize(fileData.size);
+        // Bump the recents entry's timestamp to "now" so it sorts as
+        // most-recent, and persist as the session file so the next plain
+        // launch restores what the user actually had open.
+        addRecentFile(fileData.path, fileData.name);
+        setLastFile(fileData.path);
+      } catch (err) {
+        const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
+        if (target.source === "cli") {
+          // The user explicitly asked for this file — always tell them why
+          // it didn't open (moved/deleted/too large).
+          showToast(`Could not open file: ${msg || target.path}`, "error");
+        } else {
+          // Stale session file (moved / deleted) — fail quietly like before,
+          // except the TooLarge case, which deserves an explanation.
           setLastFile(null);
-          const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
           if (/too large/i.test(msg)) {
             showToast(`Could not restore last file: ${msg}`, "error");
           }
-        })
-        .finally(() => setBooting(false));
-    } else {
-      setBooting(false);
-    }
+        }
+      } finally {
+        setBooting(false);
+      }
+    })();
     // Run only once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -609,7 +640,10 @@ function AppContent() {
     }
   }, [filePath, content, showToast, handleSaveAs]);
 
-  // Listen for file open from CLI (when app is opened with a file by double-click)
+  // Runtime file-open forwards. Cold-start CLI files are handled by the pull
+  // in the boot effect above; this event now arrives only from the
+  // single-instance plugin, when the user double-clicks another .md while
+  // MarkLite is already running and the second launch hands us its path.
   useEffect(() => {
     let mounted = true;
     let unlisten: (() => void) | undefined;
