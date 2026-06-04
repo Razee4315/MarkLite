@@ -33,9 +33,15 @@
 
 ## Why MarkLite?
 
+<img src="images/art/scene-writing-desk.png" width="320" align="right" alt="The MarkLite mascot typing at a cozy desk with a split-view monitor, coffee, and a plant">
+
 As a developer, I frequently work with markdown files for documentation, notes, and project READMEs. The frustration of opening `.md` files in Notepad or basic text editors, only to see raw, unformatted text with all the symbols and syntax cluttering the content, inspired me to build MarkLite.
 
 I wanted something you just open and write in: it renders Markdown beautifully while keeping the raw text one keystroke away. Tools like Obsidian are powerful, but vaults, graphs, and plugins are overkill if you only want to open a file and edit it. MarkLite stays out of that complexity and adds the things I actually reach for: math and chemistry that render live, and an optional free AI (bring your own model) that proposes edits you accept or reject right in the text.
+
+<br clear="right">
+
+> The little paper fellow above lives inside the app too: it greets you on the welcome screen, gives you a 30-second tour on first launch, and naps in the corners of empty panels.
 
 ## Screenshots
 
@@ -61,7 +67,7 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 
 ## Features
 
-### Writing
+### <img src="images/art/icon-pencil.png" width="26" alt=""> Writing
 
 - **Clean Interface** — minimal UI that stays out of your way
 - **Reader / Code / Split view** — Ctrl+E to toggle, Ctrl+\\ for split with bidirectional scroll sync
@@ -75,7 +81,7 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 - **Find & Replace** (Ctrl+F / Ctrl+H) with regex and match counter
 - **Smart paste** — URL → link, rich HTML → markdown, TSV → GFM table
 
-### Preview
+### <img src="images/art/icon-flask.png" width="26" alt=""> Preview
 
 - **GitHub Flavored Markdown** with task lists, tables, strikethrough
 - **Code blocks** with syntax highlighting and one-click copy
@@ -88,7 +94,11 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 - **Wikilinks** `[[other-file]]` resolve in the same folder
 - **Frontmatter** rendered as an editable Properties card
 
-### AI assistant
+### <img src="images/art/icon-sparkles.png" width="26" alt=""> AI assistant
+
+<p align="center">
+  <img src="images/art/scene-ai-magic.png" width="720" alt="The MarkLite mascot in a wizard hat waving a wand over a page, turning messy scribbles into clean text">
+</p>
 
 - **AI side panel** — open it from the **AI** button next to Export (or `Alt+J` / `⌘J`). A VS Code-style chat docked on the right; content reflows beside it.
 - **Ask mode** — chat about the current document: summarize it, find something, ask questions. Answers stream in live.
@@ -96,7 +106,7 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 - **Selection assist** — select text and press `Alt+J` / `⌘J` to rewrite, shorten, expand, continue, or translate it in place.
 - **Bring your own model** — works with any OpenAI-compatible endpoint: OpenAI, Google Gemini (OpenAI-compat), Ollama, llama.cpp, and more. Configure it in **Settings → AI**; your API key is stored in the OS keychain.
 
-### Files & workflow
+### <img src="images/art/icon-folder.png" width="26" alt=""> Files & workflow
 
 - **Command palette** (Ctrl+P) — search commands, files, headings, toggles
 - **Cheatsheet** (`?`) — every shortcut categorized and searchable
@@ -109,19 +119,19 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 - **File Explorer** for the current folder
 - **Outline pane** that follows the cursor
 
-### Customization
+### <img src="images/art/icon-theme-swatches.png" width="26" alt=""> Customization
 
 - **Four themes** — Dark, Light, Paper, GitHub
 - **Five fonts** — Inter, Merriweather, Lora, Source Serif, Fira Sans
 - **Three font sizes**
 - **WCAG-friendly** — visible focus rings, `prefers-reduced-motion` respected
 
-### Platform
+### <img src="images/art/icon-bolt.png" width="26" alt=""> Platform
 
 - **Native performance** — built with Tauri
 - **Cross-platform** — Windows, macOS, Linux
 
-## Installation
+## <img src="images/art/icon-rocket.png" width="30" alt=""> Installation
 
 Download the latest release from the [Releases](https://github.com/Razee4315/MarkLite/releases) page.
 
@@ -155,7 +165,7 @@ bun run tauri dev
 bun run tauri build
 ```
 
-## Keyboard Shortcuts
+## <img src="images/art/icon-keyboard.png" width="30" alt=""> Keyboard Shortcuts
 
 A few essentials — press `?` inside the app for the full searchable list.
 
@@ -184,6 +194,8 @@ A few essentials — press `?` inside the app for the full searchable list.
 
 ## Contributing
 
+<img src="images/art/mascot-hug.png" width="130" align="right" alt="The MarkLite mascot hugging a small page with a heart above its head">
+
 Contributions are very welcome — code, docs, bug reports, or ideas.
 
 - 🌱 **New here?** Browse [`good first issue`](https://github.com/Razee4315/MarkLite/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — small, scoped tasks to get started.
@@ -203,3 +215,9 @@ Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
 ## License
 
 MarkLite is licensed under the **[Apache License 2.0](LICENSE)**: free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.
+
+<p align="center">
+  <img src="images/art/mascot-sleep.png" width="110" alt="The MarkLite mascot asleep, zzz">
+  <br>
+  <sub><code>~ end of file ~</code></sub>
+</p>
