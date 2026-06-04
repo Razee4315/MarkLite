@@ -65,6 +65,7 @@ import {
   getSpellCheck,
   getSplitRatio,
   getToolbarEnabled,
+  getTourDone,
   getTypewriterMode,
   getWordWrap,
   setLastFile,
@@ -72,9 +73,11 @@ import {
   setSpellCheck,
   setSplitRatio,
   setToolbarEnabled,
+  setTourDone,
   setTypewriterMode,
   setWordWrap,
 } from "./utils/persistence";
+import { Tour } from "./components/Tour";
 
 interface FileData {
   path: string;
@@ -137,6 +140,7 @@ function AppContent() {
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
@@ -206,6 +210,18 @@ function AppContent() {
   const isDirty = content !== originalContent;
   // "Has a buffer" — true once a file is opened OR a blank Untitled buffer is started
   const hasFile = filePath !== null || fileName !== null;
+
+  // First-run welcome tour: auto-start the first time a buffer is on screen.
+  // The tour anchors to elements (mode toggle, editor panes) that only exist
+  // once a file is open, so it can't run over the WelcomeScreen.
+  useEffect(() => {
+    if (hasFile && !booting && !getTourDone()) setShowTour(true);
+  }, [hasFile, booting]);
+
+  const handleCloseTour = useCallback(() => {
+    setTourDone(true);
+    setShowTour(false);
+  }, []);
 
   // PERF: Typing in the editor calls setContent on every keystroke, which would
   // synchronously re-render every consumer of `content` — including the markdown
@@ -904,6 +920,18 @@ function AppContent() {
       icon: "keyboard",
       run: () => setShowCheatsheet(true),
     });
+    items.push({
+      id: "help.tour",
+      label: "Replay the welcome tour",
+      section: "Help",
+      icon: "tour",
+      keywords: "onboarding intro guide help walkthrough",
+      run: () => {
+        // The tour spotlights editor chrome, so make sure a buffer exists first.
+        if (!hasFile) handleNewFile();
+        setShowTour(true);
+      },
+    });
 
     // === Recent files ===
     const recents = getRecentFiles();
@@ -1016,6 +1044,7 @@ function AppContent() {
               mode switches. */}
           <div
             ref={splitContainerRef}
+            data-tour="editor"
             className="flex-1 overflow-hidden flex flex-row"
             // Reserve space on the right for the AI panel so editor/preview reflow
             // beside it instead of being covered. The panel itself is fixed at
@@ -1207,6 +1236,12 @@ function AppContent() {
             }}
           />
         </Suspense>
+      )}
+
+      {/* First-run welcome tour. Gated on hasFile because every spotlight
+          target (editor panes, mode toggle) only exists with an open buffer. */}
+      {showTour && hasFile && !booting && (
+        <Tour onClose={handleCloseTour} onSetMode={setMode} />
       )}
 
       {/* Toast notifications */}

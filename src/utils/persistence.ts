@@ -62,6 +62,10 @@ export const getSplitRatio = (): number => {
 };
 export const setSplitRatio = (r: number): void => safeSet(KEY_SPLIT_RATIO, r);
 
+const KEY_TOUR_DONE = "marklite:tourDone";
+export const getTourDone = (): boolean => safeGet<boolean>(KEY_TOUR_DONE, false);
+export const setTourDone = (v: boolean): void => safeSet(KEY_TOUR_DONE, v);
+
 const KEY_TYPEWRITER_MODE = "marklite:typewriterMode";
 const KEY_TOOLBAR = "marklite:toolbar";
 const KEY_WORD_WRAP = "marklite:wordWrap";

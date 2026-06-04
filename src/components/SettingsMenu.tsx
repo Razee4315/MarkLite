@@ -51,6 +51,7 @@ export function SettingsMenu() {
                 aria-label="Settings"
                 aria-expanded={isOpen}
                 aria-haspopup="true"
+                data-tour="settings"
                 className="btn-press flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 title="Settings"
             >

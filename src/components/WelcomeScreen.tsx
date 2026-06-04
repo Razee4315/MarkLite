@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { clearRecentFiles, getRecentFiles, removeRecentFile, type RecentFile } from "../utils/persistence";
+import mascotWave from "../assets/mascot/mascot-wave.png";
 
 interface WelcomeScreenProps {
     onOpenFile: () => void;
@@ -113,8 +114,13 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
             aria-dropeffect="copy"
         >
             <div className="flex flex-col items-center gap-8 max-w-md w-full text-center animate-fade-in-up">
-                <div className="flex items-center justify-center w-20 h-20">
-                    <img src="/icon.svg" alt="MarkLite" className="w-full h-full" />
+                <div className="flex items-center justify-center w-28 h-28">
+                    <img
+                        src={mascotWave}
+                        alt="MarkLite mascot waving hello"
+                        draggable={false}
+                        className="w-full h-full object-contain"
+                    />
                 </div>
 
                 <div className="flex flex-col gap-2">
