@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { clearRecentFiles, getRecentFiles, removeRecentFile, type RecentFile } from "../utils/persistence";
-import mascotWave from "../assets/mascot/mascot-wave.png";
+import { MascotIdle } from "./MascotIdle";
 
 interface WelcomeScreenProps {
     onOpenFile: () => void;
@@ -115,12 +115,7 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
         >
             <div className="flex flex-col items-center gap-8 max-w-md w-full text-center animate-fade-in-up">
                 <div className="flex items-center justify-center w-28 h-28">
-                    <img
-                        src={mascotWave}
-                        alt="MarkLite mascot waving hello"
-                        draggable={false}
-                        className="w-full h-full object-contain"
-                    />
+                    <MascotIdle className="w-full h-full" />
                 </div>
 
                 <div className="flex flex-col gap-2">
