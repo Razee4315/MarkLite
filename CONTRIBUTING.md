@@ -1,6 +1,6 @@
-# Contributing to MarkLite
+# Contributing to Paperling
 
-Thank you for your interest in contributing to MarkLite. This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to Paperling. This document provides guidelines for contributing to the project.
 
 ## Getting Started
 

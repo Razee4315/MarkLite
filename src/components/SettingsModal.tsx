@@ -298,19 +298,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             <div className="rounded-[var(--radius-lg)] border border-[var(--border)] divide-y divide-[var(--border-subtle)] overflow-hidden">
                                 {matches("typewriter") && (
                                     <ToggleRow label="Typewriter mode" description="Keep caret vertically centered" checked={typewriter}
-                                        onChange={(v) => { setTypewriterLocal(v); setTypewriterMode(v); fire("marklite:typewriter-toggle", v); }} />
+                                        onChange={(v) => { setTypewriterLocal(v); setTypewriterMode(v); fire("paperling:typewriter-toggle", v); }} />
                                 )}
                                 {matches("toolbar") && (
                                     <ToggleRow label="Show formatting toolbar" description="Toolbar above the editor" checked={toolbar}
-                                        onChange={(v) => { setToolbarLocal(v); setToolbarEnabled(v); fire("marklite:toolbar-toggle", v); }} />
+                                        onChange={(v) => { setToolbarLocal(v); setToolbarEnabled(v); fire("paperling:toolbar-toggle", v); }} />
                                 )}
                                 {matches("word wrap") && (
                                     <ToggleRow label="Word wrap" description="Wrap long lines instead of horizontal scroll" checked={wordWrap}
-                                        onChange={(v) => { setWordWrapLocal(v); setWordWrap(v); fire("marklite:wordwrap-toggle", v); }} />
+                                        onChange={(v) => { setWordWrapLocal(v); setWordWrap(v); fire("paperling:wordwrap-toggle", v); }} />
                                 )}
                                 {matches("spell check") && (
                                     <ToggleRow label="Spell check" description="Underline misspelled words while you type" checked={spellCheck}
-                                        onChange={(v) => { setSpellCheckLocal(v); setSpellCheck(v); fire("marklite:spellcheck-toggle", v); }} />
+                                        onChange={(v) => { setSpellCheckLocal(v); setSpellCheck(v); fire("paperling:spellcheck-toggle", v); }} />
                                 )}
                             </div>
                         )}
@@ -399,9 +399,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {section === "about" && (
                             <div className="text-sm text-[var(--text-secondary)] space-y-2">
                                 <div className="flex items-center gap-3">
-                                    <img src="/icon.svg" alt="MarkLite" className="w-10 h-10" />
+                                    <img src="/icon.svg" alt="Paperling" className="w-10 h-10" />
                                     <div>
-                                        <div className="text-[var(--text-primary)] font-semibold">MarkLite</div>
+                                        <div className="text-[var(--text-primary)] font-semibold">Paperling</div>
                                         <div className="text-[11px]">A minimal markdown editor</div>
                                     </div>
                                 </div>
@@ -414,7 +414,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     type="button"
                                     onClick={() => {
                                         onClose();
-                                        window.dispatchEvent(new CustomEvent("marklite:replay-tour"));
+                                        window.dispatchEvent(new CustomEvent("paperling:replay-tour"));
                                     }}
                                     className="btn-press mt-3 w-full flex items-center gap-3 px-3.5 py-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] transition-colors text-left"
                                 >

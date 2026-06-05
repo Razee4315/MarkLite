@@ -122,7 +122,7 @@ export async function streamChat(
 // just the plain Q/A text. The caller trims history length.
 
 export const ASK_SYSTEM_PROMPT =
-    "You are the writing assistant inside MarkLite, a Markdown editor. Answer the " +
+    "You are the writing assistant inside Paperling, a Markdown editor. Answer the " +
     "user's questions about their current Markdown document clearly and concisely, " +
     "formatted in Markdown. This is a read-only Q&A mode — do not rewrite or output " +
     "the whole document unless explicitly asked.";
@@ -151,7 +151,7 @@ export function buildAskMessages(
 // ===== Agent / Edit mode =====
 
 export const AGENT_SYSTEM_PROMPT =
-    "You are the agent inside MarkLite, a Markdown editor, working on the user's current document.\n\n" +
+    "You are the agent inside Paperling, a Markdown editor, working on the user's current document.\n\n" +
     "Decide what the user wants:\n" +
     "- If they ask a QUESTION, answer concisely in Markdown. Do NOT output edit blocks.\n" +
     "- If they ask you to CHANGE the document (edit, rewrite, add, fix, restructure), respond with edit blocks ONLY. You may put at most one short sentence of summary before the blocks.\n\n" +

@@ -1,5 +1,5 @@
 /**
- * Pure GFM-table model + operations for MarkLite's visual table editing.
+ * Pure GFM-table model + operations for Paperling's visual table editing.
  *
  * Everything here is pure: parse a markdown table block into a {headers, aligns,
  * rows} model, run row/column/alignment operations on it, and serialize back to

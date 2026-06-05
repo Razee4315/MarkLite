@@ -34,7 +34,7 @@ pub fn run() {
 
     tauri::Builder::default()
         // Must be the first plugin so it wins the instance lock race.
-        // A second launch (double-clicking another .md while MarkLite runs)
+        // A second launch (double-clicking another .md while Paperling runs)
         // forwards its argv here and exits; we surface the window and hand
         // the path to the existing frontend listener.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -75,14 +75,14 @@ mod tests {
 
     #[test]
     fn md_arg_skips_argv0_and_finds_markdown() {
-        assert_eq!(md_arg(&v(&["marklite.exe", "C:\\notes\\a.md"])), Some("C:\\notes\\a.md".into()));
-        assert_eq!(md_arg(&v(&["marklite.exe", "C:\\notes\\b.markdown"])), Some("C:\\notes\\b.markdown".into()));
+        assert_eq!(md_arg(&v(&["paperling.exe", "C:\\notes\\a.md"])), Some("C:\\notes\\a.md".into()));
+        assert_eq!(md_arg(&v(&["paperling.exe", "C:\\notes\\b.markdown"])), Some("C:\\notes\\b.markdown".into()));
     }
 
     #[test]
     fn md_arg_ignores_non_markdown_and_flags() {
-        assert_eq!(md_arg(&v(&["marklite.exe"])), None);
-        assert_eq!(md_arg(&v(&["marklite.exe", "--flag", "notes.txt"])), None);
+        assert_eq!(md_arg(&v(&["paperling.exe"])), None);
+        assert_eq!(md_arg(&v(&["paperling.exe", "--flag", "notes.txt"])), None);
         // argv[0] itself never matches, even if the exe path looked odd
         assert_eq!(md_arg(&v(&["weird.md"])), None);
     }
@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn md_arg_takes_first_markdown_among_args() {
         assert_eq!(
-            md_arg(&v(&["marklite.exe", "--verbose", "x.md", "y.md"])),
+            md_arg(&v(&["paperling.exe", "--verbose", "x.md", "y.md"])),
             Some("x.md".into())
         );
     }

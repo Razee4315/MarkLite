@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/public/readme-banner.png" alt="The MarkLite paper mascot walking with its pencil, book, flask, diagram, magnifier, and rocket" width="100%">
+  <img src="docs/public/readme-banner.png" alt="The Paperling paper mascot walking with its pencil, book, flask, diagram, magnifier, and rocket" width="100%">
 </p>
 
 <p align="center">
-  <img src="public/icon.svg" width="80" alt="MarkLite Logo">
-  <h1 align="center">MarkLite</h1>
+  <img src="public/icon.svg" width="80" alt="Paperling Logo">
+  <h1 align="center">Paperling</h1>
 </p>
 
 <p align="center">
@@ -12,32 +12,32 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Razee4315/MarkLite/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Razee4315/MarkLite?color=2ea043&label=download"></a>
-  <a href="https://github.com/Razee4315/MarkLite/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Razee4315/MarkLite/total?color=2ea043"></a>
-  <a href="https://github.com/Razee4315/MarkLite/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Razee4315/MarkLite?style=flat"></a>
+  <a href="https://github.com/Razee4315/Paperling/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Razee4315/Paperling?color=2ea043&label=download"></a>
+  <a href="https://github.com/Razee4315/Paperling/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Razee4315/Paperling/total?color=2ea043"></a>
+  <a href="https://github.com/Razee4315/Paperling/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Razee4315/Paperling?style=flat"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-555">
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20%2B%20Rust-FFC131">
 </p>
 
 <p align="center">
-  <a href="https://github.com/Razee4315/MarkLite/releases/latest"><b>⬇ Download</b></a> ·
-  <a href="https://razee4315.github.io/MarkLite/"><b>Website</b></a> ·
+  <a href="https://github.com/Razee4315/Paperling/releases/latest"><b>⬇ Download</b></a> ·
+  <a href="https://razee4315.github.io/Paperling/"><b>Website</b></a> ·
   <a href="#features"><b>Features</b></a> ·
   <a href="CONTRIBUTING.md"><b>Contribute</b></a>
 </p>
 
 <p align="center">
-  <img src="images/split-view.png" width="860" alt="MarkLite in split view — Markdown source on the left, live preview with a table, task list and callout on the right">
+  <img src="images/split-view.png" width="860" alt="Paperling in split view — Markdown source on the left, live preview with a table, task list and callout on the right">
 </p>
 
-## Why MarkLite?
+## Why Paperling?
 
-<img src="images/art/scene-writing-desk.png" width="320" align="right" alt="The MarkLite mascot typing at a cozy desk with a split-view monitor, coffee, and a plant">
+<img src="images/art/scene-writing-desk.png" width="320" align="right" alt="The Paperling mascot typing at a cozy desk with a split-view monitor, coffee, and a plant">
 
-As a developer, I frequently work with markdown files for documentation, notes, and project READMEs. The frustration of opening `.md` files in Notepad or basic text editors, only to see raw, unformatted text with all the symbols and syntax cluttering the content, inspired me to build MarkLite.
+As a developer, I frequently work with markdown files for documentation, notes, and project READMEs. The frustration of opening `.md` files in Notepad or basic text editors, only to see raw, unformatted text with all the symbols and syntax cluttering the content, inspired me to build Paperling.
 
-I wanted something you just open and write in: it renders Markdown beautifully while keeping the raw text one keystroke away. Tools like Obsidian are powerful, but vaults, graphs, and plugins are overkill if you only want to open a file and edit it. MarkLite stays out of that complexity and adds the things I actually reach for: math and chemistry that render live, and an optional free AI (bring your own model) that proposes edits you accept or reject right in the text.
+I wanted something you just open and write in: it renders Markdown beautifully while keeping the raw text one keystroke away. Tools like Obsidian are powerful, but vaults, graphs, and plugins are overkill if you only want to open a file and edit it. Paperling stays out of that complexity and adds the things I actually reach for: math and chemistry that render live, and an optional free AI (bring your own model) that proposes edits you accept or reject right in the text.
 
 <br clear="right">
 
@@ -48,22 +48,22 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 **Math, chemistry, diagrams, and code — all rendered live as you type.**
 
 <p align="center">
-  <img src="images/showcase.png" width="860" alt="MarkLite preview rendering an integral equation, a balanced chemical reaction, a Mermaid flowchart, and a syntax-highlighted code block">
+  <img src="images/showcase.png" width="860" alt="Paperling preview rendering an integral equation, a balanced chemical reaction, a Mermaid flowchart, and a syntax-highlighted code block">
 </p>
 
 ### Four themes
 
 | Dark | Light |
 |:----:|:-----:|
-| <img src="images/theme-dark.png" width="420" alt="MarkLite Dark theme"> | <img src="images/theme-light.png" width="420" alt="MarkLite Light theme"> |
+| <img src="images/theme-dark.png" width="420" alt="Paperling Dark theme"> | <img src="images/theme-light.png" width="420" alt="Paperling Light theme"> |
 | **Paper** | **GitHub** |
-| <img src="images/theme-paper.png" width="420" alt="MarkLite Paper theme"> | <img src="images/theme-github.png" width="420" alt="MarkLite GitHub theme"> |
+| <img src="images/theme-paper.png" width="420" alt="Paperling Paper theme"> | <img src="images/theme-github.png" width="420" alt="Paperling GitHub theme"> |
 
 ### File explorer &amp; command palette
 
 | File explorer | Command palette |
 |:-------------:|:---------------:|
-| <img src="images/file-explorer.png" width="420" alt="MarkLite file explorer with reader mode"> | <img src="images/command-palette.png" width="420" alt="MarkLite command palette"> |
+| <img src="images/file-explorer.png" width="420" alt="Paperling file explorer with reader mode"> | <img src="images/command-palette.png" width="420" alt="Paperling command palette"> |
 
 ## Features
 
@@ -97,7 +97,7 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 ### <img src="images/art/icon-sparkles.png" width="26" alt=""> AI assistant
 
 <p align="center">
-  <img src="images/art/scene-ai-magic.png" width="720" alt="The MarkLite mascot in a wizard hat waving a wand over a page, turning messy scribbles into clean text">
+  <img src="images/art/scene-ai-magic.png" width="720" alt="The Paperling mascot in a wizard hat waving a wand over a page, turning messy scribbles into clean text">
 </p>
 
 - **AI side panel** — open it from the **AI** button next to Export (or `Alt+J` / `⌘J`). A VS Code-style chat docked on the right; content reflows beside it.
@@ -133,7 +133,7 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 
 ## <img src="images/art/icon-rocket.png" width="30" alt=""> Installation
 
-Download the latest release from the [Releases](https://github.com/Razee4315/MarkLite/releases) page.
+Download the latest release from the [Releases](https://github.com/Razee4315/Paperling/releases) page.
 
 ### Available Formats
 
@@ -152,8 +152,8 @@ Download the latest release from the [Releases](https://github.com/Razee4315/Mar
 
 ```bash
 # Clone the repository
-git clone https://github.com/Razee4315/MarkLite.git
-cd MarkLite
+git clone https://github.com/Razee4315/Paperling.git
+cd Paperling
 
 # Install dependencies
 bun install
@@ -194,12 +194,12 @@ A few essentials — press `?` inside the app for the full searchable list.
 
 ## Contributing
 
-<img src="images/art/mascot-hug.png" width="130" align="right" alt="The MarkLite mascot hugging a small page with a heart above its head">
+<img src="images/art/mascot-hug.png" width="130" align="right" alt="The Paperling mascot hugging a small page with a heart above its head">
 
 Contributions are very welcome — code, docs, bug reports, or ideas.
 
-- 🌱 **New here?** Browse [`good first issue`](https://github.com/Razee4315/MarkLite/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — small, scoped tasks to get started.
-- 🗺️ See the [Roadmap](ROADMAP.md) for where MarkLite is headed and where help is wanted.
+- 🌱 **New here?** Browse [`good first issue`](https://github.com/Razee4315/Paperling/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — small, scoped tasks to get started.
+- 🗺️ See the [Roadmap](ROADMAP.md) for where Paperling is headed and where help is wanted.
 - 📦 Want to help with distribution? See [`packaging/`](packaging/) (winget, Scoop, and more).
 - 📋 Please read the [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before opening a pull request.
 
@@ -214,10 +214,10 @@ Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
 
 ## License
 
-MarkLite is licensed under the **[Apache License 2.0](LICENSE)**: free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.
+Paperling is licensed under the **[Apache License 2.0](LICENSE)**: free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.
 
 <p align="center">
-  <img src="images/art/mascot-sleep.png" width="110" alt="The MarkLite mascot asleep, zzz">
+  <img src="images/art/mascot-sleep.png" width="110" alt="The Paperling mascot asleep, zzz">
   <br>
   <sub><code>~ end of file ~</code></sub>
 </p>

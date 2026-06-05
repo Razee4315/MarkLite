@@ -1,6 +1,6 @@
 /**
  * Local-only font loading. Every font face the app uses is bundled with the
- * app — no requests to fonts.googleapis.com / fonts.gstatic.com — so MarkLite
+ * app — no requests to fonts.googleapis.com / fonts.gstatic.com — so Paperling
  * looks identical with or without an internet connection.
  *
  * We import the `latin-*` CSS files from each @fontsource package because they
@@ -52,7 +52,7 @@ const jetbrainsMonoFaces = `
 
 if (typeof document !== "undefined") {
     const style = document.createElement("style");
-    style.setAttribute("data-marklite-fonts", "jetbrains-mono");
+    style.setAttribute("data-paperling-fonts", "jetbrains-mono");
     style.textContent = jetbrainsMonoFaces;
     document.head.appendChild(style);
     // Eagerly kick off the font load so the editor doesn't sit blank for any

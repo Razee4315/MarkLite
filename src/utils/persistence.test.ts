@@ -4,9 +4,29 @@ import {
     getSplitRatio, setSplitRatio,
     getAIConfig, setAIConfig,
     getWordWrap,
+    migrateLegacyKeys, getLastFile,
 } from "./persistence";
 
 beforeEach(() => localStorage.clear());
+
+describe("marklite -> paperling key migration", () => {
+    it("copies legacy values to the new prefix and removes the originals", () => {
+        localStorage.setItem("marklite:lastFile", JSON.stringify("C:/notes/old.md"));
+        localStorage.setItem("marklite:wordWrap", JSON.stringify(false));
+        migrateLegacyKeys();
+        expect(getLastFile()).toBe("C:/notes/old.md");
+        expect(getWordWrap()).toBe(false);
+        expect(localStorage.getItem("marklite:lastFile")).toBeNull();
+        expect(localStorage.getItem("marklite:wordWrap")).toBeNull();
+    });
+
+    it("never overwrites an existing paperling value", () => {
+        localStorage.setItem("paperling:lastFile", JSON.stringify("C:/notes/new.md"));
+        localStorage.setItem("marklite:lastFile", JSON.stringify("C:/notes/old.md"));
+        migrateLegacyKeys();
+        expect(getLastFile()).toBe("C:/notes/new.md");
+    });
+});
 
 describe("recent files", () => {
     it("adds most-recent first and de-duplicates by path", () => {

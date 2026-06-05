@@ -81,9 +81,9 @@ describe("useGlobalShortcuts", () => {
 
     it("Alt+J dispatches the AI-assist event", () => {
         const onAi = vi.fn();
-        window.addEventListener("marklite:ai-assist", onAi);
+        window.addEventListener("paperling:ai-assist", onAi);
         press({ key: "j", altKey: true });
-        window.removeEventListener("marklite:ai-assist", onAi);
+        window.removeEventListener("paperling:ai-assist", onAi);
         expect(onAi).toHaveBeenCalledTimes(1);
     });
 });

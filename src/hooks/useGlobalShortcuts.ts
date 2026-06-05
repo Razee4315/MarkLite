@@ -96,13 +96,13 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
             }
             // AI assist - Alt+J everywhere, Cmd+J on macOS. Handled here (window
             // level) rather than only in the editor so it fires regardless of
-            // focus; the editor opens the bubble via the marklite:ai-assist
+            // focus; the editor opens the bubble via the paperling:ai-assist
             // listener. (Ctrl+J is reserved by WebView2 on Windows, hence Alt+J.)
             const isAltJ = e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === "j" || e.key === "J" || e.code === "KeyJ");
             const isCmdJ = e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === "j" || e.key === "J");
             if (isAltJ || isCmdJ) {
                 e.preventDefault();
-                window.dispatchEvent(new CustomEvent("marklite:ai-assist"));
+                window.dispatchEvent(new CustomEvent("paperling:ai-assist"));
             }
         };
 

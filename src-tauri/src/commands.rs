@@ -368,6 +368,10 @@ pub async fn read_image_file(base_dir: String, rel_path: String) -> Result<Respo
 // The front end keeps endpoint + model in localStorage (non-secret) and routes
 // only the key through these commands, with a localStorage fallback on the JS
 // side when no keychain is available (e.g. a headless Linux box).
+//
+// NOTE: the service name stays "marklite" (the app's pre-rename name) on
+// purpose — changing it would orphan every existing user's stored API key.
+// Same reasoning as the bundle identifier in tauri.conf.json.
 const AI_KEY_SERVICE: &str = "marklite";
 const AI_KEY_ACCOUNT: &str = "ai-api-key";
 

@@ -252,7 +252,7 @@ function LocalImage({ src, alt, baseDir, ...props }: { src: string; alt: string;
             loading="lazy"
             className="max-w-full h-auto rounded-lg my-4 cursor-zoom-in transition-transform hover:scale-[1.01]"
             onClick={() => {
-                const evt = new CustomEvent("marklite:zoom", { detail: { src: imageSrc, alt } });
+                const evt = new CustomEvent("paperling:zoom", { detail: { src: imageSrc, alt } });
                 window.dispatchEvent(evt);
             }}
         />
@@ -545,8 +545,8 @@ function MarkdownPreviewImpl({
             const detail = (e as CustomEvent).detail;
             if (detail?.src) setZoomImage({ src: detail.src, alt: detail.alt || "" });
         };
-        window.addEventListener("marklite:zoom", handler);
-        return () => window.removeEventListener("marklite:zoom", handler);
+        window.addEventListener("paperling:zoom", handler);
+        return () => window.removeEventListener("paperling:zoom", handler);
     }, []);
 
     // Esc closes lightbox

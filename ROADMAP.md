@@ -1,10 +1,10 @@
-# MarkLite Roadmap
+# Paperling Roadmap
 
-A living, high-level view of where MarkLite is headed. This is **directional, not
+A living, high-level view of where Paperling is headed. This is **directional, not
 a promise** — priorities shift, and community input changes them. If something
 here excites you, it's an open invitation to contribute. 🙌
 
-New here? Start with [`good first issue`](https://github.com/Razee4315/MarkLite/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+New here? Start with [`good first issue`](https://github.com/Razee4315/Paperling/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 and read the [Contributing guide](CONTRIBUTING.md).
 
 ## 🟢 Now (in progress / just shipped)
@@ -16,7 +16,7 @@ and read the [Contributing guide](CONTRIBUTING.md).
 
 ## 🔵 Next
 
-- **winget submission** so `winget install Razee4315.MarkLite` works.
+- **winget submission** so `winget install Razee4315.Paperling` works.
 - **macOS builds** — add `macos-latest` to the release matrix and publish a
   `.dmg` (unblocks a Homebrew cask).
 - **Portable Windows build** (zipped `.exe`) for first-class Scoop support.
@@ -44,5 +44,5 @@ These aren't committed — open or upvote an issue if you want one:
 2. Then high-leverage discovery/distribution work (more users → more feedback).
 3. Then features with clear demand (👍 on issues) and reasonable scope.
 
-Have a different idea? [Open an issue](https://github.com/Razee4315/MarkLite/issues/new/choose)
+Have a different idea? [Open an issue](https://github.com/Razee4315/Paperling/issues/new/choose)
 or start a discussion — early feedback shapes this list.

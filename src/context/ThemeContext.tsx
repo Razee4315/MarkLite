@@ -16,9 +16,9 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_STORAGE_KEY = 'marklite-theme';
-const FONT_STORAGE_KEY = 'marklite-font';
-const FONT_SIZE_STORAGE_KEY = 'marklite-font-size';
+const THEME_STORAGE_KEY = 'paperling-theme';
+const FONT_STORAGE_KEY = 'paperling-font';
+const FONT_SIZE_STORAGE_KEY = 'paperling-font-size';
 
 // Valid values for validation against corrupted localStorage
 const VALID_THEMES: Theme[] = ['dark', 'light', 'paper', 'github','dracula'];

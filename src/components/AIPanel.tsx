@@ -187,7 +187,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                         <span className="material-symbols-outlined text-[32px] opacity-40">key</span>
                         <p>Connect an AI provider to start chatting about your note.</p>
                         <button
-                            onClick={() => window.dispatchEvent(new CustomEvent("marklite:open-settings"))}
+                            onClick={() => window.dispatchEvent(new CustomEvent("paperling:open-settings"))}
                             className="px-3 py-1.5 text-sm rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90"
                         >
                             Open AI settings

@@ -1,4 +1,4 @@
-# MarkLite: Frontend UI & HCI (Human-Computer Interaction) Analysis
+# Paperling: Frontend UI & HCI (Human-Computer Interaction) Analysis
 
 > Comprehensive analysis of UI design issues, accessibility gaps, interaction design flaws, and HCI improvements.
 

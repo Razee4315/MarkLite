@@ -311,15 +311,15 @@ function AppContent() {
   // Cross-component event listeners — settings menu and command palette toggle these
   useEffect(() => {
     const handlers: Array<[string, (e: Event) => void]> = [
-      ["marklite:typewriter-toggle", (e) => setTypewriterModeEnabled(!!(e as CustomEvent).detail?.enabled)],
-      ["marklite:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
-      ["marklite:wordwrap-toggle", (e) => setWordWrapEnabled(!!(e as CustomEvent).detail?.enabled)],
-      ["marklite:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
+      ["paperling:typewriter-toggle", (e) => setTypewriterModeEnabled(!!(e as CustomEvent).detail?.enabled)],
+      ["paperling:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
+      ["paperling:wordwrap-toggle", (e) => setWordWrapEnabled(!!(e as CustomEvent).detail?.enabled)],
+      ["paperling:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
       // Opened from the title-bar settings dropdown's "More settings…" entry.
-      ["marklite:open-settings", () => setShowSettings(true)],
+      ["paperling:open-settings", () => setShowSettings(true)],
       // Alt+J with no selection opens the docked AI side panel. The editor's
       // ai-assist handler decides bubble (selection) vs panel (no selection).
-      ["marklite:toggle-ai-panel", () => setShowAIPanel((v) => !v)],
+      ["paperling:toggle-ai-panel", () => setShowAIPanel((v) => !v)],
     ];
     handlers.forEach(([k, h]) => window.addEventListener(k, h));
 
@@ -575,8 +575,8 @@ function AppContent() {
       if (!hasFile) handleNewFile();
       setShowTour(true);
     };
-    window.addEventListener("marklite:replay-tour", h);
-    return () => window.removeEventListener("marklite:replay-tour", h);
+    window.addEventListener("paperling:replay-tour", h);
+    return () => window.removeEventListener("paperling:replay-tour", h);
   }, [hasFile, handleNewFile]);
 
   // Open file dialog
@@ -643,7 +643,7 @@ function AppContent() {
   // Runtime file-open forwards. Cold-start CLI files are handled by the pull
   // in the boot effect above; this event now arrives only from the
   // single-instance plugin, when the user double-clicks another .md while
-  // MarkLite is already running and the second launch hands us its path.
+  // Paperling is already running and the second launch hands us its path.
   useEffect(() => {
     let mounted = true;
     let unlisten: (() => void) | undefined;
@@ -926,7 +926,7 @@ function AppContent() {
         section: "AI",
         icon: "auto_awesome",
         keywords: "ai rewrite shorten expand continue translate assistant gpt llm",
-        run: () => window.dispatchEvent(new CustomEvent("marklite:ai-assist")),
+        run: () => window.dispatchEvent(new CustomEvent("paperling:ai-assist")),
       });
     }
 

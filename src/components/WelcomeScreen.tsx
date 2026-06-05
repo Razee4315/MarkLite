@@ -120,7 +120,7 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
 
                 <div className="flex flex-col gap-2">
                     <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-                        MarkLite
+                        Paperling
                     </h1>
                     <p className="text-sm text-[var(--text-secondary)]">
                         A minimal markdown editor

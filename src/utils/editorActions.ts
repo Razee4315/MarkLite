@@ -1,5 +1,5 @@
 /**
- * Editor key-handling helpers for MarkLite's CodeEditor.
+ * Editor key-handling helpers for Paperling's CodeEditor.
  *
  * All functions are pure: they take the current text + selection and return the
  * new text + selection, or `null` if the key is not handled (so the textarea

@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error("MarkLite crashed:", error, errorInfo);
+        console.error("Paperling crashed:", error, errorInfo);
     }
 
     handleReload = () => {
@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
                         </span>
                         <h1 className="text-xl font-bold">Something went wrong</h1>
                         <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                            MarkLite encountered an unexpected error. Your file data should be safe.
+                            Paperling encountered an unexpected error. Your file data should be safe.
                         </p>
                         {this.state.error && (
                             <pre className="w-full text-left text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-32 text-[var(--text-secondary)]">

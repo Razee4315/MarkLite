@@ -242,7 +242,7 @@ function CodeEditorImpl({
             { key: "Mod-h", run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("replace"); setFindOpen(true); return true; } },
             // NB: the AI shortcut (Alt+J / ⌘J) is handled at the App window level
             // so it fires regardless of editor focus — see App.tsx. The editor
-            // opens the bubble via the marklite:ai-assist event listener below.
+            // opens the bubble via the paperling:ai-assist event listener below.
         ]));
 
         const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
@@ -556,11 +556,11 @@ function CodeEditorImpl({
                 view.focus();
                 openAIBubble();
             } else {
-                window.dispatchEvent(new CustomEvent("marklite:toggle-ai-panel"));
+                window.dispatchEvent(new CustomEvent("paperling:toggle-ai-panel"));
             }
         };
-        window.addEventListener("marklite:ai-assist", handler);
-        return () => window.removeEventListener("marklite:ai-assist", handler);
+        window.addEventListener("paperling:ai-assist", handler);
+        return () => window.removeEventListener("paperling:ai-assist", handler);
     }, [openAIBubble]);
 
     // === Imperative helpers for child UI (toolbar, find/replace, slash, AI) ===

@@ -1,6 +1,6 @@
 # Packaging & distribution
 
-Manifests and a playbook for getting MarkLite into package managers. Each
+Manifests and a playbook for getting Paperling into package managers. Each
 registry is a discovery channel — people search/browse them, and a one-line
 install removes friction. **winget** is the highest-value target for Windows;
 do that one first.
@@ -10,18 +10,18 @@ do that one first.
 >
 > ```powershell
 > # Windows
-> (Get-FileHash .\MarkLite_<ver>_x64-setup.exe -Algorithm SHA256).Hash
+> (Get-FileHash .\Paperling_<ver>_x64-setup.exe -Algorithm SHA256).Hash
 > ```
 > ```bash
 > # macOS/Linux
-> sha256sum MarkLite_<ver>_x64-setup.exe
+> sha256sum Paperling_<ver>_x64-setup.exe
 > ```
 
 ---
 
 ## 1. winget (Windows) — ready to submit ✅
 
-Files: [`winget/`](./winget/) — three manifests for `Razee4315.MarkLite` v0.6.21,
+Files: [`winget/`](./winget/) — three manifests for `Razee4315.Paperling` v0.6.21,
 targeting the per-user NSIS `.exe`. The hash is already filled in and verified.
 
 **Submit:**
@@ -35,13 +35,13 @@ targeting the per-user NSIS `.exe`. The hash is already filled in and verified.
    ```
 2. Fork [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs) and
    copy these files to
-   `manifests/r/Razee4315/MarkLite/0.6.21/`.
+   `manifests/r/Razee4315/Paperling/0.6.21/`.
 3. Open a PR. Microsoft's bot validates the URL + hash and installs it in a
-   sandbox; once merged, `winget install Razee4315.MarkLite` works for everyone.
+   sandbox; once merged, `winget install Razee4315.Paperling` works for everyone.
 
 **Even easier** — let `wingetcreate` build & submit from the release:
 ```powershell
-wingetcreate update Razee4315.MarkLite -u "https://github.com/Razee4315/MarkLite/releases/download/v0.6.21/MarkLite_0.6.21_x64-setup.exe" -v 0.6.21 --submit
+wingetcreate update Razee4315.Paperling -u "https://github.com/Razee4315/Paperling/releases/download/v0.6.21/Paperling_0.6.21_x64-setup.exe" -v 0.6.21 --submit
 ```
 
 > Tip: add a `wingetcreate update ... --submit` step to `release.yml` so every
@@ -51,22 +51,22 @@ wingetcreate update Razee4315.MarkLite -u "https://github.com/Razee4315/MarkLite
 
 ## 2. Scoop (Windows) — experimental ⚠️
 
-File: [`scoop/marklite.json`](./scoop/marklite.json).
+File: [`scoop/paperling.json`](./scoop/paperling.json).
 
-Scoop prefers *portable* apps, but MarkLite currently ships only an NSIS
+Scoop prefers *portable* apps, but Paperling currently ships only an NSIS
 installer. This manifest uses Scoop's `#/dl.7z` trick to extract the installer
 with 7-Zip. **Test it before publishing** — depending on the NSIS layout the
 `bin` / `extract_dir` may need adjusting:
 
 ```powershell
-scoop install ./packaging/scoop/marklite.json
+scoop install ./packaging/scoop/paperling.json
 ```
 
 To publish: create a bucket repo (e.g. `Razee4315/scoop-bucket`), drop the JSON
-in, then `scoop bucket add marklite https://github.com/Razee4315/scoop-bucket`.
+in, then `scoop bucket add paperling https://github.com/Razee4315/scoop-bucket`.
 
 **Cleaner long-term fix:** add a portable `.zip` artifact to the release (zip the
-unpacked `MarkLite.exe` + resources). Then the Scoop manifest points straight at
+unpacked `Paperling.exe` + resources). Then the Scoop manifest points straight at
 the zip — no extraction hacks — and it's eligible for the official `extras`
 bucket.
 
@@ -78,7 +78,7 @@ bucket.
 |---|---|---|---|
 | **Chocolatey** | Windows | Low | Installer-native. A `.nuspec` + `chocolateyInstall.ps1` that downloads the `.exe` and runs `/S`. Big audience. |
 | **Flathub** | Linux | Medium | Largest Linux app store. Needs a flatpak manifest (can wrap the existing build). Huge organic discovery. |
-| **AUR** | Arch Linux | Low | A `PKGBUILD` (`marklite-bin`) pointing at the `.AppImage` or `.deb`. The Arch crowd finds apps here. |
+| **AUR** | Arch Linux | Low | A `PKGBUILD` (`paperling-bin`) pointing at the `.AppImage` or `.deb`. The Arch crowd finds apps here. |
 | **Homebrew cask** | macOS | Low | Needs a macOS build first (see below), then a one-file cask. |
 | **Microsoft Store** | Windows | Medium | Free for individuals; massive built-in search. Package the MSI/MSIX. |
 
@@ -95,9 +95,9 @@ removes the warning.
 ```
 packaging/
 ├── winget/
-│   ├── Razee4315.MarkLite.yaml                # version manifest
-│   ├── Razee4315.MarkLite.installer.yaml      # installer + sha256
-│   └── Razee4315.MarkLite.locale.en-US.yaml   # metadata
+│   ├── Razee4315.Paperling.yaml                # version manifest
+│   ├── Razee4315.Paperling.installer.yaml      # installer + sha256
+│   └── Razee4315.Paperling.locale.en-US.yaml   # metadata
 └── scoop/
-    └── marklite.json
+    └── paperling.json
 ```

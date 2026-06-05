@@ -79,7 +79,7 @@ export function MascotIdle({ className }: MascotIdleProps) {
     return (
         <img
             src={src}
-            alt="MarkLite mascot"
+            alt="Paperling mascot"
             draggable={false}
             onMouseEnter={handleHover}
             className={`object-contain select-none ${className ?? ""}`}

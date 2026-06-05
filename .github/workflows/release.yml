@@ -129,9 +129,9 @@ jobs:
         with:
           tauriScript: bun run tauri
           tagName: v__VERSION__
-          releaseName: 'MarkLite v__VERSION__'
+          releaseName: 'Paperling v__VERSION__'
           releaseBody: |
-            ## MarkLite v__VERSION__
+            ## Paperling v__VERSION__
 
             A minimal, distraction-free markdown editor.
 
@@ -140,7 +140,7 @@ jobs:
             - **Linux:** `.deb` or `.AppImage`
             - **macOS:** `.dmg`
 
-            See the [CHANGELOG](https://github.com/Razee4315/MarkLite/blob/main/CHANGELOG.md) for details.
+            See the [CHANGELOG](https://github.com/Razee4315/Paperling/blob/main/CHANGELOG.md) for details.
           args: ${{ matrix.args }}
           releaseDraft: false
           prerelease: false

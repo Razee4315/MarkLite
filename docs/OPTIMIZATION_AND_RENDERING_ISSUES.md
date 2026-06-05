@@ -1,6 +1,6 @@
-# MarkLite: Optimization, Rendering & Logical Issues
+# Paperling: Optimization, Rendering & Logical Issues
 
-> Deep analysis of performance bottlenecks, rendering problems, and logical issues found in the MarkLite codebase.
+> Deep analysis of performance bottlenecks, rendering problems, and logical issues found in the Paperling codebase.
 
 ---
 

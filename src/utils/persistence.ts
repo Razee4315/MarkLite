@@ -3,10 +3,31 @@
  * Tauri's webview has localStorage available; values survive app restarts.
  */
 
-const KEY_RECENT_FILES = "marklite:recentFiles";
-const KEY_LAST_FILE = "marklite:lastFile";
-const KEY_VIEW_MODE = "marklite:viewMode";
-const KEY_SPLIT_RATIO = "marklite:splitRatio";
+// One-time migration from the app's pre-rename key prefix. The bundle
+// identifier (and therefore the WebView2 storage location) is unchanged, so
+// existing users still have their old "marklite:*" entries — copy each to its
+// "paperling:*" name once, then drop the original. Runs at module load,
+// before any getter seeds React state. Exported for tests.
+export function migrateLegacyKeys(): void {
+    try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (!key || !key.startsWith("marklite:")) continue;
+            const renamed = "paperling:" + key.slice("marklite:".length);
+            const value = localStorage.getItem(key);
+            if (value !== null && localStorage.getItem(renamed) === null) {
+                localStorage.setItem(renamed, value);
+            }
+            localStorage.removeItem(key);
+        }
+    } catch { /* storage unavailable — nothing to migrate */ }
+}
+migrateLegacyKeys();
+
+const KEY_RECENT_FILES = "paperling:recentFiles";
+const KEY_LAST_FILE = "paperling:lastFile";
+const KEY_VIEW_MODE = "paperling:viewMode";
+const KEY_SPLIT_RATIO = "paperling:splitRatio";
 
 const MAX_RECENT = 10;
 
@@ -62,14 +83,14 @@ export const getSplitRatio = (): number => {
 };
 export const setSplitRatio = (r: number): void => safeSet(KEY_SPLIT_RATIO, r);
 
-const KEY_TOUR_DONE = "marklite:tourDone";
+const KEY_TOUR_DONE = "paperling:tourDone";
 export const getTourDone = (): boolean => safeGet<boolean>(KEY_TOUR_DONE, false);
 export const setTourDone = (v: boolean): void => safeSet(KEY_TOUR_DONE, v);
 
-const KEY_TYPEWRITER_MODE = "marklite:typewriterMode";
-const KEY_TOOLBAR = "marklite:toolbar";
-const KEY_WORD_WRAP = "marklite:wordWrap";
-const KEY_SPELL_CHECK = "marklite:spellCheck";
+const KEY_TYPEWRITER_MODE = "paperling:typewriterMode";
+const KEY_TOOLBAR = "paperling:toolbar";
+const KEY_WORD_WRAP = "paperling:wordWrap";
+const KEY_SPELL_CHECK = "paperling:spellCheck";
 export const getTypewriterMode = (): boolean => safeGet<boolean>(KEY_TYPEWRITER_MODE, false);
 export const setTypewriterMode = (v: boolean): void => safeSet(KEY_TYPEWRITER_MODE, v);
 export const getToolbarEnabled = (): boolean => safeGet<boolean>(KEY_TOOLBAR, false);
@@ -79,9 +100,9 @@ export const setWordWrap = (v: boolean): void => safeSet(KEY_WORD_WRAP, v);
 export const getSpellCheck = (): boolean => safeGet<boolean>(KEY_SPELL_CHECK, false);
 export const setSpellCheck = (v: boolean): void => safeSet(KEY_SPELL_CHECK, v);
 
-const KEY_AI_ENDPOINT = "marklite:aiEndpoint";
-const KEY_AI_MODEL = "marklite:aiModel";
-const KEY_AI_API_KEY = "marklite:aiApiKey";
+const KEY_AI_ENDPOINT = "paperling:aiEndpoint";
+const KEY_AI_MODEL = "paperling:aiModel";
+const KEY_AI_API_KEY = "paperling:aiApiKey";
 
 // AI API key now lives in the OS keychain (SECURITY-01), accessed via the
 // get_ai_key / set_ai_key Tauri commands. To keep getAIConfig() synchronous (it

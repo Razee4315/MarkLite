@@ -343,7 +343,7 @@ export function generateHTML(
     });
 
     const footer = includeFooter
-        ? `<footer class="export-footer">Exported from MarkLite on ${date}</footer>`
+        ? `<footer class="export-footer">Exported from Paperling on ${date}</footer>`
         : '';
 
     return `<!DOCTYPE html>
@@ -351,7 +351,7 @@ export function generateHTML(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="generator" content="MarkLite">
+    <meta name="generator" content="Paperling">
     <meta name="date" content="${new Date().toISOString()}">
     <title>${safeTitle}</title>
     <style>${css}</style>
@@ -817,7 +817,7 @@ export async function exportToPDF(
         pdf.setFontSize(8);
         pdf.setFont('helvetica', 'normal');
         pdf.setTextColor(150, 150, 150);
-        pdf.text(`Exported from MarkLite on ${date}`, margin, pageHeight - 10);
+        pdf.text(`Exported from Paperling on ${date}`, margin, pageHeight - 10);
         pdf.text(`Page ${i} of ${pageCount}`, pageWidth - margin - 20, pageHeight - 10);
     }
 

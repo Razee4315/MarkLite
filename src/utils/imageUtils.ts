@@ -1,5 +1,5 @@
 /**
- * Image paste utilities for MarkLite
+ * Image paste utilities for Paperling
  * Handles clipboard image extraction and saving to local files
  */
 
