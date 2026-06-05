@@ -19,7 +19,7 @@
     <text x="42" y="60" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="700" fill="#ffffff" text-anchor="middle">M</text>
   </g>
 
-  <text x="196" y="156" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#fafafa">MarkLite</text>
+  <text x="196" y="156" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#fafafa">Paperling</text>
 
   <!-- headline -->
   <text x="90" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="76" font-weight="800" fill="url(#fade)">The markdown editor</text>
@@ -29,6 +29,6 @@
   <text x="92" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="28" fill="#a3a3a3">Live preview · Math &amp; chemistry · Mermaid · AI assistant · Open source</text>
 
   <!-- footer -->
-  <text x="90" y="566" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#6b6b6b">github.com/Razee4315/MarkLite</text>
+  <text x="90" y="566" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#6b6b6b">github.com/Razee4315/Paperling</text>
   <text x="1190" y="566" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#6b6b6b" text-anchor="end">Windows · Linux · Free</text>
 </svg>
