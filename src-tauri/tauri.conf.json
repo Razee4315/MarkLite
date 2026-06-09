@@ -41,6 +41,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux-desktop.template"
+      },
+      "rpm": {
+        "desktopTemplate": "linux-desktop.template"
+      }
+    },
     "fileAssociations": [
       {
         "ext": [
@@ -48,6 +56,7 @@
           "markdown"
         ],
         "name": "Markdown Document",
+        "mimeType": "text/markdown",
         "description": "Markdown file",
         "role": "Editor"
       }

@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "paperling"
-version = "1.0.18"
+version = "1.0.20"
 dependencies = [
  "keyring",
  "serde",

@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense, memo } from "react";
+import type { MouseEvent } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
@@ -42,6 +43,25 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSa
             await appWindow.toggleMaximize();
         } catch (e) {
             console.error("Maximize failed:", e);
+        }
+    };
+
+    const handleTitleBarMouseDown = async (event: MouseEvent<HTMLElement>) => {
+        const target = event.target;
+
+        if (
+            event.button !== 0 ||
+            (target instanceof Element &&
+                target.closest("button, a, input, textarea, select, [role='button'], [role='menu'], [role='menuitem']"))
+        ) {
+            return;
+        }
+
+        try {
+            const appWindow = Window.getCurrent();
+            await appWindow.startDragging();
+        } catch (e) {
+            console.error("Window drag failed:", e);
         }
     };
 
@@ -99,7 +119,10 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSa
                     />
                 </Suspense>
             )}
-            <header className="h-12 shrink-0 flex items-center justify-between px-4 bg-[var(--bg-titlebar)] border-b border-[var(--border)] no-select drag-region transition-colors">
+            <header
+                onMouseDown={handleTitleBarMouseDown}
+                className="h-12 shrink-0 flex items-center justify-between px-4 bg-[var(--bg-titlebar)] border-b border-[var(--border)] no-select drag-region transition-colors"
+            >
                 {/* Left: Icon & Title */}
                 <div className="flex items-center gap-3 no-drag">
                     <div className="flex items-center justify-center w-5 h-5">
