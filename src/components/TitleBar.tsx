@@ -59,7 +59,13 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSa
 
         try {
             const appWindow = Window.getCurrent();
-            await appWindow.startDragging();
+            // Native title bars maximize on double-click; event.detail
+            // counts clicks within the double-click interval.
+            if (event.detail === 2) {
+                await appWindow.toggleMaximize();
+            } else {
+                await appWindow.startDragging();
+            }
         } catch (e) {
             console.error("Window drag failed:", e);
         }
