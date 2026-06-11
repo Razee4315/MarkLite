@@ -97,13 +97,13 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                     <div className="flex items-center justify-center w-5 h-5">
                         <img src="/icon.svg" alt="Paperling" className="w-full h-full" />
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                    <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
                         {parentFolder && (
                             <>
-                                <span className="opacity-60">{parentFolder} /</span>
+                                <span className="opacity-60 hidden md:inline">{parentFolder} /</span>
                             </>
                         )}
-                        <span className="text-[var(--text-primary)] font-semibold tracking-tight">
+                        <span className="text-[var(--text-primary)] font-semibold tracking-tight truncate max-w-[28vw]">
                             {fileName || "Paperling"}
                         </span>
                         {!fileName && (
@@ -126,7 +126,7 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                                     title="New File (Ctrl+N)"
                                 >
                                     <span className="material-symbols-outlined text-[16px]">edit_note</span>
-                                    <span>New</span>
+                                    <span className="hidden sm:inline">New</span>
                                 </button>
                             )}
                             <button
@@ -136,7 +136,7 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                                 title="Open File (Ctrl+O)"
                             >
                                 <span className="material-symbols-outlined text-[16px]">folder_open</span>
-                                <span>Open</span>
+                                <span className="hidden sm:inline">Open</span>
                             </button>
                             <ExportMenu
                                 fileName={fileName || 'document.md'}

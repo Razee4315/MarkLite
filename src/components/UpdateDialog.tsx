@@ -73,7 +73,7 @@ export function UpdateDialog() {
         <div className="fixed inset-0 z-[120] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Update available">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
 
-            <div className="relative z-10 w-[440px] max-w-[92vw] bg-[var(--bg-primary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl overflow-hidden animate-fade-in">
+            <div className="relative z-10 w-[440px] max-w-[92vw] max-h-[90vh] overflow-y-auto bg-[var(--bg-primary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl animate-fade-in">
                 <div className="px-5 pt-5 pb-4">
                     <div className="flex items-start gap-3">
                         <div className="w-10 h-10 shrink-0 rounded-[var(--radius-md)] bg-[var(--bg-hover)] flex items-center justify-center">

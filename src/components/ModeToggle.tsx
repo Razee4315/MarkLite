@@ -14,7 +14,7 @@ export function ModeToggle({ mode, onSetMode, aiPanelOpen }: ModeToggleProps) {
     return (
         <div
             className="fixed bottom-8 z-50"
-            style={{ right: aiPanelOpen ? "calc(400px + 2rem)" : "2rem", transition: "right 0.15s ease" }}
+            style={{ right: aiPanelOpen ? "calc(min(400px, 90vw) + 2rem)" : "2rem", transition: "right 0.15s ease" }}
             role="group"
             aria-label="View mode toggle"
             data-tour="mode-toggle"

@@ -1262,7 +1262,9 @@ function AppContent() {
             // Reserve space on the right for the AI panel so editor/preview reflow
             // beside it instead of being covered. The panel itself is fixed at
             // right-0 (above the status bar), which keeps window controls at the edge.
-            style={{ paddingRight: showAIPanel ? AI_PANEL_WIDTH : 0, transition: "padding-right 0.15s ease" }}
+            // min() mirrors the panel's own w-[400px] max-w-[90vw] so a narrow
+            // window reserves only as much space as the panel actually takes.
+            style={{ paddingRight: showAIPanel ? `min(${AI_PANEL_WIDTH}px, 90vw)` : 0, transition: "padding-right 0.15s ease" }}
           >
             <div
               data-split-left

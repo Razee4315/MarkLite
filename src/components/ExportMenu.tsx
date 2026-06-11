@@ -93,19 +93,19 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                 {isExporting ? (
                     <>
                         <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
-                        <span>Exporting...</span>
+                        <span className="hidden sm:inline">Exporting...</span>
                     </>
                 ) : (
                     <>
                         <span className="material-symbols-outlined text-[16px]">download</span>
-                        <span>Export</span>
+                        <span className="hidden sm:inline">Export</span>
                     </>
                 )}
             </button>
 
             {/* Simple Dropdown Menu */}
             {isOpen && !disabled && (
-                <div role="menu" aria-label="Export formats" className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-50 animate-fade-in-down">
+                <div role="menu" aria-label="Export formats" className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-[70] animate-fade-in-down">
                     <button
                         role="menuitem"
                         onClick={() => handleExport('html')}

@@ -58,9 +58,12 @@ export function SettingsMenu() {
                 <span className="material-symbols-outlined text-[18px]">settings</span>
             </button>
 
-            {/* Dropdown Menu */}
+            {/* Dropdown Menu. z-[70] keeps it above the floating Reader/Code
+                mode toggle (z-50, mounted later in the DOM so it wins z-index
+                ties); the max-height lets the menu scroll on short screens
+                instead of running underneath it. */}
             {isOpen && (
-                <div role="menu" aria-label="Settings" className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50 animate-fade-in-down">
+                <div role="menu" aria-label="Settings" className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-5rem)] z-[70] animate-fade-in-down">
                     {/* Theme Section */}
                     <div className="p-4 border-b border-[var(--border)]">
                         <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
