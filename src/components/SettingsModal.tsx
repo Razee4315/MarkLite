@@ -4,6 +4,7 @@ import {
     getTypewriterMode, setTypewriterMode,
     getToolbarEnabled, setToolbarEnabled,
     getAIConfig, setAIConfig,
+    getAIEnabled, setAIEnabled,
     getWordWrap, setWordWrap,
     getSpellCheck, setSpellCheck,
 } from "../utils/persistence";
@@ -97,6 +98,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [spellCheck, setSpellCheckLocal] = useState(getSpellCheck);
 
     const [ai, setAi] = useState(getAIConfig);
+    const [aiEnabled, setAiEnabledLocal] = useState(getAIEnabled);
     const aiEndpointInvalid = ai.endpoint.length > 0 && !isValidEndpoint(ai.endpoint);
     const aiConfigured = !!ai.endpoint && !aiEndpointInvalid && !!ai.model;
 
@@ -317,6 +319,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         {section === "ai" && (
                             <>
+                                <div className="rounded-[var(--radius-lg)] border border-[var(--border)] overflow-hidden">
+                                    <ToggleRow label="Enable AI" description="Show the AI button and assistant in the editor" checked={aiEnabled}
+                                        onChange={(v) => { setAiEnabledLocal(v); setAIEnabled(v); fire("paperling:ai-enabled-toggle", v); }} />
+                                </div>
                                 <div className="flex items-start justify-between gap-3">
                                     <p className="text-sm text-[var(--text-secondary)]">
                                         Configure an OpenAI-compatible endpoint to enable inline AI assist

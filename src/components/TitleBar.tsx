@@ -187,11 +187,12 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSa
                                     aria-label="AI assistant"
                                     aria-pressed={aiActive}
                                     title="AI assistant"
-                                    className={`flex items-center px-2.5 py-1 rounded-[var(--radius-md)] transition-colors text-xs font-semibold tracking-wide ${aiActive
+                                    className={`flex items-center gap-1 px-2.5 py-1 rounded-[var(--radius-md)] transition-colors text-xs font-semibold tracking-wide ${aiActive
                                         ? "bg-[var(--bg-hover)] text-[var(--accent)]"
                                         : "hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                                         }`}
                                 >
+                                    <span className="material-symbols-outlined text-[15px] ai-shimmer" aria-hidden="true">auto_awesome</span>
                                     <span>AI</span>
                                 </button>
                             )}

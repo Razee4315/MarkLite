@@ -33,3 +33,9 @@ tokio = { version = "1", features = ["fs"] }
 # Credential Manager, macOS Keychain, and Linux Secret Service (zbus + crypto-rust,
 # no system C libs needed at build time).
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+
+# Auto-update from GitHub Releases (latest.json) + relaunch after install.
+# Desktop-only: the updater has no mobile implementation.
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

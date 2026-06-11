@@ -31,6 +31,7 @@ import { SlashMenu, type SlashCommand } from "./SlashMenu";
 import { AIBubble } from "./AIBubble";
 import { TableToolbar } from "./TableToolbar";
 import { pasteUrlOnSelection, pasteUrlAutolink, pasteTsvAsTable, htmlToMarkdown } from "../utils/smartPaste";
+import { getAIEnabled } from "../utils/persistence";
 import { applyTableOp, findTableAt, locateCell, type Align } from "../utils/tableModel";
 import type { Scroller } from "../utils/scrollSync";
 
@@ -549,6 +550,9 @@ function CodeEditorImpl({
     // App owns the panel's open state, so we ask it to toggle via an event.
     useEffect(() => {
         const handler = () => {
+            // AI can be switched off entirely in Settings — Alt+J and the
+            // command palette dispatch this event regardless, so gate here.
+            if (!getAIEnabled()) return;
             const view = viewRef.current;
             if (!view) return;
             const sel = view.state.selection.main;
@@ -562,6 +566,16 @@ function CodeEditorImpl({
         window.addEventListener("paperling:ai-assist", handler);
         return () => window.removeEventListener("paperling:ai-assist", handler);
     }, [openAIBubble]);
+
+    // Mirror of the Settings "Enable AI" switch; drives whether the format
+    // toolbar shows its AI sparkle. Event-synced so flipping the setting
+    // updates an already-mounted editor.
+    const [aiEnabled, setAiEnabled] = useState(getAIEnabled);
+    useEffect(() => {
+        const h = (e: Event) => setAiEnabled(!!(e as CustomEvent).detail?.enabled);
+        window.addEventListener("paperling:ai-enabled-toggle", h);
+        return () => window.removeEventListener("paperling:ai-enabled-toggle", h);
+    }, []);
 
     // === Imperative helpers for child UI (toolbar, find/replace, slash, AI) ===
     const getState = useCallback((): EditorState | null => {
@@ -618,7 +632,7 @@ function CodeEditorImpl({
                 </div>
             )}
             {showToolbar && (
-                <FormatToolbar getState={getState} apply={applyResult} insert={insertAtCaret} onAIAssist={openAIBubble} />
+                <FormatToolbar getState={getState} apply={applyResult} insert={insertAtCaret} onAIAssist={aiEnabled ? openAIBubble : undefined} />
             )}
             <div className="flex-1 overflow-hidden relative">
                 <div ref={containerRef} className="absolute inset-0 [&_.cm-editor]:h-full [&_.cm-editor]:outline-none" />

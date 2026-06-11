@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auto-updater.** Paperling now checks GitHub Releases on launch and shows a
+  popup when a newer version is available, with "Update now" (download with
+  progress, install, restart), "Skip this version" (remembered per version),
+  and "Later". Update packages are signed; the updater verifies the signature
+  before installing.
+- **AI on/off switch.** A new "Enable AI" toggle in Settings → AI (on by
+  default). Turning it off hides every AI surface: the title-bar AI button,
+  the AI side panel, the formatting-toolbar sparkle, Alt+J, and the command
+  palette entry.
+- **Shimmery AI button.** The title-bar AI button now carries the familiar
+  sparkle icon with a subtle shimmer animation.
 - **Visual table editor.** A floating toolbar appears when the caret is inside a
   Markdown table, with buttons to insert or delete rows and columns, set
   per-column alignment, and tidy (re-align) the layout. Built on a pure,

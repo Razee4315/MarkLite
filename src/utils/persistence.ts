@@ -100,6 +100,20 @@ export const setWordWrap = (v: boolean): void => safeSet(KEY_WORD_WRAP, v);
 export const getSpellCheck = (): boolean => safeGet<boolean>(KEY_SPELL_CHECK, false);
 export const setSpellCheck = (v: boolean): void => safeSet(KEY_SPELL_CHECK, v);
 
+// Master switch for every AI surface (title-bar button, side panel, toolbar
+// sparkle, Alt+J, command palette entry). On by default; flipped in Settings.
+const KEY_AI_ENABLED = "paperling:aiEnabled";
+export const getAIEnabled = (): boolean => safeGet<boolean>(KEY_AI_ENABLED, true);
+export const setAIEnabled = (v: boolean): void => safeSet(KEY_AI_ENABLED, v);
+
+// Version the user chose to skip in the update popup, so we don't nag about
+// it on every launch. A newer release has a different version string and
+// prompts again.
+const KEY_SKIPPED_UPDATE = "paperling:skippedUpdateVersion";
+export const getSkippedUpdateVersion = (): string | null =>
+    safeGet<string | null>(KEY_SKIPPED_UPDATE, null);
+export const setSkippedUpdateVersion = (v: string): void => safeSet(KEY_SKIPPED_UPDATE, v);
+
 const KEY_AI_ENDPOINT = "paperling:aiEndpoint";
 const KEY_AI_MODEL = "paperling:aiModel";
 const KEY_AI_API_KEY = "paperling:aiApiKey";

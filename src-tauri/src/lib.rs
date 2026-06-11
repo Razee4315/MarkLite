@@ -49,6 +49,17 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Updater (GitHub latest.json) + process (relaunch after install)
+            // are desktop-only plugins, hence registered here behind cfg
+            // instead of in the unconditional plugin chain above.
+            #[cfg(desktop)]
+            {
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_process::init())?;
+            }
+            Ok(())
+        })
         .manage(CliFile(Mutex::new(cli_file)))
         .invoke_handler(tauri::generate_handler![
             read_file,

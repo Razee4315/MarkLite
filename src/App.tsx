@@ -55,10 +55,16 @@ const UnsavedChangesDialog = lazy(() =>
 const AIPanel = lazy(() =>
     import("./components/AIPanel").then((m) => ({ default: m.AIPanel }))
 );
+// Update popup — mounts on every launch, renders nothing unless a newer
+// signed release is found on GitHub (and the user hasn't skipped it).
+const UpdateDialog = lazy(() =>
+    import("./components/UpdateDialog").then((m) => ({ default: m.UpdateDialog }))
+);
 import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
   getAIConfig,
+  getAIEnabled,
   initAIKey,
   getLastFile,
   getSavedViewMode,
@@ -68,6 +74,7 @@ import {
   getTourDone,
   getTypewriterMode,
   getWordWrap,
+  setAIEnabled,
   setLastFile,
   setSavedViewMode,
   setSpellCheck,
@@ -152,6 +159,7 @@ function AppContent() {
   const [showStats, setShowStats] = useState(false);
   const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
+  const [aiEnabled, setAiEnabledState] = useState<boolean>(() => getAIEnabled());
   const [typewriterModeEnabled, setTypewriterModeEnabled] = useState<boolean>(() => getTypewriterMode());
   const [toolbarVisible, setToolbarVisible] = useState<boolean>(() => getToolbarEnabled());
   const [wordWrapEnabled, setWordWrapEnabled] = useState<boolean>(() => getWordWrap());
@@ -307,6 +315,7 @@ function AppContent() {
   useEffect(() => { setToolbarEnabled(toolbarVisible); }, [toolbarVisible]);
   useEffect(() => { setWordWrap(wordWrapEnabled); }, [wordWrapEnabled]);
   useEffect(() => { setSpellCheck(spellCheckEnabled); }, [spellCheckEnabled]);
+  useEffect(() => { setAIEnabled(aiEnabled); }, [aiEnabled]);
 
   // Cross-component event listeners — settings menu and command palette toggle these
   useEffect(() => {
@@ -319,7 +328,16 @@ function AppContent() {
       ["paperling:open-settings", () => setShowSettings(true)],
       // Alt+J with no selection opens the docked AI side panel. The editor's
       // ai-assist handler decides bubble (selection) vs panel (no selection).
-      ["paperling:toggle-ai-panel", () => setShowAIPanel((v) => !v)],
+      // Reads the persisted flag live (this effect mounts once) so the panel
+      // can't be opened while AI is switched off in Settings.
+      ["paperling:toggle-ai-panel", () => { if (getAIEnabled()) setShowAIPanel((v) => !v); }],
+      // Settings master switch for all AI surfaces; closing the panel here
+      // keeps it from lingering open after AI is turned off.
+      ["paperling:ai-enabled-toggle", (e) => {
+        const enabled = !!(e as CustomEvent).detail?.enabled;
+        setAiEnabledState(enabled);
+        if (!enabled) setShowAIPanel(false);
+      }],
     ];
     handlers.forEach(([k, h]) => window.addEventListener(k, h));
 
@@ -914,11 +932,12 @@ function AppContent() {
       });
     }
 
-    // === AI === only when a buffer exists. The command palette is the
-    // always-reachable entry point for AI assist (the toolbar AI button is
-    // hidden when the toolbar is off). Dispatches a window event the editor
-    // listens for; if AI isn't configured the editor shows a guiding notice.
-    if (hasFile) {
+    // === AI === only when a buffer exists and AI is enabled in Settings.
+    // The command palette is the always-reachable entry point for AI assist
+    // (the toolbar AI button is hidden when the toolbar is off). Dispatches a
+    // window event the editor listens for; if AI isn't configured the editor
+    // shows a guiding notice.
+    if (hasFile && aiEnabled) {
       items.push({
         id: "ai.assist",
         label: "AI assist on selection",
@@ -1003,7 +1022,7 @@ function AppContent() {
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
     loadFile, filePath, hasFile, showToast,
-    typewriterModeEnabled, toolbarVisible,
+    typewriterModeEnabled, toolbarVisible, aiEnabled,
   ]);
 
   // Heading items are recomputed only while the palette is actually open.
@@ -1062,9 +1081,14 @@ function AppContent() {
         getExportHtml={getExportHtml}
         onExportSuccess={handleExportSuccess}
         onExportError={handleExportError}
-        onToggleAI={handleToggleAI}
+        onToggleAI={aiEnabled ? handleToggleAI : undefined}
         aiActive={showAIPanel}
       />
+
+      {/* Startup update check; invisible unless an update is actually available. */}
+      <Suspense fallback={null}>
+        <UpdateDialog />
+      </Suspense>
 
       {!hasFile ? (
         booting ? (
@@ -1193,7 +1217,7 @@ function AppContent() {
 
           {/* Right-side AI assistant panel. Reads the live document + current
               selection; chat is read-only for now (edit/agent flow is next). */}
-          {showAIPanel && (
+          {aiEnabled && showAIPanel && (
             <Suspense fallback={null}>
               <AIPanel
                 isOpen={showAIPanel}
