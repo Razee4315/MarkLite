@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { clearRecentFiles, getRecentFiles, removeRecentFile, type RecentFile } from "../utils/persistence";
 import { MascotIdle } from "./MascotIdle";
 
@@ -54,6 +55,28 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
             setMissing(new Set(results.filter((p): p is string => !!p)));
         });
         return () => { cancelled = true; };
+    }, []);
+
+    // Drag highlight via the NATIVE Tauri drag events. With Tauri's drag-drop
+    // handling enabled, the webview never receives HTML5 drag events on
+    // Windows — so the dashed-outline feedback below only worked in browser
+    // dev mode. These listeners light it up in the real app too; the HTML5
+    // handlers stay as the browser-dev fallback.
+    useEffect(() => {
+        let mounted = true;
+        let unlistens: Array<() => void> = [];
+        Promise.all([
+            listen(TauriEvent.DRAG_ENTER, () => setIsDragging(true)),
+            listen(TauriEvent.DRAG_LEAVE, () => setIsDragging(false)),
+            listen(TauriEvent.DRAG_DROP, () => setIsDragging(false)),
+        ]).then((fns) => {
+            if (mounted) unlistens = fns;
+            else fns.forEach((f) => f());
+        }).catch(() => {/* browser dev mode — HTML5 handlers cover it */});
+        return () => {
+            mounted = false;
+            unlistens.forEach((f) => f());
+        };
     }, []);
 
     const handleDragOver = (e: React.DragEvent) => {

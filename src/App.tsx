@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } fro
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
+import { Window } from "@tauri-apps/api/window";
 
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
@@ -84,8 +85,11 @@ import {
   setTypewriterMode,
   setWordWrap,
 } from "./utils/persistence";
+import { getAutoSave } from "./utils/persistence";
 import { pickBootFile } from "./utils/boot";
+import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
+import { PreviewFindBar } from "./components/PreviewFindBar";
 
 interface FileData {
   path: string;
@@ -93,13 +97,9 @@ interface FileData {
   content: string;
   size: number;
   line_count: number;
+  /** Last-modified time (ms since epoch) — used to detect external edits. */
+  modified: number;
 }
-
-// Utility function to count words in text
-const getWordCount = (text: string): number => {
-  if (!text || !text.trim()) return 0;
-  return text.trim().split(/\s+/).length;
-};
 
 // Platform-aware AI shortcut hint. Windows uses Alt+J because WebView2 reserves
 // Ctrl+J for its Downloads UI before the page sees it; macOS shows ⌘J. (AI-02.)
@@ -179,6 +179,13 @@ function AppContent() {
   // Pending file to open after unsaved changes dialog
   const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
   const [showUnsavedBeforeOpen, setShowUnsavedBeforeOpen] = useState(false);
+  // Unsaved-changes dialog for window close (Alt+F4, taskbar close, the title
+  // bar X). The Tauri close-requested handler below intercepts ALL of them.
+  const [showUnsavedBeforeClose, setShowUnsavedBeforeClose] = useState(false);
+  // Find bar over the reader-mode preview (Ctrl+F when mode === "preview").
+  const [previewFindOpen, setPreviewFindOpen] = useState(false);
+  // Autosave: save a moment after the user stops typing (Settings → Editor).
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => getAutoSave());
 
   // Sidebar panel state
   const [showFileExplorer, setShowFileExplorer] = useState(false);
@@ -204,6 +211,12 @@ function AppContent() {
   // Enable/disable based on view mode
   useEffect(() => {
     scrollSyncRef.current.setEnabled(mode === "split");
+  }, [mode]);
+
+  // Reader-mode find only makes sense over the preview; close it (and drop
+  // its highlights) when the user switches to code or split.
+  useEffect(() => {
+    if (mode !== "preview") setPreviewFindOpen(false);
   }, [mode]);
 
   const registerCodeScroller = useCallback(
@@ -262,20 +275,28 @@ function AppContent() {
   const deferredContent = useDebouncedValue(content, previewDebounceMs);
 
   // Word/char counts feed the status bar — fine to lag a frame behind on huge
-  // docs, so they read deferred too.
-  const wordCount = useMemo(() => getWordCount(deferredContent), [deferredContent]);
+  // docs, so they read deferred too. countSourceWords is the SAME pipeline the
+  // stats dialog uses (strips frontmatter/code, ignores markdown syntax), so
+  // the status bar and the dialog always agree. STATS-01.
+  const wordCount = useMemo(() => countSourceWords(deferredContent), [deferredContent]);
   const charCount = deferredContent.length;
   // Selection word count, when the user has a non-empty range highlighted.
   // Reads LIVE `content` (not deferredContent) since the selection range and
   // the underlying text must agree — sliding by 80ms would briefly count words
   // from a stale buffer right after a fast edit. The slice is cheap regardless.
+  // Uses countWords (no frontmatter/code stripping): a selection inside a code
+  // block should still report what's selected.
   const selectionLength = selectionRange.end - selectionRange.start;
   const selectionWordCount = useMemo(
-    () => (selectionLength > 0 ? getWordCount(content.slice(selectionRange.start, selectionRange.end)) : 0),
+    () => (selectionLength > 0 ? countWords(content.slice(selectionRange.start, selectionRange.end)) : 0),
     [content, selectionRange.start, selectionRange.end, selectionLength]
   );
   // Average adult reading speed for prose: ~200 wpm.
   const readingTimeMin = useMemo(() => wordCount / 200, [wordCount]);
+
+  // Known on-disk modified time (ms). Compared against a fresh stat on window
+  // focus to detect the file changing under us (sync tools, other editors).
+  const knownMtimeRef = useRef<number>(0);
 
   // Load file from path (with unsaved changes check)
   const loadFileDirect = useCallback(async (path: string) => {
@@ -287,6 +308,7 @@ function AppContent() {
       setContent(fileData.content);
       setOriginalContent(fileData.content);
       setFileSize(fileData.size);
+      knownMtimeRef.current = fileData.modified ?? 0;
       // Track recents + last-opened for restore-on-launch
       addRecentFile(fileData.path, fileData.name);
       setLastFile(fileData.path);
@@ -324,6 +346,7 @@ function AppContent() {
       ["paperling:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:wordwrap-toggle", (e) => setWordWrapEnabled(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
+      ["paperling:autosave-toggle", (e) => setAutoSaveEnabled(!!(e as CustomEvent).detail?.enabled)],
       // Opened from the title-bar settings dropdown's "More settings…" entry.
       ["paperling:open-settings", () => setShowSettings(true)],
       // Alt+J with no selection opens the docked AI side panel. The editor's
@@ -411,6 +434,7 @@ function AppContent() {
         setContent(fileData.content);
         setOriginalContent(fileData.content);
         setFileSize(fileData.size);
+        knownMtimeRef.current = fileData.modified ?? 0;
         // Bump the recents entry's timestamp to "now" so it sorts as
         // most-recent, and persist as the session file so the next plain
         // launch restores what the user actually had open.
@@ -449,6 +473,126 @@ function AppContent() {
   contentRef.current = content;
   const originalContentRef = useRef(originalContent);
   originalContentRef.current = originalContent;
+  const filePathRef = useRef(filePath);
+  filePathRef.current = filePath;
+
+  // Intercept EVERY window-close path (Alt+F4, taskbar close, the title bar X,
+  // OS shutdown) and route dirty buffers through the unsaved-changes dialog.
+  // Previously only the custom X button checked isDirty, so Alt+F4 silently
+  // discarded unsaved work. The title bar X calls Window.close(), which also
+  // fires this event — one interception point for all of them. CLOSE-01.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let mounted = true;
+    try {
+      Window.getCurrent()
+        .onCloseRequested((event) => {
+          if (contentRef.current !== originalContentRef.current) {
+            event.preventDefault();
+            setShowUnsavedBeforeClose(true);
+          }
+        })
+        .then((fn) => {
+          if (mounted) unlisten = fn;
+          else fn();
+        })
+        .catch(() => {/* browser dev mode — no Tauri window */});
+    } catch {/* browser dev mode */}
+    return () => {
+      mounted = false;
+      unlisten?.();
+    };
+  }, []);
+
+  // Close-dialog handlers. destroy() skips the close-requested event, so we
+  // don't loop back into the dialog we just answered.
+  const forceCloseWindow = useCallback(() => {
+    Window.getCurrent().destroy().catch(() => {/* browser dev mode */});
+  }, []);
+
+  const handleSaveAndCloseWindow = useCallback(async () => {
+    setShowUnsavedBeforeClose(false);
+    const path = filePathRef.current;
+    if (path) {
+      try {
+        await invoke("save_file", { path, content: contentRef.current });
+      } catch (err) {
+        const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+        showToast(msg || "Failed to save file", "error");
+        return; // don't close on a failed save — the user would lose the buffer
+      }
+    } else {
+      // Untitled buffer: prompt for a location; cancel keeps the app open.
+      const selected = await save({
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+        defaultPath: fileName ?? undefined,
+      });
+      if (!selected) return;
+      try {
+        await invoke("save_file", { path: selected, content: contentRef.current });
+      } catch {
+        showToast("Failed to save file", "error");
+        return;
+      }
+    }
+    forceCloseWindow();
+  }, [fileName, forceCloseWindow, showToast]);
+
+  const handleDiscardAndCloseWindow = useCallback(() => {
+    setShowUnsavedBeforeClose(false);
+    forceCloseWindow();
+  }, [forceCloseWindow]);
+
+  // External-change detection: when the window regains focus, stat the open
+  // file. If it changed on disk and the buffer is clean, reload silently; if
+  // the buffer is dirty, warn that saving will overwrite. EXT-01.
+  useEffect(() => {
+    let checking = false;
+    const checkExternalChange = async () => {
+      const path = filePathRef.current;
+      if (!path || checking) return;
+      checking = true;
+      try {
+        const info = await invoke<{ modified: number }>("get_file_info", { path });
+        const known = knownMtimeRef.current;
+        if (known > 0 && info.modified > known) {
+          // Update first so a failed/declined reload doesn't re-toast forever.
+          knownMtimeRef.current = info.modified;
+          if (contentRef.current === originalContentRef.current) {
+            await loadFileDirect(path);
+            showToast("File changed on disk, reloaded the latest version", "info");
+          } else {
+            showToast("This file changed on disk. Saving will overwrite those changes.", "error");
+          }
+        }
+      } catch {/* file gone or stat failed — the save path will surface it */}
+      finally { checking = false; }
+    };
+    window.addEventListener("focus", checkExternalChange);
+    return () => window.removeEventListener("focus", checkExternalChange);
+  }, [loadFileDirect, showToast]);
+
+  // Autosave: once enabled, persist 1.5s after the last edit. Silent (the
+  // status dot already flips to Saved); only failures surface a toast, and
+  // only once per failure streak so a broken disk doesn't spam.
+  const autosaveFailedRef = useRef(false);
+  useEffect(() => {
+    if (!autoSaveEnabled || !filePath || content === originalContent) return;
+    const id = window.setTimeout(async () => {
+      try {
+        knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
+        setOriginalContent(content);
+        autosaveFailedRef.current = false;
+      } catch (err) {
+        if (!autosaveFailedRef.current) {
+          autosaveFailedRef.current = true;
+          const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+          showToast(msg || "Autosave failed", "error");
+        }
+      }
+    }, 1500);
+    return () => window.clearTimeout(id);
+  }, [autoSaveEnabled, content, originalContent, filePath, showToast]);
 
   // Load file with unsaved changes protection
   const loadFile = useCallback(async (path: string) => {
@@ -478,7 +622,7 @@ function AppContent() {
     setShowUnsavedBeforeOpen(false);
     if (filePath) {
       try {
-        await invoke("save_file", { path: filePath, content });
+        knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
         setOriginalContent(content);
       } catch (err) {
         console.error("Failed to save file:", err);
@@ -626,7 +770,7 @@ function AppContent() {
     });
     if (!selected) return;
     try {
-      await invoke("save_file", { path: selected, content });
+      knownMtimeRef.current = await invoke<number>("save_file", { path: selected, content });
       setFilePath(selected);
       const name = selected.replace(/\\/g, "/").split("/").pop() || "Untitled";
       setFileName(name);
@@ -648,7 +792,7 @@ function AppContent() {
       return;
     }
     try {
-      await invoke("save_file", { path: filePath, content });
+      knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
       setOriginalContent(content);
       showToast("File saved", "success");
     } catch (err) {
@@ -798,7 +942,10 @@ function AppContent() {
     openCheatsheet: () => setShowCheatsheet(true),
     openPalette: () => setShowPalette(true),
     openSettings: () => setShowSettings(true),
-    hasFile, content,
+    // Ctrl+F in reader mode opens the preview find bar (the editor keymap
+    // handles find in code/split mode, where the editor has focus). FIND-01.
+    openPreviewFind: () => setPreviewFindOpen(true),
+    hasFile, content, mode,
   });
 
   // Get export HTML from the visible preview on demand (avoids duplicate rendering)
@@ -1047,13 +1194,11 @@ function AppContent() {
           icon: level === 1 ? "title" : level === 2 ? "format_h2" : "format_h3",
           keywords: "jump heading",
           run: () => {
-            // Switch to preview if in code-only mode, then scroll to heading
-            setMode((prev) => (prev === "code" ? "preview" : prev));
-            requestAnimationFrame(() => {
-              const slug = text.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
-              const el = document.getElementById(slug);
-              el?.scrollIntoView({ behavior: "smooth", block: "start" });
-            });
+            // Jump both panes to the heading's source line. The editor and the
+            // preview each listen for this event and scroll themselves (hidden
+            // panes scroll harmlessly), so this works in every view mode and
+            // lands on the RIGHT heading even when titles repeat. NAV-01.
+            window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line: idx + 1 } }));
           },
         });
       }
@@ -1077,7 +1222,6 @@ function AppContent() {
         filePath={filePath ?? undefined}
         onOpenFile={handleOpenFile}
         onNewFile={handleNewFile}
-        onSaveFile={handleSaveFile}
         getExportHtml={getExportHtml}
         onExportSuccess={handleExportSuccess}
         onExportError={handleExportError}
@@ -1157,7 +1301,7 @@ function AppContent() {
             )}
 
             <div
-              className="overflow-hidden flex flex-col"
+              className="overflow-hidden flex flex-col relative"
               style={{
                 display: mode === "preview" || mode === "split" ? "flex" : "none",
                 flexBasis: mode === "split" ? `${(1 - splitRatio) * 100}%` : "100%",
@@ -1187,6 +1331,15 @@ function AppContent() {
                   onWikilinkClick={handleWikilinkClick}
                 />
               </Suspense>
+
+              {/* Reader-mode find. Searches the rendered preview text and
+                  highlights matches via the CSS Custom Highlight API. */}
+              {previewFindOpen && (
+                <PreviewFindBar
+                  rootRef={previewRef}
+                  onClose={() => setPreviewFindOpen(false)}
+                />
+              )}
             </div>
           </div>
 
@@ -1258,6 +1411,20 @@ function AppContent() {
             onClose={handleCancelOpen}
             onDiscard={handleDiscardAndOpen}
             onSave={handleSaveAndOpen}
+          />
+        </Suspense>
+      )}
+
+      {/* Unsaved-changes dialog for window close — fed by the Tauri
+          close-requested interception above, so it covers Alt+F4 and the
+          taskbar close, not just the title bar X. */}
+      {showUnsavedBeforeClose && (
+        <Suspense fallback={null}>
+          <UnsavedChangesDialog
+            isOpen={showUnsavedBeforeClose}
+            onClose={() => setShowUnsavedBeforeClose(false)}
+            onDiscard={handleDiscardAndCloseWindow}
+            onSave={handleSaveAndCloseWindow}
           />
         </Suspense>
       )}

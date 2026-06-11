@@ -95,4 +95,18 @@ describe("useGlobalShortcuts gating", () => {
         press({ key: "s", ctrlKey: true });
         expect(h.handleSaveFile).not.toHaveBeenCalled();
     });
+
+    it("Ctrl+F opens preview find only in reader mode", () => {
+        const h = makeHandlers({ mode: "preview", openPreviewFind: vi.fn() });
+        render(<Harness handlers={h} />);
+        press({ key: "f", ctrlKey: true });
+        expect(h.openPreviewFind).toHaveBeenCalledTimes(1);
+    });
+
+    it("Ctrl+F is left to the editor in code mode", () => {
+        const h = makeHandlers({ mode: "code", openPreviewFind: vi.fn() });
+        render(<Harness handlers={h} />);
+        press({ key: "f", ctrlKey: true });
+        expect(h.openPreviewFind).not.toHaveBeenCalled();
+    });
 });

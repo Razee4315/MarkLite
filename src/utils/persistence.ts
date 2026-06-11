@@ -100,6 +100,10 @@ export const setWordWrap = (v: boolean): void => safeSet(KEY_WORD_WRAP, v);
 export const getSpellCheck = (): boolean => safeGet<boolean>(KEY_SPELL_CHECK, false);
 export const setSpellCheck = (v: boolean): void => safeSet(KEY_SPELL_CHECK, v);
 
+const KEY_AUTO_SAVE = "paperling:autoSave";
+export const getAutoSave = (): boolean => safeGet<boolean>(KEY_AUTO_SAVE, false);
+export const setAutoSave = (v: boolean): void => safeSet(KEY_AUTO_SAVE, v);
+
 // Master switch for every AI surface (title-bar button, side panel, toolbar
 // sparkle, Alt+J, command palette entry). On by default; flipped in Settings.
 const KEY_AI_ENABLED = "paperling:aiEnabled";

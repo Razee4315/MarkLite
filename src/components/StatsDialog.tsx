@@ -84,7 +84,7 @@ export function StatsDialog({ isOpen, content, onClose }: StatsDialogProps) {
                     ))}
                 </dl>
                 <footer className="px-5 py-2 text-[11px] text-[var(--text-muted)] border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
-                    Reading time assumes ~200 words per minute. Code blocks and frontmatter are excluded from word and sentence counts.
+                    Reading time assumes ~200 words per minute. Word and sentence counts exclude code blocks, frontmatter, and Markdown syntax.
                 </footer>
             </div>
         </div>

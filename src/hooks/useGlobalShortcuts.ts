@@ -14,8 +14,13 @@ export interface ShortcutHandlers {
     openCheatsheet: () => void;
     openPalette: () => void;
     openSettings: () => void;
+    /** Open the reader-mode find bar. Only invoked when mode === "preview". */
+    openPreviewFind?: () => void;
     hasFile: boolean;
     content: string;
+    /** Current view mode — Ctrl+F routes to the preview find bar in reader
+     *  mode (the CodeMirror keymap owns find when the editor has focus). */
+    mode?: "preview" | "code" | "split";
 }
 
 /**
@@ -74,6 +79,14 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
             if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
                 e.preventDefault();
                 if (s.hasFile) s.handleToggleSplit();
+            }
+            // Ctrl+F in reader mode - find in preview. In code/split mode the
+            // focused editor's own keymap handles Mod-f, so this never races it.
+            if (e.ctrlKey && !e.shiftKey && (e.key === "f" || e.key === "F")) {
+                if (s.hasFile && s.mode === "preview" && s.openPreviewFind) {
+                    e.preventDefault();
+                    s.openPreviewFind();
+                }
             }
             // ? - Show cheatsheet (only when no input is focused)
             if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {

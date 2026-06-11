@@ -358,6 +358,18 @@ select:focus-visible,
   border-radius: var(--radius-sm);
 }
 
+/* Find-in-preview match highlights (CSS Custom Highlight API — FIND-01).
+   ::highlight only supports color/background; fixed ambers read fine on every
+   theme since the underlying text color is preserved. */
+::highlight(paperling-find) {
+  background-color: rgba(255, 196, 0, 0.35);
+}
+
+::highlight(paperling-find-active) {
+  background-color: rgba(255, 145, 0, 0.65);
+  color: #1a1a1a;
+}
+
 /* Respect users who set "reduce motion" at the OS level. */
 @media (prefers-reduced-motion: reduce) {
 

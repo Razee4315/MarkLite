@@ -97,39 +97,13 @@ export function TableOfContents({
         };
     }, [isOpen, onClose]);
 
-    const handleHeadingClick = (text: string, level: number) => {
-        const scrollContainer = document.querySelector("main.overflow-y-auto");
-        const previewContainer = document.querySelector(".markdown-body");
-
-        if (previewContainer && scrollContainer) {
-            const headingTag = `h${level}`;
-            const headingElements = previewContainer.querySelectorAll(headingTag);
-
-            // Clean text for comparison (remove markdown formatting)
-            const cleanText = text
-                .replace(/\*\*(.+?)\*\*/g, "$1")
-                .replace(/\*(.+?)\*/g, "$1")
-                .replace(/_(.+?)_/g, "$1")
-                .replace(/`(.+?)`/g, "$1")
-                .replace(/\[(.+?)\]\(.+?\)/g, "$1")
-                .trim();
-
-            for (const el of headingElements) {
-                const elText = el.textContent?.trim() || "";
-                if (elText === text || elText === cleanText || elText.includes(cleanText)) {
-                    const elementTop = el.getBoundingClientRect().top;
-                    const containerTop = scrollContainer.getBoundingClientRect().top;
-                    // Land the heading a few px below the top edge so the active-line
-                    // detection (which samples ~14px down) resolves to THIS heading,
-                    // not the one above it. Instant jump — smooth scrolling felt like
-                    // it crawled "one by one" to distant sections.
-                    const offset = elementTop - containerTop + scrollContainer.scrollTop - 8;
-
-                    scrollContainer.scrollTo({ top: offset, behavior: "auto" });
-                    break;
-                }
-            }
-        }
+    // Jump by SOURCE LINE, not heading text (NAV-01). The editor and the
+    // preview both listen for this event and scroll themselves, so the click
+    // works in code, preview, and split mode — and lands on the right heading
+    // even when two sections share the same title (the old text-matching
+    // approach always hit the first occurrence, and only in preview mode).
+    const handleHeadingClick = (line: number) => {
+        window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }));
     };
 
     const getIndent = (level: number): string => {
@@ -201,7 +175,7 @@ export function TableOfContents({
                             return (
                             <li key={`${heading.id}-${index}`} data-toc-idx={index}>
                                 <button
-                                    onClick={() => handleHeadingClick(heading.text, heading.level)}
+                                    onClick={() => handleHeadingClick(heading.line)}
                                     aria-label={`Go to heading: ${heading.text}`}
                                     aria-current={isActive ? "location" : undefined}
                                     className={`btn-press w-full px-4 py-1.5 text-left text-sm flex items-center gap-2 transition-colors ${getIndent(heading.level)} ${isActive

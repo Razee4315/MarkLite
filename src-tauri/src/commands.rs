@@ -50,6 +50,19 @@ pub struct FileData {
     pub content: String,
     pub size: u64,
     pub line_count: usize,
+    /// Last-modified time, ms since the Unix epoch. Lets the frontend detect
+    /// external edits (file changed on disk while open) on window focus.
+    pub modified: u64,
+}
+
+/// Last-modified time in ms since the Unix epoch (0 when unavailable).
+fn mtime_ms(metadata: &std::fs::Metadata) -> u64 {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Read a markdown file from disk
@@ -87,19 +100,27 @@ pub async fn read_file(path: String) -> Result<FileData, CommandError> {
         .unwrap_or_else(|| "Untitled".to_string());
     
     let line_count = content.lines().count();
-    
+
     Ok(FileData {
         path,
         name,
         content,
         size: metadata.len(),
         line_count,
+        modified: mtime_ms(&metadata),
     })
 }
 
-/// Save content to a file
+/// Save content to a file. Returns the new last-modified time (ms since epoch)
+/// so the frontend can track external changes without a second stat call.
+///
+/// The write is ATOMIC: content goes to a temp file in the same directory,
+/// which is then renamed over the target. A crash or power loss mid-write can
+/// no longer truncate the user's document — the worst case is a leftover
+/// `.paperling-tmp` file. (std/tokio rename replaces the target on Windows
+/// via MoveFileEx + MOVEFILE_REPLACE_EXISTING, and is atomic on POSIX.)
 #[tauri::command]
-pub async fn save_file(path: String, content: String) -> Result<(), CommandError> {
+pub async fn save_file(path: String, content: String) -> Result<u64, CommandError> {
     // Mirror the read-side limit. Refusing to write a >50 MB markdown file
     // protects the user from accidentally truncating something pasted from
     // another tool, and matches what `read_file` would refuse to load back.
@@ -111,11 +132,24 @@ pub async fn save_file(path: String, content: String) -> Result<(), CommandError
         )));
     }
 
-    tokio::fs::write(&path, &content)
+    // Same directory as the target so the rename never crosses a filesystem
+    // boundary (cross-device renames aren't atomic and can fail outright).
+    let tmp = format!("{}.{}.paperling-tmp", path, std::process::id());
+
+    tokio::fs::write(&tmp, &content)
         .await
         .map_err(|e| CommandError::WriteError(e.to_string()))?;
 
-    Ok(())
+    if let Err(e) = tokio::fs::rename(&tmp, &path).await {
+        // Don't leave the temp file behind on failure.
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(CommandError::WriteError(e.to_string()));
+    }
+
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?;
+    Ok(mtime_ms(&metadata))
 }
 
 /// Get just the file info without content (for status bar)
@@ -141,6 +175,7 @@ pub async fn get_file_info(path: String) -> Result<FileInfo, CommandError> {
         path,
         name,
         size: metadata.len(),
+        modified: mtime_ms(&metadata),
     })
 }
 
@@ -149,6 +184,8 @@ pub struct FileInfo {
     pub path: String,
     pub name: String,
     pub size: u64,
+    /// Last-modified time, ms since the Unix epoch.
+    pub modified: u64,
 }
 
 /// File entry for directory listing
@@ -402,7 +439,41 @@ pub fn set_ai_key(key: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_image_name, validate_rel_path};
+    use super::{sanitize_image_name, save_file, validate_rel_path};
+
+    #[test]
+    fn save_file_writes_atomically_and_returns_mtime() {
+        // Plain current-thread runtime: tokio's "fs" feature doesn't include
+        // the macros feature, so no #[tokio::test] here.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let dir = std::env::temp_dir().join(format!("paperling-test-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("doc.md").to_string_lossy().to_string();
+
+            let mtime = save_file(path.clone(), "hello".into()).await.unwrap();
+            assert!(mtime > 0);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
+
+            // Overwrite must replace the existing file (rename-over semantics).
+            let mtime2 = save_file(path.clone(), "world".into()).await.unwrap();
+            assert!(mtime2 >= mtime);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "world");
+
+            // No temp file left behind.
+            let leftovers: Vec<_> = std::fs::read_dir(&dir)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().contains("paperling-tmp"))
+                .collect();
+            assert!(leftovers.is_empty());
+
+            std::fs::remove_dir_all(&dir).ok();
+        });
+    }
 
     #[test]
     fn rel_path_accepts_safe_relatives() {

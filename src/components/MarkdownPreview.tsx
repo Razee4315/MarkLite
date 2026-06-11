@@ -838,6 +838,36 @@ function MarkdownPreviewImpl({
     useEffect(() => { refreshScrollMax(); }, [renderedBody, refreshScrollMax]);
     useEffect(() => () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); }, []);
 
+    // Jump-to-line requests from the TOC / command palette (NAV-01). Finds the
+    // last rendered block whose source line is at-or-above the target line via
+    // the data-source-line anchors — exact even when headings repeat, unlike
+    // the old text-matching approach. Lines are content-relative; the anchors
+    // are body-relative, hence the frontmatter offset.
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const line = Number((e as CustomEvent).detail?.line);
+            const container = mainRef.current;
+            if (!container || !Number.isFinite(line) || line < 1) return;
+            const target = line - fmOffsetRef.current;
+            const blocks = container.querySelectorAll<HTMLElement>("[data-source-line]");
+            let best: HTMLElement | null = null;
+            for (const b of blocks) {
+                const l = Number(b.getAttribute("data-source-line"));
+                if (l <= target) best = b;
+                else break;
+            }
+            if (!best) return;
+            // Land the block a few px below the top edge so active-line
+            // detection (which samples ~14px down) resolves to THIS block.
+            const top = best.getBoundingClientRect().top
+                - container.getBoundingClientRect().top
+                + container.scrollTop - 8;
+            container.scrollTo({ top, behavior: "auto" });
+        };
+        window.addEventListener("paperling:goto-line", handler);
+        return () => window.removeEventListener("paperling:goto-line", handler);
+    }, []);
+
     // Register imperative scroller for split-view sync
     useEffect(() => {
         if (!registerScroller) return;

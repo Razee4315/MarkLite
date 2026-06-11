@@ -1,15 +1,8 @@
-import { useState, lazy, Suspense, memo } from "react";
+import { memo } from "react";
 import type { MouseEvent } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
-
-// Loaded only when the user actually tries to close a dirty buffer.
-// Eager-importing this kept its module (and its chained imports) in the
-// main bundle even though most sessions never trigger the dialog.
-const UnsavedChangesDialog = lazy(() =>
-    import("./UnsavedChangesDialog").then((m) => ({ default: m.UnsavedChangesDialog }))
-);
 
 interface TitleBarProps {
     fileName?: string;
@@ -17,7 +10,6 @@ interface TitleBarProps {
     filePath?: string;
     onOpenFile?: () => void;
     onNewFile?: () => void;
-    onSaveFile?: () => Promise<void>;
     getExportHtml?: () => string;
     onExportSuccess?: (format: string) => void;
     onExportError?: (format: string) => void;
@@ -25,9 +17,7 @@ interface TitleBarProps {
     aiActive?: boolean;
 }
 
-function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive }: TitleBarProps) {
-    const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-
+function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive }: TitleBarProps) {
     const handleMinimize = async () => {
         try {
             const appWindow = Window.getCurrent();
@@ -71,33 +61,16 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSa
         }
     };
 
-    const handleCloseClick = () => {
-        if (isDirty) {
-            setShowUnsavedDialog(true);
-        } else {
-            forceClose();
-        }
-    };
-
-    const forceClose = async () => {
+    // close() fires the Tauri close-requested event, which App intercepts when
+    // the buffer is dirty (CLOSE-01) — same code path as Alt+F4 and the
+    // taskbar close, so the unsaved-changes flow lives in exactly one place.
+    const handleCloseClick = async () => {
         try {
             const appWindow = Window.getCurrent();
             await appWindow.close();
         } catch (e) {
             console.error("Close failed:", e);
         }
-    };
-
-    const handleSaveAndClose = async () => {
-        if (onSaveFile) {
-            await onSaveFile();
-        }
-        forceClose();
-    };
-
-    const handleDiscardAndClose = () => {
-        setShowUnsavedDialog(false);
-        forceClose();
     };
 
     // Extract parent folder from path for breadcrumb
@@ -115,16 +88,6 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSa
 
     return (
         <>
-            {showUnsavedDialog && (
-                <Suspense fallback={null}>
-                    <UnsavedChangesDialog
-                        isOpen={showUnsavedDialog}
-                        onClose={() => setShowUnsavedDialog(false)}
-                        onDiscard={handleDiscardAndClose}
-                        onSave={handleSaveAndClose}
-                    />
-                </Suspense>
-            )}
             <header
                 onMouseDown={handleTitleBarMouseDown}
                 className="h-12 shrink-0 flex items-center justify-between px-4 bg-[var(--bg-titlebar)] border-b border-[var(--border)] no-select drag-region transition-colors"

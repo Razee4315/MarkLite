@@ -316,6 +316,50 @@ function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize): 
     `;
 }
 
+/**
+ * Clean the live preview's innerHTML for export (EXPORT-01):
+ *  - strips UI chrome that leaked in from interactive renderers: code-block
+ *    "Copy" buttons and heading anchor buttons (whose Material Symbols
+ *    ligatures render as literal words like "link" without the icon font);
+ *  - inlines blob: image URLs as data: URIs — blob URLs are session-bound, so
+ *    exported files referencing them show broken images;
+ *  - neutralizes wikilink: hrefs (app-internal scheme) into plain text.
+ */
+export async function prepareExportHtml(rawHtml: string): Promise<string> {
+    const doc = new DOMParser().parseFromString(`<div id="__export_root">${rawHtml}</div>`, "text/html");
+    const root = doc.getElementById("__export_root");
+    if (!root) return rawHtml;
+
+    root.querySelectorAll("button").forEach((b) => b.remove());
+    root.querySelectorAll(".material-symbols-outlined").forEach((s) => s.remove());
+
+    root.querySelectorAll("a[href^='wikilink:']").forEach((a) => {
+        const span = doc.createElement("span");
+        span.textContent = a.textContent;
+        a.replaceWith(span);
+    });
+
+    for (const img of Array.from(root.querySelectorAll("img"))) {
+        const src = img.getAttribute("src") || "";
+        if (!src.startsWith("blob:")) continue;
+        try {
+            const blob = await (await fetch(src)).blob();
+            const dataUri = await new Promise<string>((resolve, reject) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result as string);
+                fr.onerror = () => reject(fr.error);
+                fr.readAsDataURL(blob);
+            });
+            img.setAttribute("src", dataUri);
+        } catch {
+            // Blob already revoked or unreadable — leave the src; the alt text
+            // still communicates what belonged there.
+        }
+    }
+
+    return root.innerHTML;
+}
+
 // Escape HTML entities to prevent XSS in generated HTML
 function escapeHtml(text: string): string {
     return text
@@ -374,7 +418,8 @@ export async function exportToHTML(
     fontSize: FontSize
 ): Promise<void> {
     const title = fileName.replace(/\.(md|markdown)$/i, '');
-    const fullHTML = generateHTML(htmlContent, title, theme, font, fontSize);
+    const cleaned = await prepareExportHtml(htmlContent);
+    const fullHTML = generateHTML(cleaned, title, theme, font, fontSize);
 
     // Use Tauri save dialog
     const filePath = await save({
@@ -555,8 +600,12 @@ export async function exportToPDF(
         return;
     }
 
+    // Same cleanup as HTML export — without it the "Copy" button labels and
+    // heading icon ligatures end up as literal text in the PDF.
+    const cleaned = await prepareExportHtml(htmlContent);
+
     // Parse HTML into structured elements
-    const elements = parseHTMLForPDF(htmlContent);
+    const elements = parseHTMLForPDF(cleaned);
     const sizes = pdfFontSizes[fontSize];
     const colors = themeColors[theme];
 
@@ -753,7 +802,7 @@ export async function exportToPDF(
                 const colCount = Math.max(...rows.map(r => r.length));
                 const cellPadding = 2;
                 const colWidth = (maxWidth - cellPadding * 2) / colCount;
-                const rowHeight = sizes.base * 0.4 * sizes.lineHeight + cellPadding * 2;
+                const cellLineH = sizes.base * 0.4 * sizes.lineHeight;
 
                 pdf.setFontSize(sizes.base);
                 pdf.setDrawColor(...borderRgb);
@@ -762,6 +811,18 @@ export async function exportToPDF(
                 for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
                     const row = rows[rowIdx];
                     const isHeader = element.hasHeader && rowIdx === 0;
+
+                    // Wrap every cell first; the row grows to fit its tallest
+                    // cell so long content renders fully instead of being
+                    // silently truncated to the first wrapped line (EXPORT-02).
+                    const wrappedCells: string[][] = [];
+                    let maxLines = 1;
+                    for (let colIdx = 0; colIdx < colCount; colIdx++) {
+                        const wrapped = wrapText(row[colIdx] || '', colWidth - cellPadding * 2, sizes.base);
+                        wrappedCells.push(wrapped.length ? wrapped : ['']);
+                        if (wrapped.length > maxLines) maxLines = wrapped.length;
+                    }
+                    const rowHeight = maxLines * cellLineH + cellPadding * 2;
 
                     checkPageBreak(rowHeight);
 
@@ -774,16 +835,17 @@ export async function exportToPDF(
                     // Draw cells
                     for (let colIdx = 0; colIdx < colCount; colIdx++) {
                         const cellX = margin + colIdx * colWidth;
-                        const cellText = row[colIdx] || '';
 
                         // Cell border
                         pdf.rect(cellX, y - cellPadding, colWidth, rowHeight, 'S');
 
-                        // Cell text
+                        // Cell text — every wrapped line, not just the first
                         pdf.setFont('helvetica', isHeader ? 'bold' : 'normal');
                         pdf.setTextColor(...textRgb);
-                        const wrapped = wrapText(cellText, colWidth - cellPadding * 2, sizes.base);
-                        pdf.text(wrapped[0] || '', cellX + cellPadding, y + cellPadding);
+                        const wrapped = wrappedCells[colIdx];
+                        for (let li = 0; li < wrapped.length; li++) {
+                            pdf.text(wrapped[li], cellX + cellPadding, y + cellPadding + li * cellLineH);
+                        }
                     }
 
                     y += rowHeight;

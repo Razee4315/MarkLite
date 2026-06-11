@@ -364,16 +364,32 @@ function CodeEditorImpl({
     }
 
     // Show the floating table toolbar when the caret is inside a markdown table.
-    // Cheap guard first (current line has a pipe) so we only pay the full-doc scan
-    // on the rare pipe-line case, not on every cursor move.
+    // Cheap guard first (current line has a pipe), then scan only the contiguous
+    // run of pipe-containing lines around the caret. The old version called
+    // doc.toString() here — a full-document copy on EVERY cursor move that
+    // landed on a pipe line, which is megabytes per keystroke on a huge doc.
     function detectTable(view: EditorView) {
         if (reviewingRef.current) { setTableUI(null); return; }
         const head = view.state.selection.main.head;
-        if (!view.state.doc.lineAt(head).text.includes("|")) { setTableUI(null); return; }
-        const region = findTableAt(view.state.doc.toString(), head);
+        const doc = view.state.doc;
+        const curLine = doc.lineAt(head);
+        if (!curLine.text.includes("|")) { setTableUI(null); return; }
+
+        // Expand to the surrounding block of pipe lines (capped — no real
+        // markdown table is anywhere near 500 rows).
+        const CAP = 500;
+        let first = curLine.number;
+        while (first > 1 && curLine.number - first < CAP && doc.line(first - 1).text.includes("|")) first--;
+        let last = curLine.number;
+        while (last < doc.lines && last - curLine.number < CAP && doc.line(last + 1).text.includes("|")) last++;
+
+        const sliceFrom = doc.line(first).from;
+        const slice = doc.sliceString(sliceFrom, doc.line(last).to);
+
+        const region = findTableAt(slice, head - sliceFrom);
         if (!region) { setTableUI(null); return; }
-        const { colIndex } = locateCell(region, head);
-        const coords = view.coordsAtPos(region.from);
+        const { colIndex } = locateCell(region, head - sliceFrom);
+        const coords = view.coordsAtPos(region.from + sliceFrom);
         if (!coords) { setTableUI(null); return; }
         setTableUI({ x: coords.left, y: coords.top, align: region.model.aligns[colIndex] ?? "none" });
     }
@@ -543,6 +559,24 @@ function CodeEditorImpl({
         });
         return () => registerScroller(null);
     }, [registerScroller]);
+
+    // Jump-to-line requests from the TOC / command palette (NAV-01). The editor
+    // moves its caret and scrolls the line to the top; in preview-only mode this
+    // pane is display:none so the scroll is a harmless no-op.
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const line = Number((e as CustomEvent).detail?.line);
+            const v = viewRef.current;
+            if (!v || !Number.isFinite(line) || line < 1) return;
+            const docLine = v.state.doc.line(Math.min(Math.floor(line), v.state.doc.lines));
+            v.dispatch({
+                selection: { anchor: docLine.from },
+                effects: EditorView.scrollIntoView(docLine.from, { y: "start", yMargin: 8 }),
+            });
+        };
+        window.addEventListener("paperling:goto-line", handler);
+        return () => window.removeEventListener("paperling:goto-line", handler);
+    }, []);
 
     // Alt+J (and the command palette's "AI assist") is selection-aware, matching
     // the docs: with text selected it opens the inline selection-assist bubble;
