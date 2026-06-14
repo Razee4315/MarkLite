@@ -1,7 +1,9 @@
 import { useRef, useEffect, useCallback, useMemo, useState, useTransition, memo, createContext, useContext } from "react";
-import Markdown from "react-markdown";
+import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from "../utils/frontmatter";
@@ -21,6 +23,39 @@ const hasMath = (s: string): boolean => MATH_DETECTION_REGEX.test(s);
 // highlighted; untagged blocks render plain. Unknown language tags are ignored
 // gracefully by the plugin (no throw). PREVIEW-02.
 const HIGHLIGHT_OPTIONS = { detect: false } as const;
+
+// Inline/raw HTML support (GitHub-style). react-markdown ignores raw HTML by
+// default; rehype-raw reparses it into real nodes, and rehype-sanitize then
+// strips anything dangerous. Order matters: raw FIRST (it produces the unsafe
+// tree), sanitize immediately AFTER (the rule is "sanitize after the last
+// unsafe thing"), and the trusted markup generators (KaTeX, highlight.js) and
+// the source-line stamper run LAST so sanitize can't strip their output. A
+// booby-trapped downloaded .md is a real vector in a desktop app that exposes
+// a Tauri IPC bridge, so sanitizing is not optional even for "local" files.
+//
+// The schema is GitHub's defaultSchema plus two narrow additions:
+//  - `math`/`math-inline`/`math-display` classes on span/div, so remark-math's
+//    markers survive sanitize and rehype-katex (which runs after) can find them;
+//  - the `wikilink:` href protocol, so our internal links aren't stripped.
+const SANITIZE_SCHEMA = {
+    ...defaultSchema,
+    attributes: {
+        ...defaultSchema.attributes,
+        span: [...(defaultSchema.attributes?.span ?? []), ["className", "math", "math-inline", "math-display"]],
+        div: [...(defaultSchema.attributes?.div ?? []), ["className", "math", "math-inline", "math-display"]],
+    },
+    protocols: {
+        ...defaultSchema.protocols,
+        href: [...(defaultSchema.protocols?.href ?? []), "wikilink"],
+    },
+} as typeof defaultSchema;
+
+// react-markdown's default urlTransform drops any href whose scheme isn't in a
+// small safe list — which silently kills our internal `wikilink:` links (the
+// click handler keys off that exact scheme). Pass those through; defer
+// everything else to the default, which still blocks javascript:, etc.
+const mdUrlTransform = (url: string): string =>
+    url.startsWith("wikilink:") ? url : defaultUrlTransform(url);
 
 // rehype plugin: stamp each top-level rendered block with the source line it came
 // from (data-source-line). Lets the preview report the ACCURATE top-visible line
@@ -756,8 +791,8 @@ function MarkdownPreviewImpl({
     );
     const rehypePlugins = useMemo(
         () => (mathPlugins
-            ? [[rehypeHighlight, HIGHLIGHT_OPTIONS], mathPlugins.rehype, rehypeSourceLine]
-            : [[rehypeHighlight, HIGHLIGHT_OPTIONS], rehypeSourceLine]),
+            ? [rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], mathPlugins.rehype, [rehypeHighlight, HIGHLIGHT_OPTIONS], rehypeSourceLine]
+            : [rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], [rehypeHighlight, HIGHLIGHT_OPTIONS], rehypeSourceLine]),
         [mathPlugins]
     );
 
@@ -902,6 +937,7 @@ function MarkdownPreviewImpl({
                             remarkPlugins={remarkPlugins as any}
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             rehypePlugins={rehypePlugins as any}
+                            urlTransform={mdUrlTransform}
                             components={components}
                         >
                             {renderedBody}
