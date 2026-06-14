@@ -1,7 +1,6 @@
 import { Theme, FontFamily, FontSize } from '../context/ThemeContext';
 import { save } from '@tauri-apps/plugin-dialog';
-import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
-import { jsPDF } from 'jspdf';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 
 // Theme color definitions for export
 const themeColors: Record<Theme, Record<string, string>> = {
@@ -136,11 +135,33 @@ function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize): 
             margin: 0 auto;
         }
 
+        @page {
+            margin: 18mm 16mm;
+        }
+
         @media print {
+            html, body {
+                background: #ffffff;
+            }
             body {
                 padding: 0;
-                background: white;
+                max-width: none;
                 color: #171717;
+            }
+            /* Browsers drop background fills when printing unless asked; keep
+               code blocks, table headers and blockquote tints visible. */
+            pre, code, th, blockquote, .hljs {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            /* Keep atomic blocks and their headings from splitting awkwardly. */
+            pre, blockquote, table, img, tr {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                page-break-after: avoid;
+                break-after: avoid;
             }
         }
 
@@ -432,467 +453,134 @@ export async function exportToHTML(
     }
 }
 
-// PDF font size mappings
-const pdfFontSizes: Record<FontSize, { base: number; h1: number; h2: number; h3: number; code: number; lineHeight: number }> = {
-    small: { base: 10, h1: 20, h2: 16, h3: 12, code: 9, lineHeight: 1.4 },
-    medium: { base: 11, h1: 22, h2: 18, h3: 14, code: 10, lineHeight: 1.5 },
-    large: { base: 12, h1: 24, h2: 20, h3: 16, code: 11, lineHeight: 1.6 },
-};
+// ---------------------------------------------------------------------------
+// PDF export
+//
+// We deliberately do NOT rasterize or hand-roll a PDF layout. Instead we render
+// the same standalone HTML we produce for HTML export inside an isolated,
+// off-screen iframe and drive the webview's own print pipeline ("Save as PDF" /
+// "Microsoft Print to PDF"). That yields a vector PDF that matches the preview
+// exactly: real Unicode and color emoji, selectable/searchable text and working
+// links — none of which the old jsPDF standard-font path could do (it encoded
+// text as single-byte WinAnsi, so anything outside Latin-1 — emoji, smart
+// quotes, em dashes — printed as garbage).
+// ---------------------------------------------------------------------------
 
-// Parse HTML and extract structured content for PDF
-interface PDFElement {
-    type: 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'code' | 'blockquote' | 'hr' | 'pre' | 'table';
-    text: string;
-    indent?: number;
-    ordered?: boolean;
-    index?: number;
-    rows?: string[][];  // For table elements: array of rows, each row is array of cells
-    hasHeader?: boolean;
+const PRINT_FRAME_ID = '__paperling_print_frame';
+
+// Resolve once every <img> has finished loading (or failed) so the print job
+// never captures half-decoded images. Sources are inlined as data: URIs by
+// prepareExportHtml, so this usually settles almost immediately.
+function waitForImages(doc: Document): Promise<void> {
+    const imgs = Array.from(doc.images ?? []);
+    return Promise.all(
+        imgs.map((img) =>
+            img.complete
+                ? Promise.resolve()
+                : new Promise<void>((resolve) => {
+                      img.addEventListener('load', () => resolve(), { once: true });
+                      img.addEventListener('error', () => resolve(), { once: true });
+                  })
+        )
+    ).then(() => undefined);
 }
 
-function parseHTMLForPDF(htmlContent: string): PDFElement[] {
-    const elements: PDFElement[] = [];
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<div>${htmlContent}</div>`, 'text/html');
-    const container = doc.body.firstChild as HTMLElement;
+// Render `html` in a hidden iframe and invoke the webview's native print dialog.
+// Resolves once printing has been triggered and cleaned up (or the dialog was
+// dismissed). A webview that never fires `afterprint` is cleaned up by the
+// fallback timer so we don't leak frames.
+function printHtmlDocument(html: string): Promise<void> {
+    return new Promise((resolve) => {
+        // Remove any frame left over from a previous (e.g. cancelled) export.
+        document.getElementById(PRINT_FRAME_ID)?.remove();
 
-    function processNode(node: Node, listIndent: number = 0, orderedList: boolean = false, listIndex: number = 0): void {
-        if (node.nodeType === Node.TEXT_NODE) {
-            const text = node.textContent?.trim();
-            if (text) {
-                // Text node outside of elements - treat as paragraph
-                elements.push({ type: 'p', text });
+        const iframe = document.createElement('iframe');
+        iframe.id = PRINT_FRAME_ID;
+        iframe.setAttribute('aria-hidden', 'true');
+        iframe.setAttribute('tabindex', '-1');
+        Object.assign(iframe.style, {
+            position: 'fixed',
+            left: '-9999px',
+            top: '0',
+            // A4-ish width at 96dpi so on-screen layout is sane before the print
+            // engine re-flows to the real page size.
+            width: '794px',
+            height: '0',
+            border: '0',
+            opacity: '0',
+            pointerEvents: 'none',
+        });
+
+        let settled = false;
+        const finish = () => {
+            if (!settled) {
+                settled = true;
+                resolve();
             }
-            return;
-        }
+        };
 
-        if (node.nodeType !== Node.ELEMENT_NODE) return;
-
-        const el = node as HTMLElement;
-        const tagName = el.tagName.toLowerCase();
-
-        switch (tagName) {
-            case 'h1':
-                elements.push({ type: 'h1', text: el.textContent || '' });
-                break;
-            case 'h2':
-                elements.push({ type: 'h2', text: el.textContent || '' });
-                break;
-            case 'h3':
-            case 'h4':
-            case 'h5':
-            case 'h6':
-                elements.push({ type: 'h3', text: el.textContent || '' });
-                break;
-            case 'p':
-                elements.push({ type: 'p', text: el.textContent || '' });
-                break;
-            case 'pre':
-                const codeEl = el.querySelector('code');
-                elements.push({ type: 'pre', text: codeEl?.textContent || el.textContent || '' });
-                break;
-            case 'blockquote':
-                elements.push({ type: 'blockquote', text: el.textContent || '' });
-                break;
-            case 'hr':
-                elements.push({ type: 'hr', text: '' });
-                break;
-            case 'table': {
-                const rows: string[][] = [];
-                let hasHeader = false;
-                // Process thead
-                const thead = el.querySelector('thead');
-                if (thead) {
-                    hasHeader = true;
-                    thead.querySelectorAll('tr').forEach(tr => {
-                        const cells: string[] = [];
-                        tr.querySelectorAll('th, td').forEach(cell => {
-                            cells.push(cell.textContent?.trim() || '');
-                        });
-                        rows.push(cells);
-                    });
-                }
-                // Process tbody
-                const tbody = el.querySelector('tbody') || el;
-                tbody.querySelectorAll('tr').forEach(tr => {
-                    // Skip rows already added from thead
-                    if (thead && tr.closest('thead')) return;
-                    const cells: string[] = [];
-                    tr.querySelectorAll('th, td').forEach(cell => {
-                        cells.push(cell.textContent?.trim() || '');
-                    });
-                    if (cells.length > 0) rows.push(cells);
-                });
-                if (rows.length > 0) {
-                    elements.push({ type: 'table', text: '', rows, hasHeader });
-                }
-                break;
+        iframe.onload = () => {
+            const win = iframe.contentWindow;
+            if (!win) {
+                iframe.remove();
+                finish();
+                return;
             }
-            case 'ul':
-                let ulIndex = 0;
-                el.childNodes.forEach(child => {
-                    if ((child as HTMLElement).tagName?.toLowerCase() === 'li') {
-                        ulIndex++;
-                        processNode(child, listIndent + 1, false, ulIndex);
-                    }
-                });
-                break;
-            case 'ol':
-                let olIndex = 0;
-                el.childNodes.forEach(child => {
-                    if ((child as HTMLElement).tagName?.toLowerCase() === 'li') {
-                        olIndex++;
-                        processNode(child, listIndent + 1, true, olIndex);
-                    }
-                });
-                break;
-            case 'li':
-                elements.push({
-                    type: 'li',
-                    text: el.textContent || '',
-                    indent: listIndent,
-                    ordered: orderedList,
-                    index: listIndex
-                });
-                // Check for nested lists
-                el.childNodes.forEach(child => {
-                    const childTag = (child as HTMLElement).tagName?.toLowerCase();
-                    if (childTag === 'ul' || childTag === 'ol') {
-                        processNode(child, listIndent, childTag === 'ol', 0);
-                    }
-                });
-                break;
-            default:
-                // Process children for other elements (div, article, etc.)
-                el.childNodes.forEach(child => processNode(child, listIndent, orderedList, listIndex));
-        }
-    }
 
-    if (container) {
-        container.childNodes.forEach(child => processNode(child));
-    }
+            let fallbackTimer: ReturnType<typeof setTimeout>;
+            const cleanup = () => {
+                win.removeEventListener('afterprint', cleanup);
+                clearTimeout(fallbackTimer);
+                // Defer removal a tick — some engines read the document
+                // asynchronously after print() returns.
+                setTimeout(() => iframe.remove(), 300);
+                finish();
+            };
+            // Fires when the dialog closes, whether the user saved or cancelled.
+            win.addEventListener('afterprint', cleanup);
+            // Safety net for webviews that don't emit afterprint.
+            fallbackTimer = setTimeout(cleanup, 120000);
 
-    return elements;
+            Promise.all([
+                win.document.fonts?.ready?.catch(() => undefined),
+                waitForImages(win.document),
+            ]).then(() => {
+                try {
+                    win.focus();
+                    win.print();
+                } catch {
+                    cleanup();
+                }
+            });
+        };
+
+        document.body.appendChild(iframe);
+        iframe.srcdoc = html;
+    });
 }
 
-// Helper to parse hex color to RGB tuple
-function hexToRgb(hex: string): [number, number, number] {
-    const clean = hex.replace('#', '');
-    return [
-        parseInt(clean.substring(0, 2), 16),
-        parseInt(clean.substring(2, 4), 16),
-        parseInt(clean.substring(4, 6), 16),
-    ];
-}
-
-// Export to PDF with real selectable text using jsPDF
+// Export to PDF via the webview's print engine (see the block comment above).
+// The theme argument is intentionally ignored: a shared/printed PDF must be
+// legible on white paper, so we always render the light theme. The on-screen
+// HTML export still honours the chosen theme.
 export async function exportToPDF(
     htmlContent: string,
     fileName: string,
-    theme: Theme,
-    _font: FontFamily,
+    _theme: Theme,
+    font: FontFamily,
     fontSize: FontSize
 ): Promise<void> {
-    const title = fileName.replace(/\.(md|markdown)$/i, '');
-
     if (!htmlContent || htmlContent.trim() === '') {
         console.error('No HTML content to export!');
         return;
     }
 
-    // Same cleanup as HTML export — without it the "Copy" button labels and
-    // heading icon ligatures end up as literal text in the PDF.
+    const title = fileName.replace(/\.(md|markdown)$/i, '');
+
+    // Same cleanup as HTML export — strips UI chrome (copy buttons, heading
+    // anchor icons) and inlines blob: images as data: URIs.
     const cleaned = await prepareExportHtml(htmlContent);
+    const fullHTML = generateHTML(cleaned, title, 'light', font, fontSize, true);
 
-    // Parse HTML into structured elements
-    const elements = parseHTMLForPDF(cleaned);
-    const sizes = pdfFontSizes[fontSize];
-    const colors = themeColors[theme];
-
-    // Derive RGB values from theme
-    const textRgb = hexToRgb(colors.textPrimary);
-    const textSecondaryRgb = hexToRgb(colors.textSecondary);
-    const borderRgb = hexToRgb(colors.border);
-    const h1Rgb = hexToRgb(colors.syntaxH1);
-    const h2Rgb = hexToRgb(colors.syntaxH2);
-    const h3Rgb = hexToRgb(colors.syntaxH3);
-
-    // Create PDF document (A4 size)
-    const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-    });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 20;
-    const footerHeight = 15;
-    const maxWidth = pageWidth - margin * 2;
-    let y = margin;
-
-    // Helper to add new page if needed (reserves space for footer)
-    const checkPageBreak = (height: number) => {
-        if (y + height > pageHeight - margin - footerHeight) {
-            pdf.addPage();
-            y = margin;
-            return true;
-        }
-        return false;
-    };
-
-    // Helper to wrap text and return lines
-    const wrapText = (text: string, maxW: number, fontSizePt: number): string[] => {
-        pdf.setFontSize(fontSizePt);
-        return pdf.splitTextToSize(text, maxW);
-    };
-
-    // Set default text color
-    pdf.setTextColor(...textRgb);
-
-    // Render each element
-    for (const element of elements) {
-        switch (element.type) {
-            case 'h1': {
-                checkPageBreak(15);
-                y += 8;
-                pdf.setFontSize(sizes.h1);
-                pdf.setFont('helvetica', 'bold');
-                pdf.setTextColor(...h1Rgb);
-                const lines = wrapText(element.text, maxWidth, sizes.h1);
-                pdf.text(lines, margin, y);
-                y += lines.length * (sizes.h1 * 0.4) + 3;
-                pdf.setDrawColor(...borderRgb);
-                pdf.setLineWidth(0.5);
-                pdf.line(margin, y, pageWidth - margin, y);
-                y += 5;
-                pdf.setTextColor(...textRgb);
-                break;
-            }
-
-            case 'h2': {
-                checkPageBreak(12);
-                y += 6;
-                pdf.setFontSize(sizes.h2);
-                pdf.setFont('helvetica', 'bold');
-                pdf.setTextColor(...h2Rgb);
-                const lines = wrapText(element.text, maxWidth, sizes.h2);
-                pdf.text(lines, margin, y);
-                y += lines.length * (sizes.h2 * 0.4) + 2;
-                pdf.setDrawColor(...borderRgb);
-                pdf.setLineWidth(0.3);
-                pdf.line(margin, y, pageWidth - margin, y);
-                y += 4;
-                pdf.setTextColor(...textRgb);
-                break;
-            }
-
-            case 'h3': {
-                checkPageBreak(10);
-                y += 4;
-                pdf.setFontSize(sizes.h3);
-                pdf.setFont('helvetica', 'bold');
-                pdf.setTextColor(...h3Rgb);
-                const lines = wrapText(element.text, maxWidth, sizes.h3);
-                pdf.text(lines, margin, y);
-                y += lines.length * (sizes.h3 * 0.4) + 3;
-                pdf.setTextColor(...textRgb);
-                break;
-            }
-
-            case 'p': {
-                const lineH = sizes.base * 0.4 * sizes.lineHeight;
-                pdf.setFontSize(sizes.base);
-                pdf.setFont('helvetica', 'normal');
-                pdf.setTextColor(...textRgb);
-                const lines = wrapText(element.text, maxWidth, sizes.base);
-                // Check page break for each chunk of lines to prevent overflow
-                for (const line of lines) {
-                    checkPageBreak(lineH);
-                    pdf.text(line, margin, y);
-                    y += lineH;
-                }
-                y += 3;
-                break;
-            }
-
-            case 'li': {
-                const indent = (element.indent || 1) * 5;
-                const bullet = element.ordered ? `${element.index}.` : '\u2022';
-                const lineH = sizes.base * 0.4 * sizes.lineHeight;
-                pdf.setFontSize(sizes.base);
-                pdf.setFont('helvetica', 'normal');
-                pdf.setTextColor(...textRgb);
-
-                const cleanText = element.text.trim();
-                const lines = wrapText(cleanText, maxWidth - indent - 5, sizes.base);
-                checkPageBreak(lines.length * lineH);
-
-                pdf.text(bullet, margin + indent - 4, y);
-                pdf.text(lines, margin + indent + 2, y);
-                y += lines.length * lineH + 1;
-                break;
-            }
-
-            case 'pre': {
-                const codeLines = element.text.split('\n');
-                const lineH = sizes.code * 0.4;
-                const blockHeight = codeLines.length * lineH + 6;
-
-                // Split code blocks across pages if they're too tall
-                if (blockHeight > pageHeight - margin * 2 - footerHeight) {
-                    // Render line by line with page breaks
-                    pdf.setFontSize(sizes.code);
-                    pdf.setFont('courier', 'normal');
-                    pdf.setTextColor(60, 60, 60);
-                    for (const line of codeLines) {
-                        checkPageBreak(lineH + 4);
-                        pdf.setFillColor(245, 245, 245);
-                        pdf.rect(margin, y - 2, maxWidth, lineH + 2, 'F');
-                        const wrapped = wrapText(line || ' ', maxWidth - 6, sizes.code);
-                        pdf.text(wrapped, margin + 3, y);
-                        y += wrapped.length * lineH;
-                    }
-                    pdf.setTextColor(...textRgb);
-                    y += 3;
-                } else {
-                    checkPageBreak(blockHeight);
-                    pdf.setFillColor(245, 245, 245);
-                    pdf.roundedRect(margin, y - 2, maxWidth, blockHeight, 2, 2, 'F');
-                    pdf.setFontSize(sizes.code);
-                    pdf.setFont('courier', 'normal');
-                    pdf.setTextColor(60, 60, 60);
-                    let codeY = y + 2;
-                    for (const line of codeLines) {
-                        const wrapped = wrapText(line || ' ', maxWidth - 6, sizes.code);
-                        pdf.text(wrapped, margin + 3, codeY);
-                        codeY += wrapped.length * lineH;
-                    }
-                    pdf.setTextColor(...textRgb);
-                    y += blockHeight + 3;
-                }
-                break;
-            }
-
-            case 'blockquote': {
-                const lineH = sizes.base * 0.4 * sizes.lineHeight;
-                pdf.setFontSize(sizes.base);
-                pdf.setFont('helvetica', 'italic');
-                const lines = wrapText(element.text, maxWidth - 10, sizes.base);
-                const blockHeight = lines.length * lineH + 4;
-                checkPageBreak(blockHeight);
-
-                pdf.setFillColor(100, 100, 100);
-                pdf.rect(margin, y - 2, 2, blockHeight, 'F');
-                pdf.setFillColor(250, 250, 250);
-                pdf.rect(margin + 3, y - 2, maxWidth - 3, blockHeight, 'F');
-
-                pdf.setTextColor(...textSecondaryRgb);
-                pdf.text(lines, margin + 6, y + 2);
-                pdf.setTextColor(...textRgb);
-                pdf.setFont('helvetica', 'normal');
-                y += blockHeight + 3;
-                break;
-            }
-
-            case 'table': {
-                if (!element.rows || element.rows.length === 0) break;
-
-                const rows = element.rows;
-                const colCount = Math.max(...rows.map(r => r.length));
-                const cellPadding = 2;
-                const colWidth = (maxWidth - cellPadding * 2) / colCount;
-                const cellLineH = sizes.base * 0.4 * sizes.lineHeight;
-
-                pdf.setFontSize(sizes.base);
-                pdf.setDrawColor(...borderRgb);
-                pdf.setLineWidth(0.3);
-
-                for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-                    const row = rows[rowIdx];
-                    const isHeader = element.hasHeader && rowIdx === 0;
-
-                    // Wrap every cell first; the row grows to fit its tallest
-                    // cell so long content renders fully instead of being
-                    // silently truncated to the first wrapped line (EXPORT-02).
-                    const wrappedCells: string[][] = [];
-                    let maxLines = 1;
-                    for (let colIdx = 0; colIdx < colCount; colIdx++) {
-                        const wrapped = wrapText(row[colIdx] || '', colWidth - cellPadding * 2, sizes.base);
-                        wrappedCells.push(wrapped.length ? wrapped : ['']);
-                        if (wrapped.length > maxLines) maxLines = wrapped.length;
-                    }
-                    const rowHeight = maxLines * cellLineH + cellPadding * 2;
-
-                    checkPageBreak(rowHeight);
-
-                    // Draw header background
-                    if (isHeader) {
-                        pdf.setFillColor(245, 245, 245);
-                        pdf.rect(margin, y - cellPadding, maxWidth, rowHeight, 'F');
-                    }
-
-                    // Draw cells
-                    for (let colIdx = 0; colIdx < colCount; colIdx++) {
-                        const cellX = margin + colIdx * colWidth;
-
-                        // Cell border
-                        pdf.rect(cellX, y - cellPadding, colWidth, rowHeight, 'S');
-
-                        // Cell text — every wrapped line, not just the first
-                        pdf.setFont('helvetica', isHeader ? 'bold' : 'normal');
-                        pdf.setTextColor(...textRgb);
-                        const wrapped = wrappedCells[colIdx];
-                        for (let li = 0; li < wrapped.length; li++) {
-                            pdf.text(wrapped[li], cellX + cellPadding, y + cellPadding + li * cellLineH);
-                        }
-                    }
-
-                    y += rowHeight;
-                }
-                y += 3;
-                break;
-            }
-
-            case 'hr': {
-                checkPageBreak(10);
-                y += 5;
-                pdf.setDrawColor(...borderRgb);
-                pdf.setLineWidth(0.5);
-                pdf.line(margin, y, pageWidth - margin, y);
-                y += 5;
-                break;
-            }
-        }
-    }
-
-    // Add footer
-    const pageCount = pdf.getNumberOfPages();
-    const date = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-
-    for (let i = 1; i <= pageCount; i++) {
-        pdf.setPage(i);
-        pdf.setFontSize(8);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(150, 150, 150);
-        pdf.text(`Exported from Paperling on ${date}`, margin, pageHeight - 10);
-        pdf.text(`Page ${i} of ${pageCount}`, pageWidth - margin - 20, pageHeight - 10);
-    }
-
-    // Get PDF as array buffer
-    const pdfBuffer = pdf.output('arraybuffer');
-
-    // Use Tauri save dialog
-    const filePath = await save({
-        defaultPath: `${title}.pdf`,
-        filters: [{ name: 'PDF', extensions: ['pdf'] }],
-    });
-
-    if (filePath) {
-        await writeFile(filePath, new Uint8Array(pdfBuffer));
-    }
+    await printHtmlDocument(fullHTML);
 }

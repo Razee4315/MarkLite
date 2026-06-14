@@ -22,8 +22,8 @@ import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 // === Lazy-loaded screens / dialogs ===
 //
 // Cold-start budget: the welcome screen is what the user sees first, and it
-// doesn't need react-markdown, jspdf, the settings modal, the command
-// palette, or any sidebar panel to render. Importing them eagerly meant
+// doesn't need react-markdown, the export module, the settings modal, the
+// command palette, or any sidebar panel to render. Importing them eagerly meant
 // 300 kB+ of JS had to parse before the welcome screen could paint. Each of
 // these is now its own chunk, fetched only when its surface is mounted.
 //

@@ -3,10 +3,9 @@ import { useTheme } from '../context/ThemeContext';
 import iconExportPdf from '../assets/mascot/icon-export-pdf.png';
 import iconPaperPlane from '../assets/mascot/icon-paper-plane.png';
 
-// Heavy export deps (jsPDF pulls in ~200 kB of html2canvas; jsPDF itself is
-// another big bundle) only matter when the user actually exports. We import
-// the module on demand so the main chunk doesn't ship them. Caching the
-// promise means a second click — or HTML-then-PDF — reuses the first load.
+// The export module isn't needed for first paint, so we import it on demand to
+// keep it out of the main chunk. Caching the promise means a second click — or
+// HTML-then-PDF — reuses the first load.
 type ExportModule = typeof import('../utils/exportUtils');
 let exportModulePromise: Promise<ExportModule> | null = null;
 const loadExportModule = (): Promise<ExportModule> => {

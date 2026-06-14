@@ -35,7 +35,6 @@
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
-    "jspdf": "^4.0.0",
     "katex": "^0.16.45",
     "material-symbols": "^0.44.6",
     "mermaid": "^11.14.0",
