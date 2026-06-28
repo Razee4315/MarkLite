@@ -18,6 +18,8 @@ export interface ShortcutHandlers {
     openSettings: () => void;
     /** Open the reader-mode find bar. Only invoked when mode === "preview". */
     openPreviewFind?: () => void;
+    /** Open cross-file search (Ctrl+Shift+F). */
+    openSearch?: () => void;
     /** Navigate back/forward through visited files (Alt+Left / Alt+Right). */
     goBack?: () => void;
     goForward?: () => void;
@@ -94,6 +96,13 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
             if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
                 e.preventDefault();
                 if (s.hasFile) s.handleToggleSplit();
+            }
+            // Ctrl+Shift+F - search across all files in the folder (checked
+            // before the unshifted Ctrl+F find-in-document below).
+            if (e.ctrlKey && e.shiftKey && (e.key === "f" || e.key === "F")) {
+                e.preventDefault();
+                if (s.hasFile) s.openSearch?.();
+                return;
             }
             // Ctrl+F in reader mode - find in preview. In code/split mode the
             // focused editor's own keymap handles Mod-f, so this never races it.

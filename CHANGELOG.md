@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Search across files** (`Ctrl+Shift+F`). Search the text of every markdown
+  file in the current folder, grouped by file with line numbers; pick a result
+  to jump straight to that line. Also in the command palette.
 - **`[[` autocomplete.** Typing `[[` in the editor now suggests the other
   markdown files in the folder, so linking is a couple of keystrokes.
 - **Create missing notes.** Clicking a `[[link]]` or relative link to a file

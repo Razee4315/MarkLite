@@ -53,6 +53,9 @@ const StatsDialog = lazy(() =>
 const CommandPalette = lazy(() =>
     import("./components/CommandPalette").then((m) => ({ default: m.CommandPalette }))
 );
+const GlobalSearch = lazy(() =>
+    import("./components/GlobalSearch").then((m) => ({ default: m.GlobalSearch }))
+);
 const ShortcutCheatsheet = lazy(() =>
     import("./components/ShortcutCheatsheet").then((m) => ({ default: m.ShortcutCheatsheet }))
 );
@@ -148,6 +151,7 @@ function AppContent() {
   const [showSettings, setShowSettings] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [splitRatio, setSplitRatioState] = usePersistedState<number>(getSplitRatio, setSplitRatio);
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
   const [aiEnabled, setAiEnabledState] = usePersistedState<boolean>(getAIEnabled, setAIEnabled);
@@ -741,6 +745,26 @@ function AppContent() {
     }
   }, [filePath, loadFile, offerCreateNote]);
 
+  // Open a cross-file search result: load the file (if not already open) and
+  // jump to the matching line once it has rendered. The goto-line event is the
+  // same one the TOC/palette use, so it lands correctly in any view mode. SEARCH-01.
+  const handleOpenSearchResult = useCallback((path: string, line: number) => {
+    const jump = () => window.setTimeout(
+      () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
+      120
+    );
+    if (path === filePathRef.current) { jump(); return; }
+    loadFile(path);
+    jump();
+  }, [loadFile]);
+
+  // Folder the cross-file search runs in: the open file's directory.
+  const currentDirectory = useMemo(() => {
+    if (!filePath) return null;
+    const lastSep = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+    return lastSep > 0 ? filePath.slice(0, lastSep) : null;
+  }, [filePath]);
+
   const handleNewFile = useCallback(() => {
     if (content !== originalContent) {
       setPendingFilePath("__NEW__");
@@ -971,6 +995,7 @@ function AppContent() {
     // Ctrl+F in reader mode opens the preview find bar (the editor keymap
     // handles find in code/split mode, where the editor has focus). FIND-01.
     openPreviewFind: () => setPreviewFindOpen(true),
+    openSearch: () => setShowSearch(true),
     goBack, goForward,
     hasFile, content, mode,
   });
@@ -1095,6 +1120,15 @@ function AppContent() {
         section: "View",
         icon: "folder",
         run: handleToggleFileExplorer,
+      });
+      items.push({
+        id: "search.files",
+        label: "Search in files…",
+        hint: "Ctrl+Shift+F",
+        section: "View",
+        icon: "search",
+        keywords: "find across folder grep global content",
+        run: () => setShowSearch(true),
       });
       items.push({
         id: "view.toc",
@@ -1533,6 +1567,16 @@ function AppContent() {
       {showPalette && (
         <Suspense fallback={null}>
           <CommandPalette isOpen={showPalette} items={fullPaletteItems} onClose={() => setShowPalette(false)} />
+        </Suspense>
+      )}
+      {showSearch && (
+        <Suspense fallback={null}>
+          <GlobalSearch
+            isOpen={showSearch}
+            directory={currentDirectory}
+            onClose={() => setShowSearch(false)}
+            onOpenResult={handleOpenSearchResult}
+          />
         </Suspense>
       )}
       {showSettings && (

@@ -44,6 +44,7 @@ const groups: ShortcutGroup[] = [
             { keys: "Alt+→", description: "Forward" },
             { keys: "F11", description: "Toggle fullscreen" },
             { keys: `${cmd}+Shift+E`, description: "Toggle file explorer" },
+            { keys: `${cmd}+Shift+F`, description: "Search across files" },
             { keys: `${cmd}+Shift+O`, description: "Toggle outline" },
             { keys: `${cmd}+P`, description: "Command palette" },
             { keys: `${cmd}+,`, description: "Open settings" },

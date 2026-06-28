@@ -238,8 +238,159 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<FileEntry>, C
     
     // Sort alphabetically, case-insensitively.
     entries.sort_by_key(|a| a.name.to_lowercase());
-    
+
     Ok(entries)
+}
+
+/// A single matching line within a file.
+#[derive(Debug, Serialize)]
+pub struct SearchMatch {
+    /// 1-based line number.
+    pub line: u32,
+    /// The trimmed (and possibly truncated) line text.
+    pub text: String,
+}
+
+/// All matches for one file.
+#[derive(Debug, Serialize)]
+pub struct FileSearchResult {
+    pub path: String,
+    pub name: String,
+    pub matches: Vec<SearchMatch>,
+}
+
+// Bounds so a search over a huge or pathological folder stays responsive and
+// can't balloon webview memory. Hit caps degrade gracefully (partial results).
+const SEARCH_MAX_FILES: usize = 5000; // markdown files scanned
+const SEARCH_MAX_RESULTS: usize = 300; // files returned with at least one match
+const SEARCH_MAX_MATCHES_PER_FILE: usize = 50;
+const SEARCH_MAX_FILE_BYTES: u64 = 5 * 1024 * 1024; // skip very large files
+const SEARCH_SNIPPET_CHARS: usize = 240; // truncate long matching lines
+
+/// Search the text of every markdown file under `directory` (recursively) for
+/// `query`. Case-insensitive unless `case_sensitive`. Returns per-file matches
+/// with 1-based line numbers so the UI can jump straight to a hit. Skips hidden
+/// directories plus `node_modules` / `target`, and is bounded by the caps above.
+#[tauri::command]
+pub async fn search_files(
+    directory: String,
+    query: String,
+    case_sensitive: bool,
+) -> Result<Vec<FileSearchResult>, CommandError> {
+    let q = query.trim().to_string();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    let root = PathBuf::from(&directory);
+    if !root.is_dir() {
+        return Err(CommandError::FileNotFound(directory));
+    }
+
+    // The walk is blocking I/O; keep it off the async runtime's worker threads.
+    tokio::task::spawn_blocking(move || Ok(search_markdown_tree(root, &q, case_sensitive)))
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?
+}
+
+/// Synchronous, bounded recursive search used by `search_files`. Pulled out so
+/// it can be unit-tested without a Tauri/async harness. `query` is assumed
+/// non-empty and already trimmed.
+fn search_markdown_tree(root: PathBuf, query: &str, case_sensitive: bool) -> Vec<FileSearchResult> {
+    let needle = if case_sensitive { query.to_string() } else { query.to_lowercase() };
+    let mut results: Vec<FileSearchResult> = Vec::new();
+    let mut files_scanned = 0usize;
+    let mut stack = vec![root];
+
+    while let Some(dir) = stack.pop() {
+        if results.len() >= SEARCH_MAX_RESULTS || files_scanned >= SEARCH_MAX_FILES {
+            break;
+        }
+        let read_dir = match std::fs::read_dir(&dir) {
+            Ok(r) => r,
+            Err(_) => continue, // unreadable dir — skip, don't fail the whole search
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with('.') || name == "node_modules" || name == "target" {
+                        continue;
+                    }
+                }
+                stack.push(path);
+                continue;
+            }
+            let is_md = path
+                .extension()
+                .map(|e| e == "md" || e == "markdown")
+                .unwrap_or(false);
+            if !is_md {
+                continue;
+            }
+            files_scanned += 1;
+            if files_scanned > SEARCH_MAX_FILES {
+                break;
+            }
+            if let Ok(meta) = entry.metadata() {
+                if meta.len() > SEARCH_MAX_FILE_BYTES {
+                    continue;
+                }
+            }
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue, // binary / non-UTF8 — skip
+            };
+            let mut matches = Vec::new();
+            for (i, line) in content.lines().enumerate() {
+                let haystack = if case_sensitive {
+                    line.to_string()
+                } else {
+                    line.to_lowercase()
+                };
+                if haystack.contains(&needle) {
+                    let trimmed = line.trim();
+                    // Char-boundary-safe truncation (byte slicing could panic on
+                    // multibyte UTF-8).
+                    let text = if trimmed.chars().count() > SEARCH_SNIPPET_CHARS {
+                        let mut s: String = trimmed.chars().take(SEARCH_SNIPPET_CHARS).collect();
+                        s.push('…');
+                        s
+                    } else {
+                        trimmed.to_string()
+                    };
+                    matches.push(SearchMatch {
+                        line: (i + 1) as u32,
+                        text,
+                    });
+                    if matches.len() >= SEARCH_MAX_MATCHES_PER_FILE {
+                        break;
+                    }
+                }
+            }
+            if !matches.is_empty() {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                results.push(FileSearchResult {
+                    path: path.to_string_lossy().to_string(),
+                    name,
+                    matches,
+                });
+                if results.len() >= SEARCH_MAX_RESULTS {
+                    break;
+                }
+            }
+        }
+    }
+
+    results.sort_by_key(|r| r.name.to_lowercase());
+    results
 }
 
 /// Strip any path components from a filename so it can't traverse outside the
@@ -446,7 +597,52 @@ pub fn set_ai_key(key: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_image_name, save_file, validate_rel_path};
+    use super::{sanitize_image_name, save_file, search_markdown_tree, validate_rel_path};
+
+    #[test]
+    fn search_finds_matches_recursively_and_case_insensitively() {
+        let dir = std::env::temp_dir().join(format!("paperling-search-{}", std::process::id()));
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(dir.join("a.md"), "Hello World\nsecond line").unwrap();
+        std::fs::write(sub.join("b.md"), "nothing here\nanother WORLD ref").unwrap();
+        std::fs::write(dir.join("c.txt"), "world but not markdown").unwrap();
+
+        let results = search_markdown_tree(dir.clone(), "world", false);
+
+        // Two markdown files match; the .txt is ignored.
+        assert_eq!(results.len(), 2);
+        let a = results.iter().find(|r| r.name == "a.md").unwrap();
+        assert_eq!(a.matches.len(), 1);
+        assert_eq!(a.matches[0].line, 1);
+        assert_eq!(a.matches[0].text, "Hello World");
+        let b = results.iter().find(|r| r.name == "b.md").unwrap();
+        assert_eq!(b.matches[0].line, 2);
+
+        // Case-sensitive search misses the lowercase/uppercase variants.
+        let cs = search_markdown_tree(dir.clone(), "world", true);
+        assert!(cs.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn search_skips_hidden_and_ignored_dirs() {
+        let dir = std::env::temp_dir().join(format!("paperling-search-skip-{}", std::process::id()));
+        let hidden = dir.join(".git");
+        let modules = dir.join("node_modules");
+        std::fs::create_dir_all(&hidden).unwrap();
+        std::fs::create_dir_all(&modules).unwrap();
+        std::fs::write(dir.join("keep.md"), "needle").unwrap();
+        std::fs::write(hidden.join("x.md"), "needle").unwrap();
+        std::fs::write(modules.join("y.md"), "needle").unwrap();
+
+        let results = search_markdown_tree(dir.clone(), "needle", false);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "keep.md");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn save_file_writes_atomically_and_returns_mtime() {
