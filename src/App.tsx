@@ -21,6 +21,8 @@ import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useFullscreen } from "./hooks/useFullscreen";
 import { useScrollSync } from "./hooks/useScrollSync";
+import { useAutosave } from "./hooks/useAutosave";
+import { useExternalChangeWatcher } from "./hooks/useExternalChangeWatcher";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -428,10 +430,11 @@ function AppContent() {
   originalContentRef.current = originalContent;
   const filePathRef = useRef(filePath);
   filePathRef.current = filePath;
-  // Mirror of proposedDoc for the focus-time external-change listener (registered
-  // once, so it can't read the state directly). AI-01.
-  const proposedDocRef = useRef(proposedDoc);
-  proposedDocRef.current = proposedDoc;
+  // Whether an AI review is pending, mirrored into a ref for the focus-time
+  // external-change watcher (registered once, so it can't read state directly).
+  // AI-01.
+  const reviewActiveRef = useRef(false);
+  reviewActiveRef.current = proposedDoc != null;
 
   // Intercept EVERY window-close path (Alt+F4, taskbar close, the title bar X,
   // OS shutdown) and route dirty buffers through the unsaved-changes dialog.
@@ -500,66 +503,42 @@ function AppContent() {
     forceCloseWindow();
   }, [forceCloseWindow]);
 
-  // External-change detection: when the window regains focus, stat the open
-  // file. If it changed on disk and the buffer is clean, reload silently; if
-  // the buffer is dirty, warn that saving will overwrite. EXT-01.
-  useEffect(() => {
-    let checking = false;
-    const checkExternalChange = async () => {
-      const path = filePathRef.current;
-      if (!path || checking) return;
-      checking = true;
-      // Don't reload over an in-progress AI review — the editor is showing a
-      // proposed document the user hasn't accepted/rejected yet. AI-01.
-      if (proposedDocRef.current != null) return;
-      try {
-        const info = await invoke<{ modified: number }>("get_file_info", { path });
-        const known = knownMtimeRef.current;
-        if (known > 0 && info.modified > known) {
-          // Update first so a failed/declined reload doesn't re-toast forever.
-          knownMtimeRef.current = info.modified;
-          if (contentRef.current === originalContentRef.current) {
-            await loadFileDirect(path);
-            showToast("File changed on disk, reloaded the latest version", "info");
-          } else {
-            showToast("This file changed on disk. Saving will overwrite those changes.", "error");
-          }
-        }
-      } catch {/* file gone or stat failed — the save path will surface it */}
-      finally { checking = false; }
-    };
-    window.addEventListener("focus", checkExternalChange);
-    return () => window.removeEventListener("focus", checkExternalChange);
-  }, [loadFileDirect, showToast]);
+  // External-change detection: on window focus, stat the open file and reload
+  // (clean buffer) or warn (dirty buffer). EXT-01. Callbacks are memoised so the
+  // focus listener stays registered across renders.
+  const handleExternalReloaded = useCallback(
+    () => showToast("File changed on disk, reloaded the latest version", "info"),
+    [showToast]
+  );
+  const handleExternalConflict = useCallback(
+    () => showToast("This file changed on disk. Saving will overwrite those changes.", "error"),
+    [showToast]
+  );
+  useExternalChangeWatcher({
+    filePathRef, contentRef, originalContentRef, knownMtimeRef,
+    isReviewActiveRef: reviewActiveRef,
+    reload: loadFileDirect,
+    onReloaded: handleExternalReloaded,
+    onConflict: handleExternalConflict,
+  });
 
-  // Autosave: once enabled, persist 1.5s after the last edit. Silent on success
-  // (the status dot already flips to Saved). Failures surface a toast, throttled
-  // to at most once per 30s so a broken disk keeps reminding the user without
-  // spamming on every 1.5s tick. The unsaved dot stays lit the whole time as
-  // the always-on signal. A successful save clears the throttle.
-  const lastAutosaveErrorRef = useRef(0);
-  useEffect(() => {
-    if (!autoSaveEnabled || !filePath || content === originalContent) return;
-    // Never autosave while an AI review is pending: `content` then reflects only
-    // the chunks accepted so far, and a later "Reject all" would leave disk
-    // holding edits the user explicitly rejected. AI-01.
-    if (proposedDoc != null) return;
-    const id = window.setTimeout(async () => {
-      try {
-        knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
-        setOriginalContent(content);
-        lastAutosaveErrorRef.current = 0;
-      } catch (err) {
-        const now = Date.now();
-        if (now - lastAutosaveErrorRef.current > 30000) {
-          lastAutosaveErrorRef.current = now;
-          const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
-          showToast(msg || "Autosave failed", "error");
-        }
-      }
-    }, 1500);
-    return () => window.clearTimeout(id);
-  }, [autoSaveEnabled, content, originalContent, filePath, proposedDoc, showToast]);
+  // Autosave 1.5s after the last edit. See useAutosave for the throttling and
+  // the AI-review guard (AI-01). Callbacks are memoised so the debounce timer
+  // isn't reset on every unrelated re-render.
+  const handleAutosaved = useCallback((mtime: number, saved: string) => {
+    knownMtimeRef.current = mtime;
+    setOriginalContent(saved);
+  }, []);
+  const handleAutosaveError = useCallback((msg: string) => showToast(msg, "error"), [showToast]);
+  useAutosave({
+    enabled: autoSaveEnabled,
+    filePath,
+    content,
+    originalContent,
+    isReviewActive: proposedDoc != null,
+    onSaved: handleAutosaved,
+    onError: handleAutosaveError,
+  });
 
   // Load file with unsaved changes protection
   const loadFile = useCallback(async (path: string) => {
