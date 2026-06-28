@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`[[` autocomplete.** Typing `[[` in the editor now suggests the other
+  markdown files in the folder, so linking is a couple of keystrokes.
+- **Create missing notes.** Clicking a `[[link]]` or relative link to a file
+  that doesn't exist yet offers to create it and opens the new note.
+
 ## [1.0.40] - 2026-06-28
 
 ### Added

@@ -13,7 +13,7 @@ import {
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
-import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { autocompletion, closeBrackets, closeBracketsKeymap, type CompletionContext, type CompletionResult, type Completion } from "@codemirror/autocomplete";
 import { unifiedMergeView, getChunks, getOriginalDoc } from "@codemirror/merge";
 import { tags as t } from "@lezer/highlight";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage } from "../utils/imageUtils";
@@ -32,6 +32,8 @@ import { AIBubble } from "./AIBubble";
 import { TableToolbar } from "./TableToolbar";
 import { pasteUrlOnSelection, pasteUrlAutolink, pasteTsvAsTable, htmlToMarkdown } from "../utils/smartPaste";
 import { getAIEnabled } from "../utils/persistence";
+import { invoke } from "@tauri-apps/api/core";
+import { matchWikilinkPrefix, rankFileNames, toWikiName } from "../utils/wikilinkComplete";
 import { applyTableOp, findTableAt, locateCell, type Align } from "../utils/tableModel";
 import type { Scroller } from "../utils/scrollSync";
 
@@ -178,6 +180,9 @@ function CodeEditorImpl({
     const onErrorRef = useRef(onError); onErrorRef.current = onError;
     const onNoticeRef = useRef(onNotice); onNoticeRef.current = onNotice;
     const filePathRef = useRef(filePath); filePathRef.current = filePath;
+    // Base names (without .md) of the sibling files, for `[[` autocomplete. Kept
+    // in a ref so the once-created completion source always sees the latest list.
+    const wikiNamesRef = useRef<string[]>([]);
     const aiConfigRef = useRef(aiConfig); aiConfigRef.current = aiConfig;
     const typewriterRef = useRef(typewriterMode); typewriterRef.current = typewriterMode;
     const slashStateRef = useRef(slashState); slashStateRef.current = slashState;
@@ -195,6 +200,60 @@ function CodeEditorImpl({
     const reviewingRef = useRef(false);
     const reviewOriginalRef = useRef("");
     const lastReviewRef = useRef<string | null>(null);
+
+    // `[[` autocomplete: when the caret is inside an open wikilink target, offer
+    // the folder's other markdown files. Reads wikiNamesRef (refreshed below) so
+    // the once-created editor always sees the current list. NAV-06.
+    const wikiCompletionSource = useCallback((context: CompletionContext): CompletionResult | null => {
+        const line = context.state.doc.lineAt(context.pos);
+        const textBefore = line.text.slice(0, context.pos - line.from);
+        const m = matchWikilinkPrefix(textBefore);
+        if (!m) return null;
+        const names = rankFileNames(wikiNamesRef.current, m.query);
+        if (names.length === 0) return null;
+        const from = line.from + m.from;
+        // closeBrackets usually inserts `]]` already; only add it if it's missing.
+        const hasClose = context.state.doc.sliceString(context.pos, context.pos + 2) === "]]";
+        const options: Completion[] = names.map((name) => ({
+            label: name,
+            type: "text",
+            apply: (view: EditorView, _c: Completion, fromPos: number, toPos: number) => {
+                const insert = hasClose ? name : `${name}]]`;
+                view.dispatch({
+                    changes: { from: fromPos, to: toPos, insert },
+                    // Land the caret just past the closing `]]`.
+                    selection: { anchor: fromPos + name.length + 2 },
+                });
+            },
+        }));
+        return { from, options, validFor: /^[^\]\n|]*$/ };
+    }, []);
+
+    // Refresh the sibling-file list for `[[` autocomplete when the open file (and
+    // thus its folder) changes, and when the window regains focus (files may have
+    // been added/removed elsewhere). Excludes the open file itself.
+    useEffect(() => {
+        let cancelled = false;
+        const fp = filePath;
+        const norm = fp ? fp.replace(/\\/g, "/") : "";
+        const lastSlash = norm.lastIndexOf("/");
+        const dir = fp && lastSlash > 0 ? fp.slice(0, lastSlash) : null;
+        if (!dir) { wikiNamesRef.current = []; return; }
+        const load = () => {
+            invoke<{ name: string; path: string }[]>("list_directory_files", { directory: dir })
+                .then((entries) => {
+                    if (cancelled) return;
+                    wikiNamesRef.current = entries
+                        .filter((e) => e.path !== fp)
+                        .map((e) => toWikiName(e.name))
+                        .filter(Boolean);
+                })
+                .catch(() => { if (!cancelled) wikiNamesRef.current = []; });
+        };
+        load();
+        window.addEventListener("focus", load);
+        return () => { cancelled = true; window.removeEventListener("focus", load); };
+    }, [filePath]);
 
     const openAIBubble = useCallback(() => {
         const view = viewRef.current;
@@ -302,6 +361,7 @@ function CodeEditorImpl({
                     drawSelection(),
                     dropCursor(),
                     closeBrackets(),
+                    autocompletion({ override: [wikiCompletionSource], icons: false, aboveCursor: false }),
                     markdown(),
                     syntaxHighlighting(markdownHighlight),
                     editorTheme,

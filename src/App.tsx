@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open, save, ask } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { Window } from "@tauri-apps/api/window";
 
@@ -664,6 +664,23 @@ function AppContent() {
     };
   }, [loadFile]);
 
+  // Offer to create a note that a link points at but doesn't exist yet, then
+  // open it. Used by both wikilinks and relative links. NAV-07.
+  const offerCreateNote = useCallback(async (path: string, displayName: string) => {
+    const confirmed = await ask(`"${displayName}" doesn't exist yet. Create it?`, {
+      title: "Create note",
+      kind: "info",
+    });
+    if (!confirmed) return;
+    try {
+      await invoke<number>("save_file", { path, content: "" });
+      await loadFile(path);
+    } catch (err) {
+      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      showToast(msg || "Could not create note", "error");
+    }
+  }, [loadFile, showToast]);
+
   // Wikilink click: resolve target relative to the current file's folder.
   // Tries `<target>.md` first, then `<target>` literal. Silently fails if neither exists.
   // SECURITY: rejects path-traversal and absolute paths so a crafted document
@@ -700,18 +717,29 @@ function AppContent() {
         return;
       } catch {/* try next */}
     }
-    showToast(`Could not resolve [[${target}]]`, "error");
-  }, [filePath, loadFile, showToast]);
+    // Nothing matched — offer to create the note next to the current file, the
+    // way Obsidian turns a dangling [[link]] into a new file. NAV-07.
+    offerCreateNote(`${dir}${sep}${cleaned}.md`, `${cleaned}.md`);
+  }, [filePath, loadFile, showToast, offerCreateNote]);
 
   // Standard relative markdown links — `[text](note.md)`, `[x](sub/note.md)`,
   // `[y](../other.md)` — open in-app like wikilinks (the preview only routes
   // local .md/.markdown hrefs here). Resolve against the current file's folder,
   // normalising `.`/`..` segments. A missing file surfaces via loadFile. NAV-05.
-  const handleNavigateRelative = useCallback((href: string) => {
+  const handleNavigateRelative = useCallback(async (href: string) => {
     if (!filePath) return;
     const resolved = resolveRelativePath(filePath, href);
-    if (resolved) loadFile(resolved);
-  }, [filePath, loadFile]);
+    if (!resolved) return;
+    try {
+      // Probe first so a link to a not-yet-created note offers creation rather
+      // than flashing a "failed to open" error. NAV-07.
+      await invoke("get_file_info", { path: resolved });
+      loadFile(resolved);
+    } catch {
+      const name = resolved.replace(/\\/g, "/").split("/").pop() || resolved;
+      offerCreateNote(resolved, name);
+    }
+  }, [filePath, loadFile, offerCreateNote]);
 
   const handleNewFile = useCallback(() => {
     if (content !== originalContent) {
