@@ -286,6 +286,10 @@ function AppContent() {
   activeTabIdRef.current = activeTabId;
   const liveRef = useRef({ filePath, fileName, content, originalContent, fileSize });
   liveRef.current = { filePath, fileName, content, originalContent, fileSize };
+  // The line we'd return to when this file is re-activated: the caret line while
+  // editing, or the top-visible line in reader mode. TABS-02.
+  const currentLineRef = useRef(1);
+  currentLineRef.current = mode === "preview" ? previewLine : cursorPosition.line;
 
   const commitTabs = useCallback((next: TabState[]) => {
     tabsRef.current = next;
@@ -310,6 +314,7 @@ function AppContent() {
       originalContent: live.originalContent,
       fileSize: live.fileSize,
       knownMtime: knownMtimeRef.current,
+      cursorLine: currentLineRef.current,
     } : t)));
   }, [commitTabs]);
 
@@ -323,7 +328,13 @@ function AppContent() {
     setFileSize(tab.fileSize);
     knownMtimeRef.current = tab.knownMtime;
     if (tab.filePath) setLastFile(tab.filePath);
-    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
+    // Restore where you were in this tab — jump to the remembered line, or fall
+    // back to the top for a never-focused / line-1 tab. TABS-02.
+    const line = tab.cursorLine ?? 1;
+    requestAnimationFrame(() => {
+      if (line > 1) window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }));
+      else window.dispatchEvent(new CustomEvent("paperling:scroll-top"));
+    });
   }, []);
 
   // Switch to an already-open tab, snapshotting the current one first.

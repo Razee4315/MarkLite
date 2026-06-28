@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tabs remember your place.** Switching back to a tab returns you to the line
+  you were on instead of jumping to the top.
+
 ## [1.0.44] - 2026-06-28
 
 ## [1.0.43] - 2026-06-28

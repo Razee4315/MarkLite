@@ -15,6 +15,9 @@ export interface TabState {
   fileSize: number;
   /** Last-known on-disk mtime (ms), for external-change detection. */
   knownMtime: number;
+  /** 1-based caret/top-visible line when last active, to restore your place on
+   *  switch-back. Undefined for a never-yet-focused tab. */
+  cursorLine?: number;
 }
 
 /** A tab is dirty when its buffer differs from what's on disk. */
