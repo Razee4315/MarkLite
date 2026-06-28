@@ -30,7 +30,8 @@ const groups: ShortcutGroup[] = [
         title: "File",
         items: [
             { keys: `${cmd}+O`, description: "Open file" },
-            { keys: `${cmd}+N`, description: "New file" },
+            { keys: `${cmd}+N`, description: "New file (new tab)" },
+            { keys: `${cmd}+W`, description: "Close tab" },
             { keys: `${cmd}+S`, description: "Save" },
             { keys: `${cmd}+Shift+S`, description: "Save As…" },
         ],

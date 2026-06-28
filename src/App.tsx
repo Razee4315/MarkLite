@@ -97,6 +97,8 @@ import {
 import { getAutoSave } from "./utils/persistence";
 import { pickBootFile } from "./utils/boot";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
+import { TabBar, type TabBarItem } from "./components/TabBar";
+import { findTabByPath, nextActiveAfterClose, type TabState } from "./utils/tabsModel";
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
 import { PreviewFindBar } from "./components/PreviewFindBar";
@@ -152,6 +154,10 @@ function AppContent() {
   const [showTour, setShowTour] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  // Open-file tabs. The live state above is always the ACTIVE tab; `tabs` holds
+  // the snapshots of every open file (incl. the active one). TABS-01.
+  const [tabs, setTabs] = useState<TabState[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [splitRatio, setSplitRatioState] = usePersistedState<number>(getSplitRatio, setSplitRatio);
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
   const [aiEnabled, setAiEnabledState] = usePersistedState<boolean>(getAIEnabled, setAIEnabled);
@@ -171,9 +177,6 @@ function AppContent() {
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Pending file to open after unsaved changes dialog
-  const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
-  const [showUnsavedBeforeOpen, setShowUnsavedBeforeOpen] = useState(false);
   // Unsaved-changes dialog for window close (Alt+F4, taskbar close, the title
   // bar X). The Tauri close-requested handler below intercepts ALL of them.
   const [showUnsavedBeforeClose, setShowUnsavedBeforeClose] = useState(false);
@@ -271,15 +274,84 @@ function AppContent() {
   // focus to detect the file changing under us (sync tools, other editors).
   const knownMtimeRef = useRef<number>(0);
 
-  // Back/forward navigation between files (wikilinks, relative links, recents).
-  // navModeRef tells loadFileDirect how the current load should mutate history;
-  // it's a ref so it survives the async unsaved-changes dialog. NAV-03.
-  const { commit: commitNav, canGoBack, canGoForward, peekBack, peekForward } = useNavigationHistory();
+  // === Tabs (snapshot-swap) ===
+  // The live state (filePath/content/…) IS the active tab. `tabsRef`/`liveRef`
+  // mirror state synchronously so the open/switch/close helpers can read and
+  // commit without waiting for a re-render. We snapshot the active tab before
+  // leaving it and restore the target's snapshot into the live state — so every
+  // single-file system (autosave, AI review, external-change) is untouched. TABS-01.
+  const tabSeqRef = useRef(0);
+  // How the next file load should update back/forward history (set by goBack/
+  // goForward; reset after each load and on a plain tab switch). NAV-03.
   const navModeRef = useRef<NavMode>("normal");
+  const tabsRef = useRef<TabState[]>([]);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef<string | null>(null);
+  activeTabIdRef.current = activeTabId;
+  const liveRef = useRef({ filePath, fileName, content, originalContent, fileSize });
+  liveRef.current = { filePath, fileName, content, originalContent, fileSize };
+
+  const commitTabs = useCallback((next: TabState[]) => {
+    tabsRef.current = next;
+    setTabs(next);
+  }, []);
+  const setActiveTab = useCallback((id: string | null) => {
+    activeTabIdRef.current = id;
+    setActiveTabId(id);
+  }, []);
+  const newTabId = useCallback(() => `tab-${++tabSeqRef.current}`, []);
+
+  // Write the live editor state back into the active tab's entry.
+  const snapshotActiveTab = useCallback(() => {
+    const id = activeTabIdRef.current;
+    if (!id) return;
+    const live = liveRef.current;
+    commitTabs(tabsRef.current.map((t) => (t.id === id ? {
+      ...t,
+      filePath: live.filePath,
+      fileName: live.fileName ?? "Untitled.md",
+      content: live.content,
+      originalContent: live.originalContent,
+      fileSize: live.fileSize,
+      knownMtime: knownMtimeRef.current,
+    } : t)));
+  }, [commitTabs]);
+
+  // Load a tab's stored snapshot into the live editor state.
+  const applyTabToLive = useCallback((tab: TabState) => {
+    setProposedDoc(null); // an AI review belongs to the file we're leaving
+    setFilePath(tab.filePath);
+    setFileName(tab.fileName);
+    setContent(tab.content);
+    setOriginalContent(tab.originalContent);
+    setFileSize(tab.fileSize);
+    knownMtimeRef.current = tab.knownMtime;
+    if (tab.filePath) setLastFile(tab.filePath);
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
+  }, []);
+
+  // Switch to an already-open tab, snapshotting the current one first. A plain
+  // switch isn't a history navigation, so clear any pending back/forward intent.
+  const activateTab = useCallback((id: string) => {
+    navModeRef.current = "normal";
+    if (id === activeTabIdRef.current) return;
+    snapshotActiveTab();
+    const target = tabsRef.current.find((t) => t.id === id);
+    if (!target) return;
+    setActiveTab(id);
+    applyTabToLive(target);
+  }, [snapshotActiveTab, setActiveTab, applyTabToLive]);
+
+  // Back/forward navigation between files (wikilinks, relative links, recents).
+  // navModeRef (declared above) tells loadFileDirect how each load should mutate
+  // history, and survives the async open path. NAV-03.
+  const { commit: commitNav, canGoBack, canGoForward, peekBack, peekForward } = useNavigationHistory();
 
   // Load file from path (with unsaved changes check)
   const loadFileDirect = useCallback(async (path: string) => {
     const outgoing = filePathRef.current;
+    // Preserve the file we're leaving in its tab before overwriting live state.
+    snapshotActiveTab();
     setIsLoading(true);
     try {
       const fileData = await invoke<FileData>("read_file", { path });
@@ -292,6 +364,22 @@ function AppContent() {
       // Track recents + last-opened for restore-on-launch
       addRecentFile(fileData.path, fileData.name);
       setLastFile(fileData.path);
+      // Upsert the tab: reuse an existing tab for this path (e.g. a reload),
+      // otherwise open a new one. Either way it becomes active. TABS-01.
+      const loaded = {
+        filePath: fileData.path, fileName: fileData.name,
+        content: fileData.content, originalContent: fileData.content,
+        fileSize: fileData.size, knownMtime: fileData.modified ?? 0,
+      };
+      const existing = findTabByPath(tabsRef.current, fileData.path);
+      if (existing) {
+        commitTabs(tabsRef.current.map((t) => (t.id === existing.id ? { ...t, ...loaded } : t)));
+        setActiveTab(existing.id);
+      } else {
+        const id = newTabId();
+        commitTabs([...tabsRef.current, { id, ...loaded }]);
+        setActiveTab(id);
+      }
       // Record the jump in history and snap the new file to the top. Both are
       // skipped when the path didn't change (an external-change reload should
       // keep the reader where they were). NAV-03 / NAV-04.
@@ -310,7 +398,7 @@ function AppContent() {
       setIsLoading(false);
       navModeRef.current = "normal";
     }
-  }, [showToast, commitNav]);
+  }, [showToast, commitNav, snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -416,6 +504,14 @@ function AppContent() {
         // launch restores what the user actually had open.
         addRecentFile(fileData.path, fileData.name);
         setLastFile(fileData.path);
+        // Seed the first tab for the restored file. TABS-01.
+        const id = newTabId();
+        commitTabs([{
+          id, filePath: fileData.path, fileName: fileData.name,
+          content: fileData.content, originalContent: fileData.content,
+          fileSize: fileData.size, knownMtime: fileData.modified ?? 0,
+        }]);
+        setActiveTab(id);
       } catch (err) {
         const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
         if (target.source === "cli") {
@@ -561,68 +657,52 @@ function AppContent() {
     onError: handleAutosaveError,
   });
 
-  // Load file with unsaved changes protection
+  // Open a file: if it's already in a tab, just switch to it (preserving any
+  // unsaved edits there); otherwise load it into a new tab. With tabs there's no
+  // need to prompt before opening — the current file stays open in its own tab.
   const loadFile = useCallback(async (path: string) => {
-    if (contentRef.current !== originalContentRef.current) {
-      // Has unsaved changes — ask user first
-      setPendingFilePath(path);
-      setShowUnsavedBeforeOpen(true);
+    const existing = findTabByPath(tabsRef.current, path);
+    if (existing) { activateTab(existing.id); return; }
+    await loadFileDirect(path);
+  }, [activateTab, loadFileDirect]);
+
+  // Close a tab. Prompts before discarding unsaved changes; when the active tab
+  // closes, focus the neighbour (or fall back to the welcome screen). TABS-01.
+  const closeTab = useCallback(async (id: string) => {
+    const tab = tabsRef.current.find((t) => t.id === id);
+    if (!tab) return;
+    const isActive = id === activeTabIdRef.current;
+    const dirty = isActive
+      ? liveRef.current.content !== liveRef.current.originalContent
+      : tab.content !== tab.originalContent;
+    if (dirty) {
+      const discard = await ask(`Discard unsaved changes to "${tab.fileName}"?`, {
+        title: "Close tab",
+        kind: "warning",
+      });
+      if (!discard) return;
+    }
+    const nextId = nextActiveAfterClose(tabsRef.current, id);
+    const remaining = tabsRef.current.filter((t) => t.id !== id);
+    commitTabs(remaining);
+    if (!isActive) return;
+    const target = nextId ? remaining.find((t) => t.id === nextId) : undefined;
+    if (target) {
+      setActiveTab(target.id);
+      applyTabToLive(target);
     } else {
-      await loadFileDirect(path);
+      // Last tab closed — return to the clean welcome state.
+      setActiveTab(null);
+      setProposedDoc(null);
+      setFilePath(null);
+      setFileName(null);
+      setContent("");
+      setOriginalContent("");
+      setFileSize(0);
+      knownMtimeRef.current = 0;
+      setLastFile(null);
     }
-  }, [loadFileDirect]);
-
-  // New file: clears buffer. Used by handleNewFile and the dialog handlers.
-  const startBlankFile = useCallback(() => {
-    setFilePath(null);
-    setFileName("Untitled.md");
-    setContent("");
-    setOriginalContent("");
-    setFileSize(0);
-    setLastFile(null);
-    setMode("code");
-  }, []);
-
-  // Handlers for unsaved-before-open dialog. Supports a "__NEW__" sentinel
-  // so the New File action routes through the same confirmation flow.
-  const handleSaveAndOpen = useCallback(async () => {
-    setShowUnsavedBeforeOpen(false);
-    if (filePath) {
-      try {
-        knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
-        setOriginalContent(content);
-      } catch (err) {
-        console.error("Failed to save file:", err);
-        const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
-        showToast(msg || "Failed to save file", "error");
-        return;
-      }
-    }
-    if (pendingFilePath === "__NEW__") {
-      startBlankFile();
-    } else if (pendingFilePath) {
-      await loadFileDirect(pendingFilePath);
-    }
-    setPendingFilePath(null);
-  }, [filePath, content, pendingFilePath, loadFileDirect, showToast, startBlankFile]);
-
-  const handleDiscardAndOpen = useCallback(async () => {
-    setShowUnsavedBeforeOpen(false);
-    if (pendingFilePath === "__NEW__") {
-      startBlankFile();
-    } else if (pendingFilePath) {
-      await loadFileDirect(pendingFilePath);
-    }
-    setPendingFilePath(null);
-  }, [pendingFilePath, loadFileDirect, startBlankFile]);
-
-  const handleCancelOpen = useCallback(() => {
-    setShowUnsavedBeforeOpen(false);
-    setPendingFilePath(null);
-    // The navigation was abandoned — don't let a pending back/forward intent
-    // leak into the next normal open. NAV-03.
-    navModeRef.current = "normal";
-  }, []);
+  }, [commitTabs, setActiveTab, applyTabToLive]);
 
   // Back / forward between visited files. Routed through loadFile so unsaved
   // changes still prompt; navModeRef tells loadFileDirect how to update history
@@ -765,14 +845,26 @@ function AppContent() {
     return lastSep > 0 ? filePath.slice(0, lastSep) : null;
   }, [filePath]);
 
+  // New file: opens a fresh Untitled buffer in its own tab (the current file
+  // stays open in its tab, so nothing is discarded). TABS-01.
   const handleNewFile = useCallback(() => {
-    if (content !== originalContent) {
-      setPendingFilePath("__NEW__");
-      setShowUnsavedBeforeOpen(true);
-    } else {
-      startBlankFile();
-    }
-  }, [content, originalContent, startBlankFile]);
+    snapshotActiveTab();
+    const id = newTabId();
+    commitTabs([...tabsRef.current, {
+      id, filePath: null, fileName: "Untitled.md",
+      content: "", originalContent: "", fileSize: 0, knownMtime: 0,
+    }]);
+    setActiveTab(id);
+    setProposedDoc(null);
+    setFilePath(null);
+    setFileName("Untitled.md");
+    setContent("");
+    setOriginalContent("");
+    setFileSize(0);
+    knownMtimeRef.current = 0;
+    setLastFile(null);
+    setMode("code");
+  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
 
   // "Replay the welcome tour" from Settings → About. The tour spotlights
   // editor chrome, so make sure a buffer exists before showing it.
@@ -821,13 +913,22 @@ function AppContent() {
       setOriginalContent(content);
       addRecentFile(selected, name);
       setLastFile(selected);
+      // Keep the active tab's entry in step with the new path/name so reopening
+      // the just-saved file switches to this tab instead of duplicating it. TABS-01.
+      const activeId = activeTabIdRef.current;
+      if (activeId) {
+        commitTabs(tabsRef.current.map((t) => (t.id === activeId ? {
+          ...t, filePath: selected, fileName: name, content, originalContent: content,
+          knownMtime: knownMtimeRef.current,
+        } : t)));
+      }
       showToast("File saved", "success");
     } catch (err) {
       console.error("Failed to save file:", err);
       const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
       showToast(msg || "Failed to save file", "error");
     }
-  }, [content, fileName, showToast]);
+  }, [content, fileName, showToast, commitTabs]);
 
   // Save file (Save As if no path yet)
   const handleSaveFile = useCallback(async () => {
@@ -996,6 +1097,7 @@ function AppContent() {
     // handles find in code/split mode, where the editor has focus). FIND-01.
     openPreviewFind: () => setPreviewFindOpen(true),
     openSearch: () => setShowSearch(true),
+    closeActiveTab: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
     goBack, goForward,
     hasFile, content, mode,
   });
@@ -1302,6 +1404,22 @@ function AppContent() {
     [paletteItems, headingPaletteItems]
   );
 
+  // Tab-bar items. The active tab's name/dirty come from live state (its stored
+  // snapshot lags until the next switch); inactive tabs read their snapshot.
+  // Keyed on `isDirty` (a boolean) so typing within an already-dirty file
+  // doesn't churn this list. TABS-01.
+  const tabBarItems = useMemo<TabBarItem[]>(
+    () => tabs.map((t) => {
+      const active = t.id === activeTabId;
+      return {
+        id: t.id,
+        name: active ? (fileName ?? "Untitled.md") : t.fileName,
+        dirty: active ? isDirty : t.content !== t.originalContent,
+      };
+    }),
+    [tabs, activeTabId, fileName, isDirty]
+  );
+
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
       <TitleBar
@@ -1322,6 +1440,17 @@ function AppContent() {
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
       />
+
+      {/* Tab bar — only once a second file is open, so the single-file view stays
+          as clean as before. TABS-01. */}
+      {tabBarItems.length >= 2 && (
+        <TabBar
+          tabs={tabBarItems}
+          activeId={activeTabId}
+          onSelect={activateTab}
+          onClose={closeTab}
+        />
+      )}
 
       {/* Startup update check; invisible unless an update is actually available. */}
       <Suspense fallback={null}>
@@ -1497,19 +1626,6 @@ function AppContent() {
             selectionWordCount={selectionWordCount}
           />
         </>
-      )}
-
-      {/* Unsaved-changes dialog: only mounts when needed. Most app sessions
-          never trigger it, so eagerly loading the module was pure waste. */}
-      {showUnsavedBeforeOpen && (
-        <Suspense fallback={null}>
-          <UnsavedChangesDialog
-            isOpen={showUnsavedBeforeOpen}
-            onClose={handleCancelOpen}
-            onDiscard={handleDiscardAndOpen}
-            onSave={handleSaveAndOpen}
-          />
-        </Suspense>
       )}
 
       {/* Unsaved-changes dialog for window close — fed by the Tauri

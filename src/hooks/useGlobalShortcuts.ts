@@ -20,6 +20,8 @@ export interface ShortcutHandlers {
     openPreviewFind?: () => void;
     /** Open cross-file search (Ctrl+Shift+F). */
     openSearch?: () => void;
+    /** Close the active tab (Ctrl+W). */
+    closeActiveTab?: () => void;
     /** Navigate back/forward through visited files (Alt+Left / Alt+Right). */
     goBack?: () => void;
     goForward?: () => void;
@@ -96,6 +98,13 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
             if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
                 e.preventDefault();
                 if (s.hasFile) s.handleToggleSplit();
+            }
+            // Ctrl+W - close the active tab (falls back to the welcome screen
+            // when it's the last one). The webview doesn't reserve Ctrl+W.
+            if (e.ctrlKey && !e.shiftKey && (e.key === "w" || e.key === "W")) {
+                e.preventDefault();
+                if (s.hasFile) s.closeActiveTab?.();
+                return;
             }
             // Ctrl+Shift+F - search across all files in the folder (checked
             // before the unshifted Ctrl+F find-in-document below).

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple tabs.** Open several files at once. Opening a file (or following a
+  link) opens it in a new tab instead of replacing what you're reading; a tab bar
+  appears once a second file is open. `Ctrl+N` opens a new tab, `Ctrl+W` closes
+  one, middle-click closes too, and unsaved tabs prompt before closing.
+
 ## [1.0.41] - 2026-06-28
 
 ### Added
