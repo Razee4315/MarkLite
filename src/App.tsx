@@ -14,10 +14,13 @@ import { StatusBar } from "./components/StatusBar";
 import { ModeToggle, type ViewMode } from "./components/ModeToggle";
 import { ToastStack } from "./components/Toast";
 import { SplitDivider } from "./components/SplitDivider";
-import { createScrollSync } from "./utils/scrollSync";
 import { type PaletteCommand } from "./components/CommandPalette";
 import { useToast } from "./hooks/useToast";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { useDebouncedValue } from "./hooks/useDebouncedValue";
+import { usePersistedState } from "./hooks/usePersistedState";
+import { useFullscreen } from "./hooks/useFullscreen";
+import { useScrollSync } from "./hooks/useScrollSync";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -106,13 +109,6 @@ interface FileData {
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
 const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
 
-// Fullscreen-transition timing. The cover fades IN over FS_FADE_IN_MS (kept in
-// sync with the cover's Tailwind duration class) and we wait that long before
-// resizing the window, so the resize is fully masked. After the resize calls
-// resolve we hold FS_SETTLE_MS for the OS to finish painting, then fade out.
-const FS_FADE_IN_MS = 150;
-const FS_SETTLE_MS = 200;
-
 // Width of the right-side AI panel; the editor/preview area reserves this much
 // padding-right when it's open so content reflows beside it (not under it).
 const AI_PANEL_WIDTH = 400;
@@ -123,31 +119,6 @@ const AI_PANEL_WIDTH = 400;
 // a racing last-session restore that can overwrite the just-opened file.
 // Module-level on purpose — StrictMode remounts share module state.
 let bootResolved = false;
-
-/**
- * Returns a value that lags behind `value` by `delay` ms. Each new `value`
- * resets the timer, so during continuous typing the returned value is stable
- * and only commits to the latest input once the user pauses. Used to keep the
- * heavy markdown preview off the typing critical path without leaving the
- * preview "stuck" the way useDeferredValue can under starvation.
- *
- * Implementation notes:
- *  - All deps the effect reads are listed (`value`, `delay`). No stale-closure
- *    surprises and no eslint-disable, so React's strict-mode dev checks don't
- *    flag this as a "Maximum update depth exceeded" candidate.
- *  - When `value` is already equal to `debounced`, scheduling a setTimeout
- *    that calls setDebounced with the same value is harmless: React bails out
- *    of the re-render via Object.is on the new state. So we skip the explicit
- *    early-return; it isn't worth the extra dep.
- */
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(id);
-  }, [value, delay]);
-  return debounced;
-}
 
 // Theme options for the command palette, in the same order as Settings.
 const THEME_CHOICES: { id: Theme; label: string }[] = [
@@ -167,19 +138,19 @@ function AppContent() {
   const [fileSize, setFileSize] = useState<number>(0);
 
   // UI state
-  const [mode, setMode] = useState<ViewMode>(() => getSavedViewMode());
+  const [mode, setMode] = usePersistedState<ViewMode>(getSavedViewMode, setSavedViewMode);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [showStats, setShowStats] = useState(false);
-  const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
+  const [splitRatio, setSplitRatioState] = usePersistedState<number>(getSplitRatio, setSplitRatio);
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
-  const [aiEnabled, setAiEnabledState] = useState<boolean>(() => getAIEnabled());
-  const [typewriterModeEnabled, setTypewriterModeEnabled] = useState<boolean>(() => getTypewriterMode());
-  const [toolbarVisible, setToolbarVisible] = useState<boolean>(() => getToolbarEnabled());
-  const [wordWrapEnabled, setWordWrapEnabled] = useState<boolean>(() => getWordWrap());
-  const [spellCheckEnabled, setSpellCheckEnabled] = useState<boolean>(() => getSpellCheck());
+  const [aiEnabled, setAiEnabledState] = usePersistedState<boolean>(getAIEnabled, setAIEnabled);
+  const [typewriterModeEnabled, setTypewriterModeEnabled] = usePersistedState<boolean>(getTypewriterMode, setTypewriterMode);
+  const [toolbarVisible, setToolbarVisible] = usePersistedState<boolean>(getToolbarEnabled, setToolbarEnabled);
+  const [wordWrapEnabled, setWordWrapEnabled] = usePersistedState<boolean>(getWordWrap, setWordWrap);
+  const [spellCheckEnabled, setSpellCheckEnabled] = usePersistedState<boolean>(getSpellCheck, setSpellCheck);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   // True while the launch-time file resolution (OS-opened CLI file, then
   // last-session restore) is still in flight. Shows a neutral splash instead
@@ -221,36 +192,14 @@ function AppContent() {
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // Bidirectional scroll sync between editor and preview (split mode only).
-  // Singleton instance — one sync controller for the lifetime of the app.
-  const scrollSyncRef = useRef(createScrollSync());
-
-  // Enable/disable based on view mode
-  useEffect(() => {
-    scrollSyncRef.current.setEnabled(mode === "split");
-  }, [mode]);
+  const { registerCodeScroller, registerPreviewScroller, onCodeScrollFraction, onPreviewScrollFraction } =
+    useScrollSync(mode);
 
   // Reader-mode find only makes sense over the preview; close it (and drop
   // its highlights) when the user switches to code or split.
   useEffect(() => {
     if (mode !== "preview") setPreviewFindOpen(false);
   }, [mode]);
-
-  const registerCodeScroller = useCallback(
-    (s: import("./utils/scrollSync").Scroller | null) => scrollSyncRef.current.register("code", s),
-    []
-  );
-  const registerPreviewScroller = useCallback(
-    (s: import("./utils/scrollSync").Scroller | null) => scrollSyncRef.current.register("preview", s),
-    []
-  );
-  const onCodeScrollFraction = useCallback(
-    (f: number) => scrollSyncRef.current.notify("code", f),
-    []
-  );
-  const onPreviewScrollFraction = useCallback(
-    (f: number) => scrollSyncRef.current.notify("preview", f),
-    []
-  );
 
   // Derived state
   const isDirty = content !== originalContent;
@@ -340,20 +289,8 @@ function AppContent() {
     }
   }, [showToast]);
 
-  // Persist view mode + restore last file on mount
-  useEffect(() => {
-    setSavedViewMode(mode);
-  }, [mode]);
-
-  useEffect(() => {
-    setSplitRatio(splitRatio);
-  }, [splitRatio]);
-
-  useEffect(() => { setTypewriterMode(typewriterModeEnabled); }, [typewriterModeEnabled]);
-  useEffect(() => { setToolbarEnabled(toolbarVisible); }, [toolbarVisible]);
-  useEffect(() => { setWordWrap(wordWrapEnabled); }, [wordWrapEnabled]);
-  useEffect(() => { setSpellCheck(spellCheckEnabled); }, [spellCheckEnabled]);
-  useEffect(() => { setAIEnabled(aiEnabled); }, [aiEnabled]);
+  // Settings flags above persist themselves via usePersistedState; the matching
+  // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
 
   // Cross-component event listeners — settings menu and command palette toggle these
   useEffect(() => {
@@ -883,56 +820,6 @@ function AppContent() {
   // Toggle the right-side AI assistant panel.
   const handleToggleAI = useCallback(() => setShowAIPanel((v) => !v), []);
 
-  // Toggle OS fullscreen (F11). The custom title bar deliberately stays
-  // visible so there's always an obvious way back (its square button turns
-  // into "exit fullscreen", plus F11 again); a one-time hint reinforces it.
-  //
-  // Two Windows-specific footguns, both worked around here. (1) On a frameless
-  // (decorations:false) window, entering fullscreen while MAXIMIZED leaves a
-  // black bar where the taskbar was / overflows the right edge — a known tao
-  // bug. So we drop maximize first and restore it on exit. (2) isFullscreen()
-  // returns unreliable values for frameless windows, so F11 "wouldn't exit";
-  // we track the state ourselves instead of querying it. FULLSCREEN-01.
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const isFullscreenRef = useRef(false);
-  const wasMaximizedRef = useRef(false);
-  // Drops an opaque cover over the webview while the window resizes. The
-  // unmaximize→fullscreen step (and its reverse) physically resizes the window
-  // twice, so the content visibly reflows mid-transition — a jarring "snap".
-  // We fade the cover IN to full opacity, hold while the OS settles behind it,
-  // then fade it OUT, so the change reads as a smooth dip rather than a hard
-  // cut. Crucially we wait for the fade-in to finish before touching the
-  // window, so the resize is masked from its very first frame (a single rAF
-  // wasn't reliably enough — early reflow frames leaked through). FULLSCREEN-01.
-  const [fsTransition, setFsTransition] = useState(false);
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      const w = Window.getCurrent();
-      const next = !isFullscreenRef.current;
-      // Fade the cover in, then wait for it to reach full opacity before the
-      // window starts resizing underneath it. FS_FADE_IN_MS must stay in sync
-      // with the cover's fade-in duration class below.
-      setFsTransition(true);
-      await new Promise((r) => window.setTimeout(r, FS_FADE_IN_MS));
-      if (next) {
-        wasMaximizedRef.current = await w.isMaximized();
-        if (wasMaximizedRef.current) await w.unmaximize();
-        await w.setFullscreen(true);
-        showToast("Fullscreen on — press F11 to exit", "info");
-      } else {
-        await w.setFullscreen(false);
-        if (wasMaximizedRef.current) await w.maximize();
-      }
-      isFullscreenRef.current = next;
-      setIsFullscreen(next);
-    } catch {
-      /* browser dev mode — no Tauri window */
-    } finally {
-      // Let the resize settle behind the fully-opaque cover, then fade out.
-      window.setTimeout(() => setFsTransition(false), FS_SETTLE_MS);
-    }
-  }, [showToast]);
-
   // Agent proposed an edited document → show it as a diff to accept/reject.
   // Ensure the editor (where the diff renders) is visible.
   const handleProposeEdit = useCallback((doc: string) => {
@@ -1002,6 +889,11 @@ function AppContent() {
   const handleNotice = useCallback((message: string) => {
     showToast(message, 'info');
   }, [showToast]);
+
+  // Fullscreen (F11). The hook masks the resize behind a fade and works around
+  // two Windows frameless-window footguns — see useFullscreen. The "press F11 to
+  // exit" hint surfaces as an info toast via handleNotice. FULLSCREEN-01.
+  const { isFullscreen, fsTransition, toggleFullscreen } = useFullscreen(handleNotice);
 
   // Stable export-result callbacks so TitleBar's props are reference-equal
   // across renders. Inline arrows here would re-create the closures on every
