@@ -23,6 +23,7 @@ import { useFullscreen } from "./hooks/useFullscreen";
 import { useScrollSync } from "./hooks/useScrollSync";
 import { useAutosave } from "./hooks/useAutosave";
 import { useExternalChangeWatcher } from "./hooks/useExternalChangeWatcher";
+import { useNavigationHistory, type NavMode } from "./hooks/useNavigationHistory";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -92,6 +93,7 @@ import {
 } from "./utils/persistence";
 import { getAutoSave } from "./utils/persistence";
 import { pickBootFile } from "./utils/boot";
+import { resolveRelativePath } from "./utils/resolveRelativePath";
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
 import { PreviewFindBar } from "./components/PreviewFindBar";
@@ -265,8 +267,15 @@ function AppContent() {
   // focus to detect the file changing under us (sync tools, other editors).
   const knownMtimeRef = useRef<number>(0);
 
+  // Back/forward navigation between files (wikilinks, relative links, recents).
+  // navModeRef tells loadFileDirect how the current load should mutate history;
+  // it's a ref so it survives the async unsaved-changes dialog. NAV-03.
+  const { commit: commitNav, canGoBack, canGoForward, peekBack, peekForward } = useNavigationHistory();
+  const navModeRef = useRef<NavMode>("normal");
+
   // Load file from path (with unsaved changes check)
   const loadFileDirect = useCallback(async (path: string) => {
+    const outgoing = filePathRef.current;
     setIsLoading(true);
     try {
       const fileData = await invoke<FileData>("read_file", { path });
@@ -279,6 +288,13 @@ function AppContent() {
       // Track recents + last-opened for restore-on-launch
       addRecentFile(fileData.path, fileData.name);
       setLastFile(fileData.path);
+      // Record the jump in history and snap the new file to the top. Both are
+      // skipped when the path didn't change (an external-change reload should
+      // keep the reader where they were). NAV-03 / NAV-04.
+      if (outgoing !== fileData.path) {
+        commitNav(navModeRef.current, outgoing, fileData.path);
+        requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
+      }
     } catch (err) {
       console.error("Failed to load file:", err);
       // Surface the actual error from Rust so "File too large" / "File not
@@ -288,8 +304,9 @@ function AppContent() {
       showToast(msg || "Failed to open file", "error");
     } finally {
       setIsLoading(false);
+      navModeRef.current = "normal";
     }
-  }, [showToast]);
+  }, [showToast, commitNav]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -598,7 +615,26 @@ function AppContent() {
   const handleCancelOpen = useCallback(() => {
     setShowUnsavedBeforeOpen(false);
     setPendingFilePath(null);
+    // The navigation was abandoned — don't let a pending back/forward intent
+    // leak into the next normal open. NAV-03.
+    navModeRef.current = "normal";
   }, []);
+
+  // Back / forward between visited files. Routed through loadFile so unsaved
+  // changes still prompt; navModeRef tells loadFileDirect how to update history
+  // once the load actually lands (and survives the dialog round-trip). NAV-03.
+  const goBack = useCallback(() => {
+    const target = peekBack();
+    if (!target) return;
+    navModeRef.current = "back";
+    loadFile(target);
+  }, [peekBack, loadFile]);
+  const goForward = useCallback(() => {
+    const target = peekForward();
+    if (!target) return;
+    navModeRef.current = "forward";
+    loadFile(target);
+  }, [peekForward, loadFile]);
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
@@ -666,6 +702,16 @@ function AppContent() {
     }
     showToast(`Could not resolve [[${target}]]`, "error");
   }, [filePath, loadFile, showToast]);
+
+  // Standard relative markdown links — `[text](note.md)`, `[x](sub/note.md)`,
+  // `[y](../other.md)` — open in-app like wikilinks (the preview only routes
+  // local .md/.markdown hrefs here). Resolve against the current file's folder,
+  // normalising `.`/`..` segments. A missing file surfaces via loadFile. NAV-05.
+  const handleNavigateRelative = useCallback((href: string) => {
+    if (!filePath) return;
+    const resolved = resolveRelativePath(filePath, href);
+    if (resolved) loadFile(resolved);
+  }, [filePath, loadFile]);
 
   const handleNewFile = useCallback(() => {
     if (content !== originalContent) {
@@ -897,6 +943,7 @@ function AppContent() {
     // Ctrl+F in reader mode opens the preview find bar (the editor keymap
     // handles find in code/split mode, where the editor has focus). FIND-01.
     openPreviewFind: () => setPreviewFindOpen(true),
+    goBack, goForward,
     hasFile, content, mode,
   });
 
@@ -1201,6 +1248,10 @@ function AppContent() {
         filePath={filePath ?? undefined}
         onOpenFile={handleOpenFile}
         onNewFile={handleNewFile}
+        onBack={goBack}
+        onForward={goForward}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
         getExportHtml={getExportHtml}
         onExportSuccess={handleExportSuccess}
         onExportError={handleExportError}
@@ -1312,6 +1363,7 @@ function AppContent() {
                   onScrollFraction={onPreviewScrollFraction}
                   registerScroller={registerPreviewScroller}
                   onWikilinkClick={handleWikilinkClick}
+                  onNavigateRelative={handleNavigateRelative}
                 />
               </Suspense>
 

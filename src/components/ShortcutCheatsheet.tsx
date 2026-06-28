@@ -40,6 +40,8 @@ const groups: ShortcutGroup[] = [
         items: [
             { keys: `${cmd}+E`, description: "Toggle Reader / Code" },
             { keys: `${cmd}+\\`, description: "Toggle split view" },
+            { keys: "Alt+←", description: "Back (previous file)" },
+            { keys: "Alt+→", description: "Forward" },
             { keys: "F11", description: "Toggle fullscreen" },
             { keys: `${cmd}+Shift+E`, description: "Toggle file explorer" },
             { keys: `${cmd}+Shift+O`, description: "Toggle outline" },

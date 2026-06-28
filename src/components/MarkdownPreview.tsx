@@ -160,6 +160,8 @@ interface MarkdownPreviewProps {
     onScrollFraction?: (fraction: number) => void;
     registerScroller?: (scroller: Scroller | null) => void;
     onWikilinkClick?: (target: string) => void;
+    /** Open a relative `[text](note.md)` link in-app instead of externally. */
+    onNavigateRelative?: (href: string) => void;
 }
 
 /** Slugify heading text into a stable, URL-safe id (GitHub-style). */
@@ -603,6 +605,7 @@ function MarkdownPreviewImpl({
     onScrollFraction,
     registerScroller,
     onWikilinkClick,
+    onNavigateRelative,
 }: MarkdownPreviewProps) {
     const mainRef = useRef<HTMLElement>(null);
     const [zoomImage, setZoomImage] = useState<{ src: string; alt: string } | null>(null);
@@ -725,6 +728,30 @@ function MarkdownPreviewImpl({
                     </a>
                 );
             }
+            // Relative links to local markdown files — `[x](note.md)`,
+            // `[y](sub/note.md)`, `[z](../other.md)` — open in-app like wikilinks
+            // instead of doing nothing. Only .md/.markdown (optionally with a
+            // #fragment) are claimed so other relative links fall through. NAV-05.
+            if (
+                href &&
+                onNavigateRelative &&
+                !/^(https?:|mailto:|data:|wikilink:|#)/i.test(href) &&
+                /\.(md|markdown)(#.*)?$/i.test(href)
+            ) {
+                const targetHref = href;
+                return (
+                    <a
+                        href="#"
+                        {...rest}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            onNavigateRelative(targetHref);
+                        }}
+                    >
+                        {children}
+                    </a>
+                );
+            }
             // External http(s) and mailto links — route through the OS default
             // handler so the webview itself doesn't navigate away from the app.
             const isExternal = !!href && /^(https?:|mailto:)/i.test(href);
@@ -775,7 +802,7 @@ function MarkdownPreviewImpl({
             if (type !== "checkbox") return <input type={type} checked={checked} {...rest} />;
             return <InteractiveTaskCheckbox initialChecked={!!checked} onToggle={handleTaskToggle} />;
         },
-    }), [baseDir, handleTaskToggle, onWikilinkClick]);
+    }), [baseDir, handleTaskToggle, onWikilinkClick, onNavigateRelative]);
 
     // Parse YAML frontmatter once per content change. We render it as a
     // metadata card and pass the *body* (without the --- block) to react-markdown
@@ -933,6 +960,14 @@ function MarkdownPreviewImpl({
         };
         window.addEventListener("paperling:goto-line", handler);
         return () => window.removeEventListener("paperling:goto-line", handler);
+    }, []);
+
+    // Snap to the top when a different file is opened, so you don't land
+    // mid-document at the previous file's scroll offset. NAV-04.
+    useEffect(() => {
+        const toTop = () => { if (mainRef.current) mainRef.current.scrollTop = 0; };
+        window.addEventListener("paperling:scroll-top", toTop);
+        return () => window.removeEventListener("paperling:scroll-top", toTop);
     }, []);
 
     // Register imperative scroller for split-view sync

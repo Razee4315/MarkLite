@@ -10,6 +10,10 @@ interface TitleBarProps {
     filePath?: string;
     onOpenFile?: () => void;
     onNewFile?: () => void;
+    onBack?: () => void;
+    onForward?: () => void;
+    canGoBack?: boolean;
+    canGoForward?: boolean;
     getExportHtml?: () => string;
     onExportSuccess?: (format: string) => void;
     onExportError?: (format: string) => void;
@@ -19,7 +23,7 @@ interface TitleBarProps {
     onToggleFullscreen?: () => void;
 }
 
-function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive, isFullscreen, onToggleFullscreen }: TitleBarProps) {
+function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onBack, onForward, canGoBack, canGoForward, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive, isFullscreen, onToggleFullscreen }: TitleBarProps) {
     const handleMinimize = async () => {
         try {
             const appWindow = Window.getCurrent();
@@ -130,6 +134,26 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                     {hasFile && onOpenFile && (
                         <>
                             <div className="w-[1px] h-4 bg-[var(--border)] ml-2"></div>
+                            {/* Back / forward through visited files (wikilinks, links, recents) */}
+                            <button
+                                onClick={onBack}
+                                disabled={!canGoBack}
+                                aria-label="Back"
+                                title="Back (Alt+Left)"
+                                className="flex items-center justify-center w-7 h-7 rounded-[var(--radius-md)] transition-colors disabled:opacity-30 disabled:cursor-default enabled:hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] enabled:hover:text-[var(--text-primary)]"
+                            >
+                                <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                            </button>
+                            <button
+                                onClick={onForward}
+                                disabled={!canGoForward}
+                                aria-label="Forward"
+                                title="Forward (Alt+Right)"
+                                className="flex items-center justify-center w-7 h-7 rounded-[var(--radius-md)] transition-colors disabled:opacity-30 disabled:cursor-default enabled:hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] enabled:hover:text-[var(--text-primary)]"
+                            >
+                                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                            </button>
+                            <div className="w-[1px] h-4 bg-[var(--border)]"></div>
                             {onNewFile && (
                                 <button
                                     onClick={onNewFile}

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Link navigation with history.** Clicking a `[[wikilink]]` or a standard
+  relative `[text](note.md)` link now opens that file in-app. Back and forward
+  buttons (and `Alt+←` / `Alt+→`) move through the files you've visited, and
+  opening a file now starts you at the top instead of the previous scroll spot.
+
 ## [1.0.39] - 2026-06-28
 
 ## [1.0.38] - 2026-06-28

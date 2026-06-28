@@ -578,6 +578,22 @@ function CodeEditorImpl({
         return () => window.removeEventListener("paperling:goto-line", handler);
     }, []);
 
+    // Snap the caret and viewport to the start when a different file opens, so
+    // you don't begin a new file at the previous file's cursor/scroll. NAV-04.
+    useEffect(() => {
+        const toTop = () => {
+            const v = viewRef.current;
+            if (!v) return;
+            v.dispatch({
+                selection: { anchor: 0 },
+                effects: EditorView.scrollIntoView(0, { y: "start" }),
+            });
+            v.scrollDOM.scrollTop = 0;
+        };
+        window.addEventListener("paperling:scroll-top", toTop);
+        return () => window.removeEventListener("paperling:scroll-top", toTop);
+    }, []);
+
     // Alt+J (and the command palette's "AI assist") is selection-aware, matching
     // the docs: with text selected it opens the inline selection-assist bubble;
     // with no selection it opens the docked AI side panel (chat about the doc).

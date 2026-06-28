@@ -18,6 +18,9 @@ export interface ShortcutHandlers {
     openSettings: () => void;
     /** Open the reader-mode find bar. Only invoked when mode === "preview". */
     openPreviewFind?: () => void;
+    /** Navigate back/forward through visited files (Alt+Left / Alt+Right). */
+    goBack?: () => void;
+    goForward?: () => void;
     hasFile: boolean;
     content: string;
     /** Current view mode — Ctrl+F routes to the preview find bar in reader
@@ -99,6 +102,19 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
                     e.preventDefault();
                     s.openPreviewFind();
                 }
+            }
+            // Alt+Left / Alt+Right - back/forward through visited files, like a
+            // browser. Alt (not Ctrl) keeps Ctrl+Arrow free for word-wise caret
+            // movement in the editor. NAV-03.
+            if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowLeft") {
+                e.preventDefault();
+                s.goBack?.();
+                return;
+            }
+            if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowRight") {
+                e.preventDefault();
+                s.goForward?.();
+                return;
             }
             // ? - Show cheatsheet (only when no input is focused)
             if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
