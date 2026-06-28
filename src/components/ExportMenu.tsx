@@ -69,11 +69,18 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
 
         try {
             const mod = await loadExportModule();
-            const exported = format === 'html'
-                ? await mod.exportToHTML(htmlContent, fileName, theme, font, fontSize)
-                : await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize);
-            // Skip the confirmation toast when the user cancelled the save dialog.
-            if (exported) onSuccess?.(format.toUpperCase());
+            if (format === 'html') {
+                // exportToHTML returns false when the save dialog is cancelled.
+                if (await mod.exportToHTML(htmlContent, fileName, theme, font, fontSize)) {
+                    onSuccess?.('HTML');
+                }
+            } else {
+                const result = await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize);
+                // Only the Windows save path can confirm a written file. The
+                // print-dialog fallback ('printing') is its own visible feedback,
+                // so we don't claim success there. 'cancelled' → stay silent.
+                if (result === 'saved') onSuccess?.('PDF');
+            }
         } catch (error) {
             console.error(`Failed to export ${format}:`, error);
             onError?.(format.toUpperCase());

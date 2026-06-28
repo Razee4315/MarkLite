@@ -4,7 +4,7 @@
  * with `stream: true` so the panel can render tokens as they arrive.
  */
 
-import type { AIConfig } from "./aiAssist";
+import { isValidEndpoint, type AIConfig } from "./aiAssist";
 
 export type ChatRole = "system" | "user" | "assistant";
 export interface ChatMessage {
@@ -41,6 +41,7 @@ export async function streamChat(
     opts: { signal?: AbortSignal; onToken?: (delta: string) => void; temperature?: number } = {}
 ): Promise<string> {
     if (!cfg.endpoint) throw new Error("AI endpoint not configured. Open Settings → AI to set one up.");
+    if (!isValidEndpoint(cfg.endpoint)) throw new Error("AI endpoint must be a valid http:// or https:// URL.");
     if (!cfg.model) throw new Error("AI model not configured.");
 
     const ctrl = new AbortController();

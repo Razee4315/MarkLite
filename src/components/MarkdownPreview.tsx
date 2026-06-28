@@ -75,6 +75,38 @@ function rehypeSourceLine() {
     };
 }
 
+// rehype plugin: give every heading a unique, GitHub-style slug id. The first
+// "## Setup" becomes #setup, the second #setup-1, and so on. Without this two
+// identical headings share an id, so in-document `#anchor` links and the
+// heading copy-link both jump to the first one. Runs on the hast tree (no React
+// render side-effects) and AFTER rehypeSanitize so the id we add isn't clobbered
+// or prefixed by the sanitizer. NAV-02.
+interface HastTextNode { type: string; tagName?: string; value?: string; children?: HastTextNode[]; properties?: Record<string, unknown> }
+const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+function hastText(node: HastTextNode): string {
+    if (node.type === "text") return node.value ?? "";
+    return (node.children ?? []).map(hastText).join("");
+}
+function rehypeHeadingIds() {
+    return (tree: { children?: HastTextNode[] }) => {
+        const seen = new Map<string, number>();
+        const walk = (nodes?: HastTextNode[]) => {
+            if (!nodes) return;
+            for (const node of nodes) {
+                if (node.type === "element" && node.tagName && HEADING_TAGS.has(node.tagName)) {
+                    const base = slugify(hastText(node)) || "section";
+                    const count = seen.get(base) ?? 0;
+                    seen.set(base, count + 1);
+                    node.properties = node.properties || {};
+                    node.properties.id = count === 0 ? base : `${base}-${count}`;
+                }
+                walk(node.children);
+            }
+        };
+        walk(tree.children);
+    };
+}
+
 // Nearest source line at the top of the scroll container, via the data-source-line
 // anchors above. Binary search over the blocks (rect.top is monotonic in document
 // order) so it's O(log n) getBoundingClientRect calls per scroll frame. PREVIEW-05.
@@ -499,9 +531,12 @@ function InteractiveTaskCheckbox({ initialChecked, onToggle }: { initialChecked:
 function HeadingWithAnchor(
     props: { level: 1 | 2 | 3 | 4 | 5 | 6 } & React.HTMLAttributes<HTMLHeadingElement>
 ) {
-    const { level, children, className, ...rest } = props;
+    const { level, children, className, id: assignedId, ...rest } = props;
     const text = nodeText(children);
-    const id = slugify(text);
+    // rehypeHeadingIds assigns a unique, deduped id on the hast node; prefer it
+    // so the element id and the copy-link below always agree. Fall back to a raw
+    // slug only if the plugin somehow didn't run. NAV-02.
+    const id = assignedId ?? slugify(text);
     const [copied, setCopied] = useState(false);
     const handleClick = async () => {
         const el = document.getElementById(id);
@@ -791,8 +826,8 @@ function MarkdownPreviewImpl({
     );
     const rehypePlugins = useMemo(
         () => (mathPlugins
-            ? [rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], mathPlugins.rehype, [rehypeHighlight, HIGHLIGHT_OPTIONS], rehypeSourceLine]
-            : [rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], [rehypeHighlight, HIGHLIGHT_OPTIONS], rehypeSourceLine]),
+            ? [rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], mathPlugins.rehype, [rehypeHighlight, HIGHLIGHT_OPTIONS], rehypeSourceLine, rehypeHeadingIds]
+            : [rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], [rehypeHighlight, HIGHLIGHT_OPTIONS], rehypeSourceLine, rehypeHeadingIds]),
         [mathPlugins]
     );
 

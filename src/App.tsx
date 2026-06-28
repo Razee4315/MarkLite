@@ -6,7 +6,7 @@ import { Window } from "@tauri-apps/api/window";
 
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
-import { ThemeProvider } from "./context/ThemeContext";
+import { ThemeProvider, useTheme, type Theme } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { CodeEditor } from "./components/CodeEditor";
@@ -149,7 +149,16 @@ function useDebouncedValue<T>(value: T, delay: number): T {
   return debounced;
 }
 
+// Theme options for the command palette, in the same order as Settings.
+const THEME_CHOICES: { id: Theme; label: string }[] = [
+  { id: "dark", label: "Dark" },
+  { id: "light", label: "Light" },
+  { id: "paper", label: "Paper" },
+  { id: "dracula", label: "Dracula" },
+];
+
 function AppContent() {
+  const { theme, setTheme } = useTheme();
   // File state
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -482,6 +491,10 @@ function AppContent() {
   originalContentRef.current = originalContent;
   const filePathRef = useRef(filePath);
   filePathRef.current = filePath;
+  // Mirror of proposedDoc for the focus-time external-change listener (registered
+  // once, so it can't read the state directly). AI-01.
+  const proposedDocRef = useRef(proposedDoc);
+  proposedDocRef.current = proposedDoc;
 
   // Intercept EVERY window-close path (Alt+F4, taskbar close, the title bar X,
   // OS shutdown) and route dirty buffers through the unsaved-changes dialog.
@@ -559,6 +572,9 @@ function AppContent() {
       const path = filePathRef.current;
       if (!path || checking) return;
       checking = true;
+      // Don't reload over an in-progress AI review — the editor is showing a
+      // proposed document the user hasn't accepted/rejected yet. AI-01.
+      if (proposedDocRef.current != null) return;
       try {
         const info = await invoke<{ modified: number }>("get_file_info", { path });
         const known = knownMtimeRef.current;
@@ -587,6 +603,10 @@ function AppContent() {
   const lastAutosaveErrorRef = useRef(0);
   useEffect(() => {
     if (!autoSaveEnabled || !filePath || content === originalContent) return;
+    // Never autosave while an AI review is pending: `content` then reflects only
+    // the chunks accepted so far, and a later "Reject all" would leave disk
+    // holding edits the user explicitly rejected. AI-01.
+    if (proposedDoc != null) return;
     const id = window.setTimeout(async () => {
       try {
         knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
@@ -602,7 +622,7 @@ function AppContent() {
       }
     }, 1500);
     return () => window.clearTimeout(id);
-  }, [autoSaveEnabled, content, originalContent, filePath, showToast]);
+  }, [autoSaveEnabled, content, originalContent, filePath, proposedDoc, showToast]);
 
   // Load file with unsaved changes protection
   const loadFile = useCallback(async (path: string) => {
@@ -1186,6 +1206,20 @@ function AppContent() {
       run: () => setToolbarVisible((v) => !v),
     });
 
+    // === Theme === switch directly from the palette. The welcome tour tells
+    // users themes live here, and it makes the four themes discoverable without
+    // opening Settings. The active theme is marked and skipped as a no-op.
+    for (const t of THEME_CHOICES) {
+      items.push({
+        id: `theme.${t.id}`,
+        label: theme === t.id ? `Theme: ${t.label} (current)` : `Change theme to ${t.label}`,
+        section: "Theme",
+        icon: "palette",
+        keywords: "theme color appearance dark light paper dracula",
+        run: () => setTheme(t.id),
+      });
+    }
+
     items.push({
       id: "settings.open",
       label: "Open Settings…",
@@ -1243,6 +1277,7 @@ function AppContent() {
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, toggleFullscreen,
     loadFile, filePath, hasFile, showToast,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
+    theme, setTheme,
   ]);
 
   // Heading items are recomputed only while the palette is actually open.

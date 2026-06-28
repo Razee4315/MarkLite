@@ -555,20 +555,24 @@ function printHtmlDocument(html: string): Promise<void> {
 // writes a real PDF via the native PrintToPdf engine — no print dialog. Other
 // platforms fall back to the webview's print pipeline (`window.print()`), the
 // only cross-platform route to a vector PDF without bundling a headless browser.
-// Resolves `true` once the PDF has been written (Windows) or the print flow was
-// handed off (other platforms), and `false` when the user cancels the Windows
-// save dialog. The print-pipeline fallback can't tell save from cancel, so it
-// optimistically reports success.
+// Resolves:
+//   'saved'    — Windows: the PDF was written to the chosen path.
+//   'cancelled'— Windows: the user dismissed the save dialog.
+//   'printing' — other platforms: the native print dialog was handed off. We
+//                can't tell save from cancel there, so the caller must NOT claim
+//                "Exported" — the system dialog is its own feedback. EXPORT-01.
+export type PdfExportResult = 'saved' | 'cancelled' | 'printing';
+
 export async function exportToPDF(
     htmlContent: string,
     fileName: string,
     _theme: Theme,
     font: FontFamily,
     fontSize: FontSize
-): Promise<boolean> {
+): Promise<PdfExportResult> {
     if (!htmlContent || htmlContent.trim() === '') {
         console.error('No HTML content to export!');
-        return false;
+        return 'cancelled';
     }
 
     const title = fileName.replace(/\.(md|markdown)$/i, '');
@@ -587,11 +591,11 @@ export async function exportToPDF(
             filters: [{ name: 'PDF', extensions: ['pdf'] }],
         });
         // Dialog cancelled — nothing to do.
-        if (!filePath) return false;
+        if (!filePath) return 'cancelled';
         await invoke('export_pdf', { html: fullHTML, path: filePath });
-        return true;
+        return 'saved';
     }
 
     await printHtmlDocument(fullHTML);
-    return true;
+    return 'printing';
 }
