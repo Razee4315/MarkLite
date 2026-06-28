@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Word (.docx) export.** Export → Word writes a real Office Open XML document
+  from the current file, with headings, lists, tables, bold/italic, links, and
+  images carried over. Like PDF, it's a clean light document for sharing.
+
 ## [1.0.36] - 2026-06-28
 
 ## [1.0.35] - 2026-06-22

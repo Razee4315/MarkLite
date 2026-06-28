@@ -1,6 +1,6 @@
 import { Theme, FontFamily, FontSize } from '../context/ThemeContext';
 import { save } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 
 // Theme color definitions for export
@@ -437,6 +437,78 @@ export async function exportToHTML(
 
     if (!filePath) return false;
     await writeTextFile(filePath, fullHTML);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// DOCX export
+//
+// Converts the same cleaned preview HTML we use for HTML/PDF into a real Office
+// Open XML (.docx) document via @turbodocx/html-to-docx — pure JS, no headless
+// browser or native binary, and Vite resolves its dedicated browser ESM build.
+// The library is dynamically imported so its weight stays out of the main chunk
+// (and off the cold-start path) until the user actually exports to Word.
+//
+// Like PDF, DOCX is always a light, print-style document — a shared Word file
+// must be legible on white. Headings, lists, tables, bold/italic, links, and
+// images (inlined as data URIs by prepareExportHtml) carry over faithfully. Math
+// (KaTeX) and Mermaid diagrams are HTML/SVG constructs Word has no native model
+// for, so they degrade to their textual/markup form — the same caveat every
+// Markdown-to-Word path has. EXPORT-02.
+type HtmlToDocx = (
+    html: string,
+    header?: string | null,
+    options?: Record<string, unknown>,
+    footer?: string | null
+) => Promise<ArrayBuffer | Blob | Uint8Array>;
+
+export async function exportToDocx(
+    htmlContent: string,
+    fileName: string,
+    _theme: Theme,
+    _font: FontFamily,
+    _fontSize: FontSize
+): Promise<boolean> {
+    if (!htmlContent || htmlContent.trim() === '') {
+        console.error('No HTML content to export!');
+        return false;
+    }
+
+    const title = fileName.replace(/\.(md|markdown)$/i, '');
+    const cleaned = await prepareExportHtml(htmlContent);
+    // A minimal, unthemed document — the converter maps semantic HTML to Word
+    // styles, so we deliberately don't inject the screen theme's colors here.
+    const docHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body><article>${cleaned}</article></body></html>`;
+
+    // Prompt for the destination first so we don't do the (heavier) conversion
+    // work when the user is just going to cancel.
+    const filePath = await save({
+        defaultPath: `${title}.docx`,
+        filters: [{ name: 'Word Document', extensions: ['docx'] }],
+    });
+    if (!filePath) return false;
+
+    const mod = await import('@turbodocx/html-to-docx');
+    // The package uses `export =`; the function is the default export under the
+    // browser/ESM build. Fall back to the namespace itself for the CJS shape.
+    const convert = ((mod as { default?: HtmlToDocx }).default ?? (mod as unknown as HtmlToDocx)) as HtmlToDocx;
+
+    const out = await convert(docHtml, null, {
+        title,
+        creator: 'Paperling',
+        footer: false,
+        pageNumber: false,
+        font: 'Calibri',
+        // Word measures run size in half-points; 22 == 11pt body text.
+        fontSize: 22,
+        table: { row: { cantSplit: true } },
+    });
+
+    const bytes =
+        out instanceof Blob ? new Uint8Array(await out.arrayBuffer())
+        : out instanceof Uint8Array ? out
+        : new Uint8Array(out as ArrayBuffer);
+    await writeFile(filePath, bytes);
     return true;
 }
 

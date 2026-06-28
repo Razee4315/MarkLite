@@ -23,7 +23,7 @@ interface ExportMenuProps {
     onError?: (format: string) => void;
 }
 
-type ExportFormat = 'html' | 'pdf';
+type ExportFormat = 'html' | 'pdf' | 'docx';
 
 export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: ExportMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
@@ -73,6 +73,11 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                 // exportToHTML returns false when the save dialog is cancelled.
                 if (await mod.exportToHTML(htmlContent, fileName, theme, font, fontSize)) {
                     onSuccess?.('HTML');
+                }
+            } else if (format === 'docx') {
+                // exportToDocx returns false on a cancelled save dialog.
+                if (await mod.exportToDocx(htmlContent, fileName, theme, font, fontSize)) {
+                    onSuccess?.('DOCX');
                 }
             } else {
                 const result = await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize);
@@ -138,6 +143,14 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                     >
                         <img src={iconExportPdf} alt="" aria-hidden="true" draggable={false} className="w-6 h-6 object-contain select-none" />
                         <span>PDF</span>
+                    </button>
+                    <button
+                        role="menuitem"
+                        onClick={() => handleExport('docx')}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[22px] w-6 text-center text-[var(--accent)]" aria-hidden="true">description</span>
+                        <span>Word (.docx)</span>
                     </button>
                 </div>
             )}
