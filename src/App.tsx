@@ -23,7 +23,6 @@ import { useFullscreen } from "./hooks/useFullscreen";
 import { useScrollSync } from "./hooks/useScrollSync";
 import { useAutosave } from "./hooks/useAutosave";
 import { useExternalChangeWatcher } from "./hooks/useExternalChangeWatcher";
-import { useNavigationHistory, type NavMode } from "./hooks/useNavigationHistory";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -281,9 +280,6 @@ function AppContent() {
   // leaving it and restore the target's snapshot into the live state — so every
   // single-file system (autosave, AI review, external-change) is untouched. TABS-01.
   const tabSeqRef = useRef(0);
-  // How the next file load should update back/forward history (set by goBack/
-  // goForward; reset after each load and on a plain tab switch). NAV-03.
-  const navModeRef = useRef<NavMode>("normal");
   const tabsRef = useRef<TabState[]>([]);
   tabsRef.current = tabs;
   const activeTabIdRef = useRef<string | null>(null);
@@ -330,10 +326,8 @@ function AppContent() {
     requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
   }, []);
 
-  // Switch to an already-open tab, snapshotting the current one first. A plain
-  // switch isn't a history navigation, so clear any pending back/forward intent.
+  // Switch to an already-open tab, snapshotting the current one first.
   const activateTab = useCallback((id: string) => {
-    navModeRef.current = "normal";
     if (id === activeTabIdRef.current) return;
     snapshotActiveTab();
     const target = tabsRef.current.find((t) => t.id === id);
@@ -342,10 +336,15 @@ function AppContent() {
     applyTabToLive(target);
   }, [snapshotActiveTab, setActiveTab, applyTabToLive]);
 
-  // Back/forward navigation between files (wikilinks, relative links, recents).
-  // navModeRef (declared above) tells loadFileDirect how each load should mutate
-  // history, and survives the async open path. NAV-03.
-  const { commit: commitNav, canGoBack, canGoForward, peekBack, peekForward } = useNavigationHistory();
+  // Switch to the previous / next tab (Alt+Left / Alt+Right), wrapping around.
+  const cycleTab = useCallback((delta: number) => {
+    const list = tabsRef.current;
+    if (list.length < 2) return;
+    const idx = list.findIndex((t) => t.id === activeTabIdRef.current);
+    if (idx === -1) return;
+    const next = list[(idx + delta + list.length) % list.length];
+    activateTab(next.id);
+  }, [activateTab]);
 
   // Load file from path (with unsaved changes check)
   const loadFileDirect = useCallback(async (path: string) => {
@@ -380,11 +379,9 @@ function AppContent() {
         commitTabs([...tabsRef.current, { id, ...loaded }]);
         setActiveTab(id);
       }
-      // Record the jump in history and snap the new file to the top. Both are
-      // skipped when the path didn't change (an external-change reload should
-      // keep the reader where they were). NAV-03 / NAV-04.
+      // Snap the new file to the top — but not on a same-path external reload,
+      // which should keep the reader where they were. NAV-04.
       if (outgoing !== fileData.path) {
-        commitNav(navModeRef.current, outgoing, fileData.path);
         requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
       }
     } catch (err) {
@@ -396,9 +393,8 @@ function AppContent() {
       showToast(msg || "Failed to open file", "error");
     } finally {
       setIsLoading(false);
-      navModeRef.current = "normal";
     }
-  }, [showToast, commitNav, snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
+  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -703,22 +699,6 @@ function AppContent() {
       setLastFile(null);
     }
   }, [commitTabs, setActiveTab, applyTabToLive]);
-
-  // Back / forward between visited files. Routed through loadFile so unsaved
-  // changes still prompt; navModeRef tells loadFileDirect how to update history
-  // once the load actually lands (and survives the dialog round-trip). NAV-03.
-  const goBack = useCallback(() => {
-    const target = peekBack();
-    if (!target) return;
-    navModeRef.current = "back";
-    loadFile(target);
-  }, [peekBack, loadFile]);
-  const goForward = useCallback(() => {
-    const target = peekForward();
-    if (!target) return;
-    navModeRef.current = "forward";
-    loadFile(target);
-  }, [peekForward, loadFile]);
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
@@ -1098,7 +1078,8 @@ function AppContent() {
     openPreviewFind: () => setPreviewFindOpen(true),
     openSearch: () => setShowSearch(true),
     closeActiveTab: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
-    goBack, goForward,
+    prevTab: () => cycleTab(-1),
+    nextTab: () => cycleTab(1),
     hasFile, content, mode,
   });
 
@@ -1428,10 +1409,6 @@ function AppContent() {
         filePath={filePath ?? undefined}
         onOpenFile={handleOpenFile}
         onNewFile={handleNewFile}
-        onBack={goBack}
-        onForward={goForward}
-        canGoBack={canGoBack}
-        canGoForward={canGoForward}
         getExportHtml={getExportHtml}
         onExportSuccess={handleExportSuccess}
         onExportError={handleExportError}
@@ -1441,14 +1418,15 @@ function AppContent() {
         onToggleFullscreen={toggleFullscreen}
       />
 
-      {/* Tab bar — only once a second file is open, so the single-file view stays
-          as clean as before. TABS-01. */}
-      {tabBarItems.length >= 2 && (
+      {/* Tab bar — always shown once a file is open (even with one tab), with a
+          + button, so it's clear more files can be opened in tabs. TABS-01. */}
+      {hasFile && tabBarItems.length >= 1 && (
         <TabBar
           tabs={tabBarItems}
           activeId={activeTabId}
           onSelect={activateTab}
           onClose={closeTab}
+          onNewTab={handleNewFile}
         />
       )}
 

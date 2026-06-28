@@ -11,9 +11,10 @@ interface TabBarProps {
     activeId: string | null;
     onSelect: (id: string) => void;
     onClose: (id: string) => void;
+    onNewTab: () => void;
 }
 
-function TabBarImpl({ tabs, activeId, onSelect, onClose }: TabBarProps) {
+function TabBarImpl({ tabs, activeId, onSelect, onClose, onNewTab }: TabBarProps) {
     return (
         <div
             role="tablist"
@@ -63,6 +64,16 @@ function TabBarImpl({ tabs, activeId, onSelect, onClose }: TabBarProps) {
                     </div>
                 );
             })}
+            {/* New-tab button — always visible so it's clear more files can be
+                opened in tabs. */}
+            <button
+                onClick={onNewTab}
+                aria-label="New tab"
+                title="New tab (Ctrl+N)"
+                className="shrink-0 flex items-center justify-center w-9 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+                <span className="material-symbols-outlined text-[18px]">add</span>
+            </button>
         </div>
     );
 }

@@ -22,9 +22,9 @@ export interface ShortcutHandlers {
     openSearch?: () => void;
     /** Close the active tab (Ctrl+W). */
     closeActiveTab?: () => void;
-    /** Navigate back/forward through visited files (Alt+Left / Alt+Right). */
-    goBack?: () => void;
-    goForward?: () => void;
+    /** Switch to the previous/next tab (Alt+Left / Alt+Right). */
+    prevTab?: () => void;
+    nextTab?: () => void;
     hasFile: boolean;
     content: string;
     /** Current view mode — Ctrl+F routes to the preview find bar in reader
@@ -121,17 +121,17 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
                     s.openPreviewFind();
                 }
             }
-            // Alt+Left / Alt+Right - back/forward through visited files, like a
-            // browser. Alt (not Ctrl) keeps Ctrl+Arrow free for word-wise caret
-            // movement in the editor. NAV-03.
+            // Alt+Left / Alt+Right - switch to the previous/next tab. Alt (not
+            // Ctrl) keeps Ctrl+Arrow free for word-wise caret movement in the
+            // editor. TABS-01.
             if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowLeft") {
                 e.preventDefault();
-                s.goBack?.();
+                if (s.hasFile) s.prevTab?.();
                 return;
             }
             if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowRight") {
                 e.preventDefault();
-                s.goForward?.();
+                if (s.hasFile) s.nextTab?.();
                 return;
             }
             // ? - Show cheatsheet (only when no input is focused)
