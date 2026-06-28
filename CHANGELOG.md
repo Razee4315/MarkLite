@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appears once a second file is open. `Ctrl+N` opens a new tab, `Ctrl+W` closes
   one, middle-click closes too, and unsaved tabs prompt before closing.
 
+## [1.0.42] - 2026-06-28
+
 ## [1.0.41] - 2026-06-28
 
 ### Added
