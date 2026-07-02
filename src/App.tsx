@@ -77,6 +77,8 @@ import {
   initAIKey,
   getLastFile,
   getSavedViewMode,
+  getSession,
+  setSession,
   getSpellCheck,
   getSplitRatio,
   getToolbarEnabled,
@@ -94,7 +96,6 @@ import {
   setWordWrap,
 } from "./utils/persistence";
 import { getAutoSave } from "./utils/persistence";
-import { pickBootFile } from "./utils/boot";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
 import { TabBar, type TabBarItem } from "./components/TabBar";
 import { findTabByPath, nextActiveAfterClose, type TabState } from "./utils/tabsModel";
@@ -524,51 +525,87 @@ function AppContent() {
         // Browser dev mode / older backend without the command — restore only.
       }
 
-      const target = pickBootFile(cliFile, getLastFile());
-      if (!target.path) {
+      // Assemble the ordered list of paths to reopen and which one is active.
+      // Prefer the full saved session (TABS-07); fall back to the single
+      // lastFile for sessions saved before multi-tab restore existed.
+      const session = getSession();
+      const cursorByPath = new Map<string, number | undefined>();
+      let paths: string[] = [];
+      let activePath: string | null = null;
+      if (session) {
+        paths = session.tabs.map((t) => t.path);
+        session.tabs.forEach((t) => cursorByPath.set(t.path, t.cursorLine));
+        activePath = session.tabs[session.activeIndex]?.path ?? paths[0] ?? null;
+      } else {
+        const last = getLastFile();
+        if (last) { paths = [last]; activePath = last; }
+      }
+      // A CLI / double-clicked file is always the active tab, appended if new.
+      if (cliFile) {
+        if (!paths.includes(cliFile)) paths.push(cliFile);
+        activePath = cliFile;
+      }
+
+      if (paths.length === 0) {
         setBooting(false);
         return;
       }
 
-      try {
-        const fileData = await invoke<FileData>("read_file", { path: target.path });
-        bumpDocSwap(); // restored document → editor starts with clean undo history
-        setFilePath(fileData.path);
-        setFileName(fileData.name);
-        setContent(fileData.content);
-        setOriginalContent(fileData.content);
-        setFileSize(fileData.size);
-        knownMtimeRef.current = fileData.modified ?? 0;
-        // Bump the recents entry's timestamp to "now" so it sorts as
-        // most-recent, and persist as the session file so the next plain
-        // launch restores what the user actually had open.
-        addRecentFile(fileData.path, fileData.name);
-        setLastFile(fileData.path);
-        // Seed the first tab for the restored file. TABS-01.
-        const id = newTabId();
-        commitTabs([{
-          id, filePath: fileData.path, fileName: fileData.name,
-          content: fileData.content, originalContent: fileData.content,
-          fileSize: fileData.size, knownMtime: fileData.modified ?? 0,
-        }]);
-        setActiveTab(id);
-      } catch (err) {
-        const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
-        if (target.source === "cli") {
-          // The user explicitly asked for this file — always tell them why
-          // it didn't open (moved/deleted/too large).
-          showToast(`Could not open file: ${msg || target.path}`, "error");
-        } else {
-          // Stale session file (moved / deleted) — fail quietly like before,
-          // except the TooLarge case, which deserves an explanation.
-          setLastFile(null);
-          if (/too large/i.test(msg)) {
-            showToast(`Could not restore last file: ${msg}`, "error");
+      // Read each file, skipping any that have gone missing / too large. The CLI
+      // file's failure is always surfaced (the user explicitly asked for it).
+      const loaded: TabState[] = [];
+      let activeId: string | null = null;
+      for (const p of paths) {
+        try {
+          const fd = await invoke<FileData>("read_file", { path: p });
+          const id = newTabId();
+          loaded.push({
+            id, filePath: fd.path, fileName: fd.name,
+            content: fd.content, originalContent: fd.content,
+            fileSize: fd.size, knownMtime: fd.modified ?? 0,
+            cursorLine: cursorByPath.get(p),
+          });
+          if (p === activePath) activeId = id;
+        } catch (err) {
+          const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
+          if (cliFile && p === cliFile) {
+            showToast(`Could not open file: ${msg || p}`, "error");
+          } else if (/too large/i.test(msg)) {
+            showToast(`Could not restore "${p}": ${msg}`, "error");
           }
+          // Otherwise a stale session entry — drop it quietly.
         }
-      } finally {
-        setBooting(false);
       }
+
+      if (loaded.length === 0) {
+        setSession(null);
+        setLastFile(null);
+        setBooting(false);
+        return;
+      }
+      if (!activeId) activeId = loaded[0].id;
+      const activeTabData = loaded.find((t) => t.id === activeId)!;
+
+      bumpDocSwap(); // restored document → editor starts with clean undo history
+      commitTabs(loaded);
+      setActiveTab(activeId);
+      setFilePath(activeTabData.filePath);
+      setFileName(activeTabData.fileName);
+      setContent(activeTabData.content);
+      setOriginalContent(activeTabData.content);
+      setFileSize(activeTabData.fileSize);
+      knownMtimeRef.current = activeTabData.knownMtime;
+      addRecentFile(activeTabData.filePath!, activeTabData.fileName);
+      setLastFile(activeTabData.filePath);
+      // Restore the active tab's caret line once the editor has mounted.
+      const line = activeTabData.cursorLine ?? 1;
+      if (line > 1) {
+        window.setTimeout(
+          () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
+          150
+        );
+      }
+      setBooting(false);
     })();
     // Run only once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -761,6 +798,26 @@ function AppContent() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [commitTabs, showToast]);
+
+  // Persist the whole open-tab session (paths + which is active) so a relaunch
+  // reopens everything, not just one file. Runs whenever the tab list or the
+  // active tab changes. Untitled buffers have no path and are omitted. The
+  // active tab's caret line comes from the live currentLineRef (its snapshot
+  // lags until the next switch). TABS-07.
+  useEffect(() => {
+    const activeId = activeTabIdRef.current;
+    const persistable = tabs.filter((t) => t.filePath);
+    if (persistable.length === 0) {
+      setSession(null);
+      return;
+    }
+    const sessTabs = persistable.map((t) => ({
+      path: t.filePath!,
+      cursorLine: t.id === activeId ? currentLineRef.current : t.cursorLine,
+    }));
+    const activeIdx = persistable.findIndex((t) => t.id === activeId);
+    setSession({ tabs: sessTabs, activeIndex: activeIdx < 0 ? 0 : activeIdx });
+  }, [tabs, activeTabId]);
 
   // Open a file: if it's already in a tab, just switch to it (preserving any
   // unsaved edits there); otherwise load it into a new tab. With tabs there's no
