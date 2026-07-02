@@ -157,6 +157,11 @@ function AppContent() {
   // the snapshots of every open file (incl. the active one). TABS-01.
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  // Bumped on every genuine document swap (tab switch, file open, new file) so
+  // the editor can reset its undo history and Ctrl+Z can't reach into the
+  // previously-shown document. See CodeEditor's docSwapId effect. TABS-03.
+  const [docSwapId, setDocSwapId] = useState(0);
+  const bumpDocSwap = useCallback(() => setDocSwapId((n) => n + 1), []);
   const [splitRatio, setSplitRatioState] = usePersistedState<number>(getSplitRatio, setSplitRatio);
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
   const [aiEnabled, setAiEnabledState] = usePersistedState<boolean>(getAIEnabled, setAIEnabled);
@@ -321,6 +326,7 @@ function AppContent() {
   // Load a tab's stored snapshot into the live editor state.
   const applyTabToLive = useCallback((tab: TabState) => {
     setProposedDoc(null); // an AI review belongs to the file we're leaving
+    bumpDocSwap(); // new document → editor resets undo history. TABS-03.
     setFilePath(tab.filePath);
     setFileName(tab.fileName);
     setContent(tab.content);
@@ -335,7 +341,7 @@ function AppContent() {
       if (line > 1) window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }));
       else window.dispatchEvent(new CustomEvent("paperling:scroll-top"));
     });
-  }, []);
+  }, [bumpDocSwap]);
 
   // Switch to an already-open tab, snapshotting the current one first.
   const activateTab = useCallback((id: string) => {
@@ -365,6 +371,7 @@ function AppContent() {
     setIsLoading(true);
     try {
       const fileData = await invoke<FileData>("read_file", { path });
+      bumpDocSwap(); // new document → editor resets undo history. TABS-03.
       setFilePath(fileData.path);
       setFileName(fileData.name);
       setContent(fileData.content);
@@ -405,7 +412,7 @@ function AppContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
+  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -500,6 +507,7 @@ function AppContent() {
 
       try {
         const fileData = await invoke<FileData>("read_file", { path: target.path });
+        bumpDocSwap(); // restored document → editor starts with clean undo history
         setFilePath(fileData.path);
         setFileName(fileData.name);
         setContent(fileData.content);
@@ -840,6 +848,7 @@ function AppContent() {
   // stays open in its tab, so nothing is discarded). TABS-01.
   const handleNewFile = useCallback(() => {
     snapshotActiveTab();
+    bumpDocSwap(); // fresh Untitled buffer → editor resets undo history. TABS-03.
     const id = newTabId();
     commitTabs([...tabsRef.current, {
       id, filePath: null, fileName: "Untitled.md",
@@ -855,7 +864,7 @@ function AppContent() {
     knownMtimeRef.current = 0;
     setLastFile(null);
     setMode("code");
-  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
+  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
 
   // "Replay the welcome tour" from Settings → About. The tour spotlights
   // editor chrome, so make sure a buffer exists before showing it.
@@ -1491,6 +1500,7 @@ function AppContent() {
             >
               <CodeEditor
                 content={content}
+                docSwapId={docSwapId}
                 onChange={handleContentChange}
                 onCursorChange={handleCursorChange}
                 onSelectionChange={handleSelectionChange}

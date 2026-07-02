@@ -59,6 +59,11 @@ interface CodeEditorProps {
     /** Called when the user finishes a review: the final document (accept) or
      *  null (rejected everything — keep the original). */
     onReviewResolve?: (finalDoc: string | null) => void;
+    /** Bumped by App on every genuine document SWAP (tab switch, file open, new
+     *  file) — as opposed to an in-document edit. On each bump the editor clears
+     *  its undo history so Ctrl+Z can't reach back into the previous document (a
+     *  data-loss bug: undo used to "un-swap" the file). TABS-03. */
+    docSwapId?: number;
 }
 
 const EDITOR_FONT_FAMILY =
@@ -156,6 +161,7 @@ function CodeEditorImpl({
     aiConfig,
     reviewDoc,
     onReviewResolve,
+    docSwapId,
 }: CodeEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -191,10 +197,17 @@ function CodeEditorImpl({
     // effect below skip the O(n) doc.toString() comparison on the common case
     // (the prop change is just our own keystroke echoing back through App state).
     const lastEmittedRef = useRef(content);
+    // Live mirror of the `content` prop, read by the doc-swap effect without
+    // making `content` one of its deps (it must fire ONLY on docSwapId).
+    const contentPropRef = useRef(content);
+    contentPropRef.current = content;
 
     // Reconfigurable extensions.
     const wrapCompRef = useRef(new Compartment());
     const spellCompRef = useRef(new Compartment());
+    // history() lives in a compartment so a document swap can reset undo state
+    // (reconfigure to [] then back) without rebuilding the whole editor. TABS-03.
+    const historyCompRef = useRef(new Compartment());
     // AI review (merge view) state.
     const mergeCompRef = useRef(new Compartment());
     const reviewingRef = useRef(false);
@@ -277,6 +290,7 @@ function CodeEditorImpl({
         const wrapComp = wrapCompRef.current;
         const spellComp = spellCompRef.current;
         const mergeComp = mergeCompRef.current;
+        const historyComp = historyCompRef.current;
 
         const editingKeymap = Prec.highest(keymap.of([
             { key: "Tab", run: (v) => runAction(v, (st) => handleTab(st, false)), shift: (v) => runAction(v, (st) => handleTab(st, true)) },
@@ -357,7 +371,7 @@ function CodeEditorImpl({
                     lineNumbers(),
                     highlightActiveLineGutter(),
                     highlightActiveLine(),
-                    history(),
+                    historyComp.of(history()),
                     drawSelection(),
                     dropCursor(),
                     closeBrackets(),
@@ -511,6 +525,30 @@ function CodeEditorImpl({
         }
         lastEmittedRef.current = content;
     }, [content]);
+
+    // Reset undo history whenever App swaps the whole document for a different
+    // file (tab switch, file open, new file). Without this, Ctrl+Z would undo
+    // the swap itself and restore the PREVIOUS file's text into the current tab —
+    // which autosave could then write to the wrong path. In-document edits
+    // (checkbox toggles, AI, frontmatter) don't bump docSwapId, so they stay
+    // undoable. Robust to effect order: if the content-sync effect above ran
+    // first it recorded the swap in the OLD history, which we then discard; if it
+    // hasn't run yet, `content` already equals the new doc so we set it here.
+    // TABS-03.
+    useEffect(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        const doc = contentPropRef.current;
+        if (doc !== view.state.doc.toString()) {
+            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: doc } });
+        }
+        lastEmittedRef.current = doc;
+        // Reconfigure the history compartment to a fresh instance — this is the
+        // documented way to clear CodeMirror's undo/redo stacks.
+        view.dispatch({ effects: historyCompRef.current.reconfigure([]) });
+        view.dispatch({ effects: historyCompRef.current.reconfigure(history()) });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docSwapId]);
 
     // Reconfigure word-wrap / spellcheck when their props change.
     useEffect(() => {
