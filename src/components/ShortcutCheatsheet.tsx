@@ -37,12 +37,23 @@ const groups: ShortcutGroup[] = [
         ],
     },
     {
+        title: "Tabs",
+        items: [
+            { keys: `${cmd}+N`, description: "New tab" },
+            { keys: `${cmd}+W`, description: "Close tab" },
+            { keys: `${cmd}+Shift+T`, description: "Reopen closed tab" },
+            { keys: `${cmd}+Tab`, description: "Next tab" },
+            { keys: `${cmd}+Shift+Tab`, description: "Previous tab" },
+            { keys: "Alt+←/→", description: "Previous / next tab" },
+            { keys: `${cmd}+1-8`, description: "Jump to tab N" },
+            { keys: `${cmd}+9`, description: "Jump to last tab" },
+        ],
+    },
+    {
         title: "View",
         items: [
             { keys: `${cmd}+E`, description: "Toggle Reader / Code" },
             { keys: `${cmd}+\\`, description: "Toggle split view" },
-            { keys: "Alt+←", description: "Previous tab" },
-            { keys: "Alt+→", description: "Next tab" },
             { keys: "F11", description: "Toggle fullscreen" },
             { keys: `${cmd}+Shift+E`, description: "Toggle file explorer" },
             { keys: `${cmd}+Shift+F`, description: "Search across files" },

@@ -1071,14 +1071,15 @@ function AppContent() {
   // Open a cross-file search result: load the file (if not already open) and
   // jump to the matching line once it has rendered. The goto-line event is the
   // same one the TOC/palette use, so it lands correctly in any view mode. SEARCH-01.
-  const handleOpenSearchResult = useCallback((path: string, line: number) => {
-    const jump = () => window.setTimeout(
-      () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
-      120
+  const handleOpenSearchResult = useCallback(async (path: string, line: number) => {
+    // Wait for the file to actually load before jumping, instead of racing a
+    // fixed timeout that a large document could lose (landing at the top). SEARCH-01.
+    if (path !== filePathRef.current) {
+      await loadFile(path);
+    }
+    requestAnimationFrame(() =>
+      window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }))
     );
-    if (path === filePathRef.current) { jump(); return; }
-    loadFile(path);
-    jump();
   }, [loadFile]);
 
   // Folder the cross-file search runs in: the open file's directory.
@@ -1132,8 +1133,9 @@ function AppContent() {
   // Open file dialog
   const handleOpenFile = useCallback(async () => {
     try {
+      // Allow selecting several files at once — each opens in its own tab. TABS-11.
       const selected = await open({
-        multiple: false,
+        multiple: true,
         filters: [
           {
             name: "Markdown",
@@ -1142,8 +1144,10 @@ function AppContent() {
         ],
       });
 
-      if (selected && typeof selected === "string") {
+      if (typeof selected === "string") {
         await loadFile(selected);
+      } else if (Array.isArray(selected)) {
+        for (const p of selected) await loadFile(p);
       }
     } catch (err) {
       console.error("Failed to open file dialog:", err);
@@ -1443,6 +1447,15 @@ function AppContent() {
         keywords: "words count reading time",
         run: () => setShowStats(true),
       });
+      items.push({
+        id: "tab.close",
+        label: "Close tab",
+        hint: "Ctrl+W",
+        section: "File",
+        icon: "tab_close",
+        keywords: "close current tab",
+        run: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
+      });
     }
 
     // === View === only when a buffer exists
@@ -1612,7 +1625,7 @@ function AppContent() {
     // separate hook that's gated on the palette actually being open.
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, toggleFullscreen,
-    loadFile, filePath, hasFile, showToast,
+    loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
     theme, setTheme,
   ]);
@@ -1651,12 +1664,32 @@ function AppContent() {
     return items;
   }, [showPalette, deferredContent]);
 
+  // "Open tabs" palette section — jump to any open tab by name (only worthwhile
+  // with more than one open). Uses the same folder disambiguation as the bar. TABS-11.
+  const tabPaletteItems = useMemo<PaletteCommand[]>(() => {
+    if (tabs.length < 2) return [];
+    const resolved = tabs.map((t) => ({
+      id: t.id,
+      fileName: t.id === activeTabId ? (fileName ?? "Untitled.md") : t.fileName,
+      filePath: t.id === activeTabId ? filePath : t.filePath,
+    }));
+    const labels = computeTabLabels(resolved);
+    return tabs.map((t) => ({
+      id: `opentab.${t.id}`,
+      label: `${labels.get(t.id) ?? t.fileName}${t.id === activeTabId ? " (current)" : ""}`,
+      section: "Open tabs",
+      icon: "tab",
+      keywords: "switch tab open file",
+      run: () => activateTab(t.id),
+    }));
+  }, [tabs, activeTabId, fileName, filePath, activateTab]);
+
   // Concatenated list passed to the palette. Same `paletteItems` shape as
   // before so the CommandPalette component sees no API change. Reference
-  // changes only when one of the two sources changes — typically rare.
+  // changes only when one of the sources changes — typically rare.
   const fullPaletteItems = useMemo<PaletteCommand[]>(
-    () => (headingPaletteItems.length ? [...paletteItems, ...headingPaletteItems] : paletteItems),
-    [paletteItems, headingPaletteItems]
+    () => [...paletteItems, ...tabPaletteItems, ...headingPaletteItems],
+    [paletteItems, tabPaletteItems, headingPaletteItems]
   );
 
   // Tab-bar items. The active tab's name/dirty come from live state (its stored
