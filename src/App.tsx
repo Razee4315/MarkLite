@@ -98,7 +98,15 @@ import {
 import { getAutoSave } from "./utils/persistence";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
 import { TabBar, type TabBarItem } from "./components/TabBar";
-import { findTabByPath, nextActiveAfterClose, type TabState } from "./utils/tabsModel";
+import {
+  findTabByPath,
+  nextActiveAfterClose,
+  nextUntitledName,
+  findReusableUntitledTab,
+  computeTabLabels,
+  moveTab,
+  type TabState,
+} from "./utils/tabsModel";
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
 import { PreviewFindBar } from "./components/PreviewFindBar";
@@ -924,13 +932,13 @@ function AppContent() {
     let unlisten: (() => void) | undefined;
 
     listen<{ paths: string[] }>(TauriEvent.DRAG_DROP, async (event) => {
-      const paths = event.payload.paths;
-      if (paths && paths.length > 0) {
-        const firstPath = paths[0];
-        // Only load markdown files
-        if (firstPath.endsWith('.md') || firstPath.endsWith('.markdown')) {
-          await loadFile(firstPath);
-        }
+      // Open EVERY dropped markdown file in its own tab (the last one wins focus),
+      // rather than only the first. TABS-11.
+      const paths = (event.payload.paths ?? []).filter(
+        (p) => p.endsWith(".md") || p.endsWith(".markdown")
+      );
+      for (const p of paths) {
+        await loadFile(p);
       }
     }).then((fn) => {
       if (mounted) {
@@ -1044,26 +1052,34 @@ function AppContent() {
   }, [filePath]);
 
   // New file: opens a fresh Untitled buffer in its own tab (the current file
-  // stays open in its tab, so nothing is discarded). TABS-01.
+  // stays open in its tab, so nothing is discarded). Reuses a pristine empty
+  // untitled tab if one exists, and numbers new ones Untitled-N.md. TABS-01/08.
   const handleNewFile = useCallback(() => {
+    const reusable = findReusableUntitledTab(tabsRef.current);
+    if (reusable) {
+      if (reusable.id !== activeTabIdRef.current) activateTab(reusable.id);
+      setMode("code");
+      return;
+    }
     snapshotActiveTab();
     bumpDocSwap(); // fresh Untitled buffer → editor resets undo history. TABS-03.
     const id = newTabId();
+    const name = nextUntitledName(tabsRef.current);
     commitTabs([...tabsRef.current, {
-      id, filePath: null, fileName: "Untitled.md",
+      id, filePath: null, fileName: name,
       content: "", originalContent: "", fileSize: 0, knownMtime: 0,
     }]);
     setActiveTab(id);
     setProposedDoc(null);
     setFilePath(null);
-    setFileName("Untitled.md");
+    setFileName(name);
     setContent("");
     setOriginalContent("");
     setFileSize(0);
     knownMtimeRef.current = 0;
     setLastFile(null);
     setMode("code");
-  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
+  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, activateTab]);
 
   // "Replay the welcome tour" from Settings → About. The tour spotlights
   // editor chrome, so make sure a buffer exists before showing it.
@@ -1606,19 +1622,32 @@ function AppContent() {
 
   // Tab-bar items. The active tab's name/dirty come from live state (its stored
   // snapshot lags until the next switch); inactive tabs read their snapshot.
-  // Keyed on `isDirty` (a boolean) so typing within an already-dirty file
-  // doesn't churn this list. TABS-01.
-  const tabBarItems = useMemo<TabBarItem[]>(
-    () => tabs.map((t) => {
+  // `label` disambiguates duplicate file names by folder (TABS-09); `name` is
+  // the bare file name (title/aria). Keyed on `isDirty` (a boolean) so typing
+  // within an already-dirty file doesn't churn this list. TABS-01.
+  const tabBarItems = useMemo<TabBarItem[]>(() => {
+    const resolved = tabs.map((t) => {
       const active = t.id === activeTabId;
       return {
         id: t.id,
-        name: active ? (fileName ?? "Untitled.md") : t.fileName,
+        fileName: active ? (fileName ?? "Untitled.md") : t.fileName,
+        filePath: active ? filePath : t.filePath,
         dirty: active ? isDirty : t.content !== t.originalContent,
       };
-    }),
-    [tabs, activeTabId, fileName, isDirty]
-  );
+    });
+    const labels = computeTabLabels(resolved);
+    return resolved.map((t) => ({
+      id: t.id,
+      name: t.fileName,
+      label: labels.get(t.id) ?? t.fileName,
+      dirty: t.dirty,
+    }));
+  }, [tabs, activeTabId, fileName, filePath, isDirty]);
+
+  // Drag-reorder: move a tab to a new index. TABS-10.
+  const handleReorderTab = useCallback((fromIndex: number, toIndex: number) => {
+    commitTabs(moveTab(tabsRef.current, fromIndex, toIndex));
+  }, [commitTabs]);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
@@ -1646,6 +1675,7 @@ function AppContent() {
           onSelect={activateTab}
           onClose={closeTab}
           onNewTab={handleNewFile}
+          onReorder={handleReorderTab}
         />
       )}
 
