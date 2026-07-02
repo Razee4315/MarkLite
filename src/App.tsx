@@ -97,6 +97,7 @@ import {
 } from "./utils/persistence";
 import { getAutoSave } from "./utils/persistence";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
+import { errMessage } from "./utils/errors";
 import { TabBar, type TabBarItem } from "./components/TabBar";
 import { TabContextMenu } from "./components/TabContextMenu";
 import {
@@ -454,7 +455,7 @@ function AppContent() {
       // Surface the actual error from Rust so "File too large" / "File not
       // found" reaches the user instead of a generic message — without this,
       // hitting the new 50 MB cap looked exactly like a permission error.
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Failed to open file", "error");
     } finally {
       setIsLoading(false);
@@ -588,7 +589,7 @@ function AppContent() {
           });
           if (p === activePath) activeId = id;
         } catch (err) {
-          const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
+          const msg = errMessage(err);
           if (cliFile && p === cliFile) {
             showToast(`Could not open file: ${msg || p}`, "error");
           } else if (/too large/i.test(msg)) {
@@ -706,7 +707,7 @@ function AppContent() {
       try {
         await invoke("save_file", { path, content: t.content });
       } catch (err) {
-        const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+        const msg = errMessage(err);
         showToast(msg || `Failed to save ${t.fileName}`, "error");
         return; // don't close on a failed save — the user would lose the buffer
       }
@@ -958,7 +959,7 @@ function AppContent() {
     try {
       await invoke("save_file", { path, content: data.content });
     } catch (err) {
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Failed to save file", "error");
       return; // keep the tab open on a failed save
     }
@@ -978,10 +979,10 @@ function AppContent() {
     let unlisten: (() => void) | undefined;
 
     listen<{ paths: string[] }>(TauriEvent.DRAG_DROP, async (event) => {
-      // Open EVERY dropped markdown file in its own tab (the last one wins focus),
-      // rather than only the first. TABS-11.
-      const paths = (event.payload.paths ?? []).filter(
-        (p) => p.endsWith(".md") || p.endsWith(".markdown")
+      // Open EVERY dropped markdown / text file in its own tab (the last one
+      // wins focus), rather than only the first. TABS-11 / TXT-01.
+      const paths = (event.payload.paths ?? []).filter((p) =>
+        /\.(md|markdown|txt|text)$/i.test(p)
       );
       for (const p of paths) {
         await loadFile(p);
@@ -1012,7 +1013,7 @@ function AppContent() {
       await invoke<number>("save_file", { path, content: "" });
       await loadFile(path);
     } catch (err) {
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Could not create note", "error");
     }
   }, [loadFile, showToast]);
@@ -1143,12 +1144,13 @@ function AppContent() {
   const handleOpenFile = useCallback(async () => {
     try {
       // Allow selecting several files at once — each opens in its own tab. TABS-11.
+      // Plain-text files open too (rendered as markdown, which degrades fine). TXT-01.
       const selected = await open({
         multiple: true,
         filters: [
           {
-            name: "Markdown",
-            extensions: ["md", "markdown"],
+            name: "Markdown & text",
+            extensions: ["md", "markdown", "txt", "text"],
           },
         ],
       });
@@ -1190,7 +1192,7 @@ function AppContent() {
       showToast("File saved", "success");
     } catch (err) {
       console.error("Failed to save file:", err);
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Failed to save file", "error");
     }
   }, [content, fileName, showToast, commitTabs]);
@@ -1207,7 +1209,7 @@ function AppContent() {
       showToast("File saved", "success");
     } catch (err) {
       console.error("Failed to save file:", err);
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Failed to save file", "error");
     }
   }, [filePath, content, showToast, handleSaveAs]);

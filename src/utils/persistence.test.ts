@@ -37,9 +37,9 @@ describe("recent files", () => {
         expect(list.map((f) => f.path)).toEqual(["/a.md", "/b.md"]);
     });
 
-    it("caps the list at 10 entries", () => {
-        for (let i = 0; i < 15; i++) addRecentFile(`/f${i}.md`, `f${i}`);
-        expect(getRecentFiles()).toHaveLength(10);
+    it("caps the list at 25 entries", () => {
+        for (let i = 0; i < 30; i++) addRecentFile(`/f${i}.md`, `f${i}`);
+        expect(getRecentFiles()).toHaveLength(25);
     });
 
     it("removes and clears", () => {

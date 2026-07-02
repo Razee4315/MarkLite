@@ -29,7 +29,9 @@ const KEY_LAST_FILE = "paperling:lastFile";
 const KEY_VIEW_MODE = "paperling:viewMode";
 const KEY_SPLIT_RATIO = "paperling:splitRatio";
 
-const MAX_RECENT = 10;
+// Multi-file/tab workflows make 10 feel tight; 25 keeps the palette's recents
+// useful without unbounded growth.
+const MAX_RECENT = 25;
 
 const safeGet = <T>(key: string, fallback: T): T => {
     try {
