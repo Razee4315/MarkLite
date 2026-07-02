@@ -43,3 +43,87 @@ export function nextActiveAfterClose(tabs: TabState[], closingId: string): strin
   if (remaining.length === 0) return null;
   return (remaining[idx] ?? remaining[idx - 1] ?? remaining[remaining.length - 1]).id;
 }
+
+/**
+ * The name for a new Untitled buffer, numbered so repeated Ctrl+N don't all read
+ * "Untitled.md". Returns the lowest "Untitled-N.md" not currently in use by an
+ * unsaved tab (N starts at 1). TABS-08.
+ */
+export function nextUntitledName(tabs: TabState[]): string {
+  const used = new Set(
+    tabs.filter((t) => t.filePath === null).map((t) => t.fileName)
+  );
+  for (let n = 1; ; n++) {
+    const candidate = `Untitled-${n}.md`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * An existing untitled buffer that is empty and pristine (no path, no content) —
+ * worth reusing on "New file" instead of stacking another identical blank tab.
+ * TABS-08.
+ */
+export function findReusableUntitledTab(tabs: TabState[]): TabState | undefined {
+  return tabs.find((t) => t.filePath === null && t.content === "" && t.originalContent === "");
+}
+
+/** Folder segments of a path in natural (root → parent) order. `a/b/c/x.md` →
+ *  ["a","b","c"]. Handles both `/` and `\` separators. Null → []. */
+function parentSegments(filePath: string | null): string[] {
+  if (!filePath) return [];
+  const parts = filePath.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.slice(0, -1); // drop the file name itself
+}
+
+/**
+ * Display label per tab: just the file name when unique, else the file name plus
+ * the shortest trailing folder path that distinguishes it from the other tabs
+ * sharing that name — like `README.md — docs`. TABS-09.
+ */
+export function computeTabLabels(
+  tabs: Array<{ id: string; fileName: string; filePath: string | null }>
+): Map<string, string> {
+  const labels = new Map<string, string>();
+  const byName = new Map<string, typeof tabs>();
+  for (const t of tabs) {
+    const arr = byName.get(t.fileName) ?? [];
+    arr.push(t);
+    byName.set(t.fileName, arr);
+  }
+  for (const [name, group] of byName) {
+    if (group.length === 1) {
+      labels.set(group[0].id, name);
+      continue;
+    }
+    const withSegs = group.map((t) => ({ id: t.id, segs: parentSegments(t.filePath) }));
+    const maxDepth = Math.max(1, ...withSegs.map((g) => g.segs.length));
+    for (const g of withSegs) {
+      let suffix = "";
+      for (let d = 1; d <= maxDepth; d++) {
+        const mine = g.segs.slice(-d).join("/");
+        const collision = withSegs.some((o) => o.id !== g.id && o.segs.slice(-d).join("/") === mine);
+        suffix = mine;
+        if (!collision) break;
+      }
+      labels.set(g.id, suffix ? `${name} — ${suffix}` : name);
+    }
+  }
+  return labels;
+}
+
+/** Move a tab from one index to another, returning a new array. Out-of-range or
+ *  no-op moves return the original array unchanged. Used for drag-reorder. TABS-10. */
+export function moveTab(tabs: TabState[], fromIndex: number, toIndex: number): TabState[] {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 || fromIndex >= tabs.length ||
+    toIndex < 0 || toIndex >= tabs.length
+  ) {
+    return tabs;
+  }
+  const copy = tabs.slice();
+  const [item] = copy.splice(fromIndex, 1);
+  copy.splice(toIndex, 0, item);
+  return copy;
+}
