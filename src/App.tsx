@@ -300,6 +300,9 @@ function AppContent() {
   tabsRef.current = tabs;
   const activeTabIdRef = useRef<string | null>(null);
   activeTabIdRef.current = activeTabId;
+  // Stack of recently-closed tabs (path + caret line) for Ctrl+Shift+T. Only
+  // saved files are recoverable; untitled buffers aren't pushed. TABS-15.
+  const closedTabsRef = useRef<{ path: string; cursorLine?: number }[]>([]);
   const liveRef = useRef({ filePath, fileName, content, originalContent, fileSize });
   liveRef.current = { filePath, fileName, content, originalContent, fileSize };
   // The line we'd return to when this file is re-activated: the caret line while
@@ -836,9 +839,42 @@ function AppContent() {
     await loadFileDirect(path);
   }, [activateTab, loadFileDirect]);
 
+  // Reopen the most recently closed (saved) tab, restoring its caret line. TABS-15.
+  const reopenClosedTab = useCallback(() => {
+    const entry = closedTabsRef.current.pop();
+    if (!entry) return;
+    loadFile(entry.path);
+    if (entry.cursorLine && entry.cursorLine > 1) {
+      const line = entry.cursorLine;
+      window.setTimeout(
+        () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
+        150
+      );
+    }
+  }, [loadFile]);
+
+  // Jump to a tab by position (Ctrl+1..8); index -1 means the last tab (Ctrl+9,
+  // browser convention). TABS-16.
+  const gotoTabByIndex = useCallback((index: number) => {
+    const list = tabsRef.current;
+    if (list.length === 0) return;
+    const target = index === -1 ? list[list.length - 1] : list[index];
+    if (target) activateTab(target.id);
+  }, [activateTab]);
+
   // Remove a tab and refocus a neighbour (or fall back to the welcome screen).
   // No dirty check here — callers decide whether to prompt first. TABS-01.
   const finalizeCloseTab = useCallback((id: string) => {
+    // Remember saved tabs so Ctrl+Shift+T can reopen them. TABS-15.
+    const closing = tabsRef.current.find((t) => t.id === id);
+    if (closing?.filePath) {
+      const isActiveClosing = id === activeTabIdRef.current;
+      closedTabsRef.current.push({
+        path: closing.filePath,
+        cursorLine: isActiveClosing ? currentLineRef.current : closing.cursorLine,
+      });
+      if (closedTabsRef.current.length > 25) closedTabsRef.current.shift();
+    }
     const isActive = id === activeTabIdRef.current;
     const nextId = nextActiveAfterClose(tabsRef.current, id);
     const remaining = tabsRef.current.filter((t) => t.id !== id);
@@ -1315,6 +1351,8 @@ function AppContent() {
     closeActiveTab: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
     prevTab: () => cycleTab(-1),
     nextTab: () => cycleTab(1),
+    reopenClosedTab,
+    gotoTab: gotoTabByIndex,
     hasFile, content, mode,
   });
 

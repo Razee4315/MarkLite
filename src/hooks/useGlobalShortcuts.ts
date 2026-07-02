@@ -22,9 +22,13 @@ export interface ShortcutHandlers {
     openSearch?: () => void;
     /** Close the active tab (Ctrl+W). */
     closeActiveTab?: () => void;
-    /** Switch to the previous/next tab (Alt+Left / Alt+Right). */
+    /** Switch to the previous/next tab (Alt+Left/Right, Ctrl+Shift+Tab / Ctrl+Tab). */
     prevTab?: () => void;
     nextTab?: () => void;
+    /** Reopen the most recently closed tab (Ctrl+Shift+T). */
+    reopenClosedTab?: () => void;
+    /** Jump to a tab by index; -1 means the last tab (Ctrl+1..9). */
+    gotoTab?: (index: number) => void;
     hasFile: boolean;
     content: string;
     /** Current view mode — Ctrl+F routes to the preview find bar in reader
@@ -132,6 +136,35 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
             if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowRight") {
                 e.preventDefault();
                 if (s.hasFile) s.nextTab?.();
+                return;
+            }
+            // Ctrl+Tab / Ctrl+Shift+Tab - cycle tabs (the browser/VS Code pair),
+            // and Ctrl+PageDown / Ctrl+PageUp as the other common alias. TABS-16.
+            if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "Tab") {
+                e.preventDefault();
+                if (s.hasFile) (e.shiftKey ? s.prevTab : s.nextTab)?.();
+                return;
+            }
+            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key === "PageDown") {
+                e.preventDefault();
+                if (s.hasFile) s.nextTab?.();
+                return;
+            }
+            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key === "PageUp") {
+                e.preventDefault();
+                if (s.hasFile) s.prevTab?.();
+                return;
+            }
+            // Ctrl+Shift+T - reopen the most recently closed tab. TABS-15.
+            if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && (e.key === "t" || e.key === "T")) {
+                e.preventDefault();
+                s.reopenClosedTab?.();
+                return;
+            }
+            // Ctrl+1..9 - jump to tab N (Ctrl+9 = last tab, like browsers). TABS-16.
+            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key >= "1" && e.key <= "9") {
+                e.preventDefault();
+                if (s.hasFile) s.gotoTab?.(e.key === "9" ? -1 : Number(e.key) - 1);
                 return;
             }
             // ? - Show cheatsheet (only when no input is focused)
