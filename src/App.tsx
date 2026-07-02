@@ -184,6 +184,8 @@ function AppContent() {
   // Unsaved-changes dialog for window close (Alt+F4, taskbar close, the title
   // bar X). The Tauri close-requested handler below intercepts ALL of them.
   const [showUnsavedBeforeClose, setShowUnsavedBeforeClose] = useState(false);
+  // Pending dirty-tab close, awaiting the Save/Discard/Cancel dialog. TABS-05.
+  const [closeTabPrompt, setCloseTabPrompt] = useState<{ id: string; fileName: string } | null>(null);
   // Find bar over the reader-mode preview (Ctrl+F when mode === "preview").
   const [previewFindOpen, setPreviewFindOpen] = useState(false);
   // Autosave: save a moment after the user stops typing (Settings → Editor).
@@ -705,22 +707,10 @@ function AppContent() {
     await loadFileDirect(path);
   }, [activateTab, loadFileDirect]);
 
-  // Close a tab. Prompts before discarding unsaved changes; when the active tab
-  // closes, focus the neighbour (or fall back to the welcome screen). TABS-01.
-  const closeTab = useCallback(async (id: string) => {
-    const tab = tabsRef.current.find((t) => t.id === id);
-    if (!tab) return;
+  // Remove a tab and refocus a neighbour (or fall back to the welcome screen).
+  // No dirty check here — callers decide whether to prompt first. TABS-01.
+  const finalizeCloseTab = useCallback((id: string) => {
     const isActive = id === activeTabIdRef.current;
-    const dirty = isActive
-      ? liveRef.current.content !== liveRef.current.originalContent
-      : tab.content !== tab.originalContent;
-    if (dirty) {
-      const discard = await ask(`Discard unsaved changes to "${tab.fileName}"?`, {
-        title: "Close tab",
-        kind: "warning",
-      });
-      if (!discard) return;
-    }
     const nextId = nextActiveAfterClose(tabsRef.current, id);
     const remaining = tabsRef.current.filter((t) => t.id !== id);
     commitTabs(remaining);
@@ -733,6 +723,7 @@ function AppContent() {
       // Last tab closed — return to the clean welcome state.
       setActiveTab(null);
       setProposedDoc(null);
+      bumpDocSwap();
       setFilePath(null);
       setFileName(null);
       setContent("");
@@ -741,7 +732,70 @@ function AppContent() {
       knownMtimeRef.current = 0;
       setLastFile(null);
     }
-  }, [commitTabs, setActiveTab, applyTabToLive]);
+  }, [commitTabs, setActiveTab, applyTabToLive, bumpDocSwap]);
+
+  // Close a tab. A clean tab closes immediately; a dirty one opens the
+  // Save / Discard / Cancel dialog (TABS-05) rather than the old two-button
+  // discard-or-cancel prompt.
+  const closeTab = useCallback((id: string) => {
+    const tab = tabsRef.current.find((t) => t.id === id);
+    if (!tab) return;
+    const isActive = id === activeTabIdRef.current;
+    const dirty = isActive
+      ? liveRef.current.content !== liveRef.current.originalContent
+      : tab.content !== tab.originalContent;
+    if (dirty) {
+      setCloseTabPrompt({ id, fileName: isActive ? (liveRef.current.fileName ?? "Untitled.md") : tab.fileName });
+      return;
+    }
+    finalizeCloseTab(id);
+  }, [finalizeCloseTab]);
+
+  // The effective save target for a tab, reading the active tab from live state.
+  const getTabSaveData = useCallback((id: string) => {
+    const t = tabsRef.current.find((x) => x.id === id);
+    if (!t) return null;
+    const isActive = id === activeTabIdRef.current;
+    const live = liveRef.current;
+    return {
+      filePath: isActive ? live.filePath : t.filePath,
+      fileName: isActive ? (live.fileName ?? "Untitled.md") : t.fileName,
+      content: isActive ? live.content : t.content,
+    };
+  }, []);
+
+  // "Save" in the close-tab dialog: persist the tab (prompting a location for an
+  // untitled buffer), then close it. Cancel/failure keeps the tab open. TABS-05.
+  const handleSaveCloseTab = useCallback(async () => {
+    const prompt = closeTabPrompt;
+    if (!prompt) return;
+    const data = getTabSaveData(prompt.id);
+    if (!data) { setCloseTabPrompt(null); return; }
+    let path = data.filePath;
+    if (!path) {
+      const selected = await save({
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+        defaultPath: data.fileName,
+      });
+      if (!selected) return; // cancelled save-as → keep the tab open
+      path = selected;
+    }
+    try {
+      await invoke("save_file", { path, content: data.content });
+    } catch (err) {
+      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      showToast(msg || "Failed to save file", "error");
+      return; // keep the tab open on a failed save
+    }
+    setCloseTabPrompt(null);
+    finalizeCloseTab(prompt.id);
+  }, [closeTabPrompt, getTabSaveData, showToast, finalizeCloseTab]);
+
+  const handleDiscardCloseTab = useCallback(() => {
+    const prompt = closeTabPrompt;
+    setCloseTabPrompt(null);
+    if (prompt) finalizeCloseTab(prompt.id);
+  }, [closeTabPrompt, finalizeCloseTab]);
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
@@ -1662,6 +1716,20 @@ function AppContent() {
             onDiscard={handleDiscardAndCloseWindow}
             onSave={handleSaveAndCloseWindow}
             dirtyNames={tabBarItems.filter((t) => t.dirty).map((t) => t.name)}
+          />
+        </Suspense>
+      )}
+
+      {/* Save/Discard/Cancel when closing a single dirty tab (Ctrl+W, the tab's
+          × or middle-click). TABS-05. */}
+      {closeTabPrompt && (
+        <Suspense fallback={null}>
+          <UnsavedChangesDialog
+            isOpen={!!closeTabPrompt}
+            onClose={() => setCloseTabPrompt(null)}
+            onDiscard={handleDiscardCloseTab}
+            onSave={handleSaveCloseTab}
+            dirtyNames={[closeTabPrompt.fileName]}
           />
         </Suspense>
       )}
