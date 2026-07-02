@@ -98,6 +98,7 @@ import {
 import { getAutoSave } from "./utils/persistence";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
 import { TabBar, type TabBarItem } from "./components/TabBar";
+import { TabContextMenu } from "./components/TabContextMenu";
 import {
   findTabByPath,
   nextActiveAfterClose,
@@ -1687,6 +1688,45 @@ function AppContent() {
     commitTabs(moveTab(tabsRef.current, fromIndex, toIndex));
   }, [commitTabs]);
 
+  // Close a set of tabs, but only the CLEAN ones — dirty tabs are kept open
+  // (never silently discarded) and reported. Used by the context-menu
+  // "Close others / Close to the right" actions. TABS-12.
+  const closeManyClean = useCallback((ids: string[]) => {
+    let keptDirty = 0;
+    for (const id of ids) {
+      const t = tabsRef.current.find((x) => x.id === id);
+      if (!t) continue;
+      const dirty = id === activeTabIdRef.current
+        ? liveRef.current.content !== liveRef.current.originalContent
+        : t.content !== t.originalContent;
+      if (dirty) { keptDirty++; continue; }
+      finalizeCloseTab(id);
+    }
+    if (keptDirty > 0) {
+      showToast(`Kept ${keptDirty} unsaved tab${keptDirty > 1 ? "s" : ""} open`, "info");
+    }
+  }, [finalizeCloseTab, showToast]);
+
+  const handleTabMenuAction = useCallback((action: "closeOthers" | "closeRight", id: string) => {
+    const list = tabsRef.current;
+    if (action === "closeOthers") {
+      closeManyClean(list.filter((t) => t.id !== id).map((t) => t.id));
+    } else {
+      const idx = list.findIndex((t) => t.id === id);
+      if (idx >= 0) closeManyClean(list.slice(idx + 1).map((t) => t.id));
+    }
+    // Keep the anchor tab focused if it survived.
+    if (tabsRef.current.some((t) => t.id === id) && id !== activeTabIdRef.current) {
+      activateTab(id);
+    }
+  }, [closeManyClean, activateTab]);
+
+  // Right-click menu on a tab: {id, x, y} while open. TABS-12.
+  const [tabMenu, setTabMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const handleTabContextMenu = useCallback((id: string, x: number, y: number) => {
+    setTabMenu({ id, x, y });
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
       <TitleBar
@@ -1714,6 +1754,7 @@ function AppContent() {
           onClose={closeTab}
           onNewTab={handleNewFile}
           onReorder={handleReorderTab}
+          onContextMenu={handleTabContextMenu}
         />
       )}
 
@@ -1993,6 +2034,36 @@ function AppContent() {
       {showTour && hasFile && !booting && (
         <Tour onClose={handleCloseTour} onSetMode={setMode} />
       )}
+
+      {/* Tab right-click menu. TABS-12. */}
+      {tabMenu && (() => {
+        const menuTab = tabs.find((t) => t.id === tabMenu.id);
+        const isActiveMenu = tabMenu.id === activeTabId;
+        const menuPath = isActiveMenu ? filePath : (menuTab?.filePath ?? null);
+        const idx = tabs.findIndex((t) => t.id === tabMenu.id);
+        const hasRight = idx >= 0 && idx < tabs.length - 1;
+        const others = tabs.length > 1;
+        return (
+          <TabContextMenu
+            x={tabMenu.x}
+            y={tabMenu.y}
+            onClose={() => setTabMenu(null)}
+            actions={[
+              { label: "Close", icon: "close", onClick: () => closeTab(tabMenu.id) },
+              { label: "Close others", icon: "close_fullscreen", disabled: !others, onClick: () => handleTabMenuAction("closeOthers", tabMenu.id) },
+              { label: "Close to the right", icon: "keyboard_tab", disabled: !hasRight, onClick: () => handleTabMenuAction("closeRight", tabMenu.id) },
+              {
+                label: "Copy path", icon: "content_copy", dividerBefore: true, disabled: !menuPath,
+                onClick: () => { if (menuPath) navigator.clipboard.writeText(menuPath).then(() => showToast("File path copied", "success"), () => showToast("Could not copy path", "error")); },
+              },
+              {
+                label: "Reveal in folder", icon: "folder_open", disabled: !menuPath,
+                onClick: () => { if (menuPath) revealItemInDir(menuPath).catch(() => showToast("Could not reveal file", "error")); },
+              },
+            ]}
+          />
+        );
+      })()}
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
