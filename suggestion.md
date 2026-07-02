@@ -4,6 +4,35 @@ A full review of the codebase (v1.0.44) with a focus on robustness, user friendl
 
 ---
 
+## Implementation status (branch `feat/tabs-robustness`)
+
+Most of this document has now been implemented and committed on the `feat/tabs-robustness` branch (each item its own commit, all with `tsc` + tests + production build passing; Rust changes have `cargo test` passing).
+
+**Done:**
+
+- **1.1** Undo isolation on tab switch — history reset via `docSwapId` + a history compartment (TABS-03).
+- **1.2** Window close prompts for ALL dirty tabs, with a multi-file Save all / Discard all dialog (TABS-04).
+- **1.3** Background-tab autosave + focus-time external-change detection for every open tab (TABS-06).
+- **1.4** Save / Discard / Cancel dialog on dirty tab close (TABS-05).
+- **1.5** Full multi-tab session restore, replacing single-file `lastFile` (TABS-07).
+- **2.2** Ctrl+Tab / Ctrl+Shift+Tab / Ctrl+PageUp-Down / Ctrl+1-9 / Ctrl+Shift+T reopen-closed (TABS-15/16).
+- **2.3** Numbered/reused untitled buffers + duplicate-name folder disambiguation (TABS-08/09).
+- **2.4** Tab bar overflow: wheel-scroll, scroll-active-into-view, min-width (TABS-13).
+- **2.5** Keyboard a11y for the tablist (roving tabindex, arrows, Home/End, Delete) (TABS-14).
+- **2.2 (4-5)** Drag-reorder (TABS-10) + right-click context menu (TABS-12).
+- **2.6** Palette "Open tabs" section + Close-tab command, multi-file open/drop, search-jump race fix (TABS-11, SEARCH-01).
+- **3.3 / 3.5** EOL preservation + fsync-before-rename in `save_file` (EOL-01, SAVE-02).
+- **4.1** Native window title sync (TITLE-01).
+- **4.2 / 4.4 / 6.4** Recents cap raised to 25, `.txt` open/drop support, `errMessage` helper (TXT-01, QUALITY-02).
+
+**Intentionally deferred (need a running Tauri app to verify — not safe to ship untested on real documents):**
+
+- **3.1** Native file watcher (`notify` crate) — new Rust dependency + watch-thread lifecycle + reload-loop risk. The focus-time detection (1.3) covers the common cases in the meantime.
+- **3.2** Crash-recovery drafts — fs-permission/quota-sensitive storage + a recovery UI + draft/tab reconciliation. Deserves its own design pass with the app running.
+- **2.2 (6)** Tab pinning, **3.4** encoding tolerance (UTF-16/BOM), **3.6** settings-in-app-data, **5.x** per-block preview memoization, **6.1** App.tsx split, **6.3** typed event bus — larger or lower-priority; left as follow-ups.
+
+---
+
 ## 1. Critical: bugs and data-loss risks in the current tab implementation
 
 These are real defects in what shipped, not polish. Fix these before adding any new tab features.
