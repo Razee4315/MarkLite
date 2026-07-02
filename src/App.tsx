@@ -698,6 +698,70 @@ function AppContent() {
     onError: handleAutosaveError,
   });
 
+  // Autosave dirty BACKGROUND tabs too (useAutosave above only covers the active
+  // buffer). A background tab's content only changes when you switch away from
+  // it, so this effect keys on `tabs` — it never re-runs on active-tab keystrokes
+  // (those live in `content`, not the snapshot). Saved tabs get their
+  // originalContent/knownMtime updated, which clears them from the dirty set so
+  // the effect settles without looping. TABS-06.
+  useEffect(() => {
+    if (!autoSaveEnabled) return;
+    const activeId = activeTabIdRef.current;
+    const dirtyBg = tabs.filter(
+      (t) => t.id !== activeId && t.filePath && t.content !== t.originalContent
+    );
+    if (dirtyBg.length === 0) return;
+    const timer = window.setTimeout(async () => {
+      for (const t of dirtyBg) {
+        try {
+          const mtime = await invoke<number>("save_file", { path: t.filePath!, content: t.content });
+          // Only mark saved if the snapshot still holds exactly what we wrote.
+          commitTabs(
+            tabsRef.current.map((x) =>
+              x.id === t.id && x.content === t.content
+                ? { ...x, originalContent: t.content, knownMtime: mtime }
+                : x
+            )
+          );
+        } catch {/* best-effort; the active-tab path surfaces disk errors */}
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [tabs, autoSaveEnabled, commitTabs]);
+
+  // External-change detection for BACKGROUND tabs. The active tab is handled by
+  // useExternalChangeWatcher; on window focus we also stat every other open
+  // file. A clean background tab silently refreshes its snapshot; a dirty one
+  // gets a one-time conflict warning (its knownMtime is advanced so it won't
+  // re-toast every focus). TABS-06.
+  useEffect(() => {
+    const onFocus = async () => {
+      const activeId = activeTabIdRef.current;
+      const bg = tabsRef.current.filter((t) => t.id !== activeId && t.filePath);
+      for (const t of bg) {
+        try {
+          const info = await invoke<{ modified: number }>("get_file_info", { path: t.filePath! });
+          if (!(t.knownMtime > 0 && info.modified > t.knownMtime)) continue;
+          if (t.content === t.originalContent) {
+            const fd = await invoke<FileData>("read_file", { path: t.filePath! });
+            commitTabs(
+              tabsRef.current.map((x) =>
+                x.id === t.id
+                  ? { ...x, content: fd.content, originalContent: fd.content, fileSize: fd.size, knownMtime: fd.modified ?? 0 }
+                  : x
+              )
+            );
+          } else {
+            commitTabs(tabsRef.current.map((x) => (x.id === t.id ? { ...x, knownMtime: info.modified } : x)));
+            showToast(`"${t.fileName}" changed on disk in a background tab. Saving it will overwrite those changes.`, "error");
+          }
+        } catch {/* file gone / stat failed — surfaced when that tab is saved */}
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [commitTabs, showToast]);
+
   // Open a file: if it's already in a tab, just switch to it (preserving any
   // unsaved edits there); otherwise load it into a new tab. With tabs there's no
   // need to prompt before opening — the current file stays open in its own tab.
