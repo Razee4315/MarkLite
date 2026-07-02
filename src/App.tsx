@@ -306,6 +306,29 @@ function AppContent() {
   }, []);
   const newTabId = useCallback(() => `tab-${++tabSeqRef.current}`, []);
 
+  // Every open tab that has unsaved changes, reading the ACTIVE tab from live
+  // state (its stored snapshot lags until the next switch) and the rest from
+  // their snapshots. Used by the window-close guard so background tabs can't be
+  // discarded silently. TABS-04.
+  const collectDirtyTabs = useCallback(() => {
+    const live = liveRef.current;
+    const activeId = activeTabIdRef.current;
+    return tabsRef.current
+      .map((t) => {
+        const isActive = t.id === activeId;
+        return {
+          id: t.id,
+          filePath: isActive ? live.filePath : t.filePath,
+          fileName: isActive ? (live.fileName ?? "Untitled.md") : t.fileName,
+          content: isActive ? live.content : t.content,
+          dirty: isActive
+            ? live.content !== live.originalContent
+            : t.content !== t.originalContent,
+        };
+      })
+      .filter((t) => t.dirty);
+  }, []);
+
   // Write the live editor state back into the active tab's entry.
   const snapshotActiveTab = useCallback(() => {
     const id = activeTabIdRef.current;
@@ -579,7 +602,9 @@ function AppContent() {
     try {
       Window.getCurrent()
         .onCloseRequested((event) => {
-          if (contentRef.current !== originalContentRef.current) {
+          // Guard ALL tabs, not just the active one — a dirty background tab used
+          // to be discarded silently on Alt+F4 / taskbar close. TABS-04.
+          if (collectDirtyTabs().length > 0) {
             event.preventDefault();
             setShowUnsavedBeforeClose(true);
           }
@@ -594,6 +619,8 @@ function AppContent() {
       mounted = false;
       unlisten?.();
     };
+    // Registered once; collectDirtyTabs is stable (reads refs).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Close-dialog handlers. destroy() skips the close-requested event, so we
@@ -602,33 +629,30 @@ function AppContent() {
     Window.getCurrent().destroy().catch(() => {/* browser dev mode */});
   }, []);
 
+  // Save EVERY dirty tab, then close. An untitled tab prompts for a location;
+  // cancelling that (or any failed save) aborts the close so nothing is lost. TABS-04.
   const handleSaveAndCloseWindow = useCallback(async () => {
     setShowUnsavedBeforeClose(false);
-    const path = filePathRef.current;
-    if (path) {
+    for (const t of collectDirtyTabs()) {
+      let path = t.filePath;
+      if (!path) {
+        const selected = await save({
+          filters: [{ name: "Markdown", extensions: ["md"] }],
+          defaultPath: t.fileName,
+        });
+        if (!selected) return; // cancelled a save-as → keep the app open
+        path = selected;
+      }
       try {
-        await invoke("save_file", { path, content: contentRef.current });
+        await invoke("save_file", { path, content: t.content });
       } catch (err) {
         const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
-        showToast(msg || "Failed to save file", "error");
+        showToast(msg || `Failed to save ${t.fileName}`, "error");
         return; // don't close on a failed save — the user would lose the buffer
-      }
-    } else {
-      // Untitled buffer: prompt for a location; cancel keeps the app open.
-      const selected = await save({
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-        defaultPath: fileName ?? undefined,
-      });
-      if (!selected) return;
-      try {
-        await invoke("save_file", { path: selected, content: contentRef.current });
-      } catch {
-        showToast("Failed to save file", "error");
-        return;
       }
     }
     forceCloseWindow();
-  }, [fileName, forceCloseWindow, showToast]);
+  }, [collectDirtyTabs, forceCloseWindow, showToast]);
 
   const handleDiscardAndCloseWindow = useCallback(() => {
     setShowUnsavedBeforeClose(false);
@@ -1637,6 +1661,7 @@ function AppContent() {
             onClose={() => setShowUnsavedBeforeClose(false)}
             onDiscard={handleDiscardAndCloseWindow}
             onSave={handleSaveAndCloseWindow}
+            dirtyNames={tabBarItems.filter((t) => t.dirty).map((t) => t.name)}
           />
         </Suspense>
       )}
