@@ -233,6 +233,15 @@ function AppContent() {
   // "Has a buffer" — true once a file is opened OR a blank Untitled buffer is started
   const hasFile = filePath !== null || fileName !== null;
 
+  // Keep the native window title (taskbar / Alt-Tab) in step with the active
+  // file and its dirty state, so two Paperling windows are distinguishable and
+  // a leading bullet flags unsaved work. Keyed on the dirty BOOLEAN (not raw
+  // content) so it doesn't fire an IPC call on every keystroke. TITLE-01.
+  useEffect(() => {
+    const title = fileName ? `${isDirty ? "• " : ""}${fileName} — Paperling` : "Paperling";
+    Window.getCurrent().setTitle(title).catch(() => {/* browser dev mode */});
+  }, [fileName, isDirty]);
+
   // First-run welcome tour: auto-start the first time a buffer is on screen.
   // The tour anchors to elements (mode toggle, editor panes) that only exist
   // once a file is open, so it can't run over the WelcomeScreen.
