@@ -55,6 +55,50 @@ pub struct FileData {
     pub modified: u64,
 }
 
+/// Line-ending convention of a file.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Eol {
+    Lf,
+    Crlf,
+}
+
+/// Detect a file's dominant line ending by reading just its first chunk and
+/// inspecting the first newline. `\r\n` → Crlf, a bare `\n` → Lf, and a file with
+/// no newline at all (or that can't be read) falls back to Lf. Cheap: we never
+/// read more than the first 64 KB regardless of file size. EOL-01.
+async fn detect_file_eol(path: &str) -> Eol {
+    use tokio::io::AsyncReadExt;
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(f) => f,
+        Err(_) => return Eol::Lf,
+    };
+    let mut buf = vec![0u8; 64 * 1024];
+    let n = match file.read(&mut buf).await {
+        Ok(n) => n,
+        Err(_) => return Eol::Lf,
+    };
+    for i in 0..n {
+        if buf[i] == b'\n' {
+            return if i > 0 && buf[i - 1] == b'\r' { Eol::Crlf } else { Eol::Lf };
+        }
+    }
+    Eol::Lf
+}
+
+/// Re-apply a file's line ending to editor content (which CodeMirror always
+/// normalises to `\n`). We first collapse any stray `\r\n`/`\r` to `\n` so a
+/// CRLF target can't produce `\r\r\n`. EOL-01.
+fn apply_eol(content: &str, eol: Eol) -> String {
+    if eol == Eol::Lf && !content.contains('\r') {
+        return content.to_string();
+    }
+    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
+    match eol {
+        Eol::Lf => normalized,
+        Eol::Crlf => normalized.replace('\n', "\r\n"),
+    }
+}
+
 /// Last-modified time in ms since the Unix epoch (0 when unavailable).
 fn mtime_ms(metadata: &std::fs::Metadata) -> u64 {
     metadata
@@ -132,13 +176,41 @@ pub async fn save_file(path: String, content: String) -> Result<u64, CommandErro
         )));
     }
 
+    // Preserve the on-disk file's line ending. The editor hands us `\n`-only
+    // content; if the existing file uses CRLF we write CRLF back, so opening and
+    // saving a Windows file doesn't rewrite every line and produce a noisy diff.
+    // A brand-new file (save-as / new note) has no existing EOL, so we keep the
+    // editor's LF. EOL-01.
+    let file_exists = PathBuf::from(&path).exists();
+    let content = if file_exists {
+        apply_eol(&content, detect_file_eol(&path).await)
+    } else {
+        content
+    };
+
     // Same directory as the target so the rename never crosses a filesystem
     // boundary (cross-device renames aren't atomic and can fail outright).
     let tmp = format!("{}.{}.paperling-tmp", path, std::process::id());
 
-    tokio::fs::write(&tmp, &content)
-        .await
-        .map_err(|e| CommandError::WriteError(e.to_string()))?;
+    // Write, then fsync BEFORE the rename. Without the sync, a crash right after
+    // the rename can leave the (renamed) file present but empty/partial on disk,
+    // because the directory entry can reach disk before the data does. An editor
+    // whose whole job is not losing words should pay this cost. SAVE-02.
+    {
+        use tokio::io::AsyncWriteExt;
+        let mut f = match tokio::fs::File::create(&tmp).await {
+            Ok(f) => f,
+            Err(e) => return Err(CommandError::WriteError(e.to_string())),
+        };
+        if let Err(e) = f.write_all(content.as_bytes()).await {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(CommandError::WriteError(e.to_string()));
+        }
+        if let Err(e) = f.sync_all().await {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(CommandError::WriteError(e.to_string()));
+        }
+    }
 
     if let Err(e) = tokio::fs::rename(&tmp, &path).await {
         // Don't leave the temp file behind on failure.
@@ -597,7 +669,7 @@ pub fn set_ai_key(key: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_image_name, save_file, search_markdown_tree, validate_rel_path};
+    use super::{apply_eol, sanitize_image_name, save_file, search_markdown_tree, validate_rel_path, Eol};
 
     #[test]
     fn search_finds_matches_recursively_and_case_insensitively() {
@@ -673,6 +745,43 @@ mod tests {
                 .filter(|e| e.file_name().to_string_lossy().contains("paperling-tmp"))
                 .collect();
             assert!(leftovers.is_empty());
+
+            std::fs::remove_dir_all(&dir).ok();
+        });
+    }
+
+    #[test]
+    fn apply_eol_converts_and_normalizes() {
+        // LF stays LF.
+        assert_eq!(apply_eol("a\nb\nc", Eol::Lf), "a\nb\nc");
+        // LF content → CRLF on save.
+        assert_eq!(apply_eol("a\nb\nc", Eol::Crlf), "a\r\nb\r\nc");
+        // Never doubles up if some \r slipped in.
+        assert_eq!(apply_eol("a\r\nb", Eol::Crlf), "a\r\nb");
+        assert_eq!(apply_eol("a\r\nb", Eol::Lf), "a\nb");
+    }
+
+    #[test]
+    fn save_file_preserves_crlf_line_endings() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let dir = std::env::temp_dir().join(format!("paperling-eol-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("crlf.md").to_string_lossy().to_string();
+
+            // Seed a CRLF file, then "edit" it with LF-only content (as the editor
+            // would hand us) and confirm the CRLF convention survives the save.
+            std::fs::write(&path, "one\r\ntwo\r\n").unwrap();
+            save_file(path.clone(), "one\ntwo\nthree".into()).await.unwrap();
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "one\r\ntwo\r\nthree");
+
+            // A brand-new file keeps the editor's LF.
+            let lf_path = dir.join("new.md").to_string_lossy().to_string();
+            save_file(lf_path.clone(), "a\nb".into()).await.unwrap();
+            assert_eq!(std::fs::read_to_string(&lf_path).unwrap(), "a\nb");
 
             std::fs::remove_dir_all(&dir).ok();
         });
