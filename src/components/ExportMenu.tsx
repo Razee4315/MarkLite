@@ -119,7 +119,7 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                     </>
                 ) : (
                     <>
-                        <span className="material-symbols-outlined text-[16px]">download</span>
+                        <span className="material-symbols-outlined text-[16px]">ios_share</span>
                         <span className="hidden sm:inline">Export</span>
                     </>
                 )}

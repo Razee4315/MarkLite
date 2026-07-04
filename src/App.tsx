@@ -112,6 +112,9 @@ import {
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
 import { PreviewFindBar } from "./components/PreviewFindBar";
+// The interactive feature guide, shipped as raw markdown so it opens as a real,
+// editable document (offered at the end of the welcome tour / from the palette).
+import tutorialMarkdown from "./assets/tutorial.md?raw";
 
 interface FileData {
   path: string;
@@ -1129,6 +1132,47 @@ function AppContent() {
     setMode("code");
   }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, activateTab]);
 
+  // Open the interactive feature guide (offered at the end of the tour and from
+  // the command palette). It opens as a real, editable document so users can
+  // poke at live math, diagrams and tables. Reuses a pristine empty untitled
+  // buffer when one exists (e.g. right after replay-tour spawns a blank one);
+  // otherwise opens a new tab so the current file is left untouched. Split view
+  // shows the markdown and the rendered result side by side.
+  const handleOpenTutorial = useCallback(() => {
+    const name = "Welcome to Paperling.md";
+    const bytes = new TextEncoder().encode(tutorialMarkdown).length;
+
+    // Snapshot first so the active tab's latest edits are preserved even when we
+    // switch to (or reuse) a different tab. snapshotActiveTab updates tabsRef
+    // synchronously, so the reuse lookup below sees the up-to-date list.
+    snapshotActiveTab();
+    bumpDocSwap(); // fresh document → reset the editor's undo history. TABS-03.
+
+    const reusable = findReusableUntitledTab(tabsRef.current);
+    const id = reusable ? reusable.id : newTabId();
+
+    const entry: TabState = {
+      id, filePath: null, fileName: name,
+      content: tutorialMarkdown, originalContent: tutorialMarkdown,
+      fileSize: bytes, knownMtime: 0,
+    };
+    commitTabs(
+      reusable
+        ? tabsRef.current.map((t) => (t.id === id ? entry : t))
+        : [...tabsRef.current, entry]
+    );
+    setActiveTab(id);
+    setProposedDoc(null);
+    setFilePath(null);
+    setFileName(name);
+    setContent(tutorialMarkdown);
+    setOriginalContent(tutorialMarkdown);
+    setFileSize(bytes);
+    knownMtimeRef.current = 0;
+    setLastFile(null);
+    setMode("split");
+  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
+
   // "Replay the welcome tour" from Settings → About. The tour spotlights
   // editor chrome, so make sure a buffer exists before showing it.
   useEffect(() => {
@@ -1611,6 +1655,14 @@ function AppContent() {
         setShowTour(true);
       },
     });
+    items.push({
+      id: "help.guide",
+      label: "Open the interactive guide",
+      section: "Help",
+      icon: "menu_book",
+      keywords: "tutorial guide features demo sample example math diagram mermaid learn",
+      run: handleOpenTutorial,
+    });
 
     // === Recent files ===
     const recents = getRecentFiles();
@@ -1634,7 +1686,7 @@ function AppContent() {
     // letting `content` flow into this useMemo would rebuild every keystroke
     // (post-debounce) for no reason. Headings are computed below in a
     // separate hook that's gated on the palette actually being open.
-    handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
+    handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs, handleOpenTutorial,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, toggleFullscreen,
     loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
@@ -2076,7 +2128,7 @@ function AppContent() {
       {/* First-run welcome tour. Gated on hasFile because every spotlight
           target (editor panes, mode toggle) only exists with an open buffer. */}
       {showTour && hasFile && !booting && (
-        <Tour onClose={handleCloseTour} onSetMode={setMode} />
+        <Tour onClose={handleCloseTour} onSetMode={setMode} onOpenTutorial={handleOpenTutorial} />
       )}
 
       {/* Tab right-click menu. TABS-12. */}

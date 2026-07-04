@@ -51,6 +51,7 @@ function StatusBarImpl({
             <div className="flex items-center gap-1">
                 {/* File Explorer Toggle */}
                 <button
+                    data-tour="file-explorer"
                     onClick={onToggleFileExplorer}
                     title="Files (Ctrl+Shift+E)"
                     aria-label={showFileExplorer ? "Close file explorer" : "Open file explorer"}
@@ -67,6 +68,7 @@ function StatusBarImpl({
 
                 {/* TOC Toggle */}
                 <button
+                    data-tour="toc"
                     onClick={onToggleTOC}
                     title="Table of Contents (Ctrl+Shift+O)"
                     aria-label={showTOC ? "Close table of contents" : "Open table of contents"}

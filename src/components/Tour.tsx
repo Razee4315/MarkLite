@@ -4,14 +4,18 @@ import mascotWave from "../assets/mascot/mascot-wave.png";
 import mascotWrite from "../assets/mascot/mascot-write.png";
 import mascotPointRight from "../assets/mascot/mascot-point-right.png";
 import mascotThink from "../assets/mascot/mascot-think.png";
-import mascotCelebrate from "../assets/mascot/mascot-celebrate.png";
 import iconPalette from "../assets/mascot/icon-command-palette.png";
+import iconFolder from "../assets/mascot/icon-folder.png";
+import iconBook from "../assets/mascot/icon-book.png";
+import mascotRocket from "../assets/mascot/mascot-rocket.png";
 
 interface TourProps {
     /** Called when the tour finishes or is skipped. Caller persists the done flag. */
     onClose: () => void;
     /** Lets the editor step switch to split view so both panes are visible. */
     onSetMode: (mode: ViewMode) => void;
+    /** Opens the interactive feature guide (offered on the final step). */
+    onOpenTutorial?: () => void;
 }
 
 interface Step {
@@ -19,7 +23,7 @@ interface Step {
     /** CSS selector of the element to spotlight. Omit for a centered card over a full dim. */
     target?: string;
     /** Where the card sits relative to the (padded) target rect. */
-    placement: "center" | "left-of" | "below";
+    placement: "center" | "left-of" | "below" | "above";
     image: string;
     imageAlt: string;
     /** Tailwind height class for the mascot image. */
@@ -47,6 +51,26 @@ const STEPS: Step[] = [
         imageClass: "h-28",
         title: "Your editor",
         body: "Write markdown on the left and watch it render live on the right. Just start typing.",
+    },
+    {
+        id: "explorer",
+        target: "[data-tour='file-explorer']",
+        placement: "above",
+        image: iconFolder,
+        imageAlt: "A folder of paper files",
+        imageClass: "h-20",
+        title: "Your folder, one click away",
+        body: "This opens the file explorer. It lists every markdown file next to the one you're editing, so you can jump between notes without leaving Paperling. (Ctrl+Shift+E)",
+    },
+    {
+        id: "toc",
+        target: "[data-tour='toc']",
+        placement: "above",
+        image: iconBook,
+        imageAlt: "An open book outline",
+        imageClass: "h-20",
+        title: "Outline of your doc",
+        body: "This is the table of contents. Every heading you write shows up here, and it tracks where you are as you scroll. Click any heading to jump straight to it. (Ctrl+Shift+O)",
     },
     {
         id: "modes",
@@ -80,11 +104,11 @@ const STEPS: Step[] = [
     {
         id: "done",
         placement: "center",
-        image: mascotCelebrate,
-        imageAlt: "Paperling mascot celebrating with confetti",
+        image: mascotRocket,
+        imageAlt: "Paperling mascot on a rocket",
         imageClass: "h-32",
         title: "That's it, you're ready!",
-        body: "Replay this tour anytime from the command palette. Happy writing!",
+        body: "Want to see it all in action? Open the interactive guide: a real document with live math, diagrams, tables and more, all ready for you to poke at. You can also replay this tour anytime from the command palette.",
     },
 ];
 
@@ -96,7 +120,7 @@ const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min)
 
 interface SpotRect { left: number; top: number; width: number; height: number }
 
-export function Tour({ onClose, onSetMode }: TourProps) {
+export function Tour({ onClose, onSetMode, onOpenTutorial }: TourProps) {
     const [stepIndex, setStepIndex] = useState(0);
     const [rect, setRect] = useState<SpotRect | null>(null);
     const [cardPos, setCardPos] = useState<{ left: number; top: number } | null>(null);
@@ -158,6 +182,11 @@ export function Tour({ onClose, onSetMode }: TourProps) {
         if (step.placement === "left-of") {
             left = rect.left - cw - CARD_GAP;
             top = rect.top + rect.height / 2 - ch / 2;
+        } else if (step.placement === "above") {
+            // above, left-aligned to the target (used for the status-bar toggles
+            // at the bottom edge, where "below" would fall off screen)
+            left = rect.left;
+            top = rect.top - ch - CARD_GAP;
         } else {
             // below, right-aligned to the target (used for the titlebar gear)
             left = rect.left + rect.width - cw;
@@ -169,10 +198,17 @@ export function Tour({ onClose, onSetMode }: TourProps) {
         });
     }, [rect, step.placement, stepIndex]);
 
+    // Final CTA: open the interactive guide, then close the tour. Enter/→ on the
+    // last step run this too, so the keyboard path matches the primary button.
+    const finish = useCallback(() => {
+        onOpenTutorial?.();
+        onClose();
+    }, [onOpenTutorial, onClose]);
+
     const advance = useCallback(() => {
-        if (isLast) onClose();
+        if (isLast) finish();
         else setStepIndex((i) => i + 1);
-    }, [isLast, onClose]);
+    }, [isLast, finish]);
 
     const back = useCallback(() => {
         setStepIndex((i) => Math.max(0, i - 1));
@@ -261,16 +297,12 @@ export function Tour({ onClose, onSetMode }: TourProps) {
                     </div>
 
                     <div className="w-full flex items-center justify-between gap-2">
-                        {isLast ? (
-                            <span aria-hidden="true" />
-                        ) : (
-                            <button
-                                onClick={onClose}
-                                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors px-2 py-1.5 rounded"
-                            >
-                                Skip tour
-                            </button>
-                        )}
+                        <button
+                            onClick={onClose}
+                            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors px-2 py-1.5 rounded"
+                        >
+                            {isLast ? "Just start writing" : "Skip tour"}
+                        </button>
                         <div className="flex items-center gap-2">
                             {!isFirst && (
                                 <button
@@ -285,7 +317,7 @@ export function Tour({ onClose, onSetMode }: TourProps) {
                                 onClick={advance}
                                 className="btn-press text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] transition-all duration-200"
                             >
-                                {isLast ? "Start writing" : isFirst ? "Show me around" : "Next"}
+                                {isLast ? "Open the guide" : isFirst ? "Show me around" : "Next"}
                             </button>
                         </div>
                     </div>
