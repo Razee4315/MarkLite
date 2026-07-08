@@ -126,7 +126,9 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ''
+            args: '--target x86_64-pc-windows-msvc'
+          - platform: windows-11-arm
+            args: '--target aarch64-pc-windows-msvc'
           - platform: ubuntu-24.04
             args: ''
           - platform: macos-latest
