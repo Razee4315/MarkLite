@@ -79,7 +79,11 @@ async fn detect_file_eol(path: &str) -> Eol {
     };
     for i in 0..n {
         if buf[i] == b'\n' {
-            return if i > 0 && buf[i - 1] == b'\r' { Eol::Crlf } else { Eol::Lf };
+            return if i > 0 && buf[i - 1] == b'\r' {
+                Eol::Crlf
+            } else {
+                Eol::Lf
+            };
         }
     }
     Eol::Lf
@@ -136,13 +140,13 @@ pub async fn read_file(path: String) -> Result<FileData, CommandError> {
     let content = tokio::fs::read_to_string(&file_path)
         .await
         .map_err(|e| CommandError::ReadError(e.to_string()))?;
-    
+
     let name = file_path
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Untitled".to_string());
-    
+
     let line_count = content.lines().count();
 
     Ok(FileData {
@@ -228,21 +232,21 @@ pub async fn save_file(path: String, content: String) -> Result<u64, CommandErro
 #[tauri::command]
 pub async fn get_file_info(path: String) -> Result<FileInfo, CommandError> {
     let file_path = PathBuf::from(&path);
-    
+
     if !file_path.exists() {
         return Err(CommandError::FileNotFound(path));
     }
-    
+
     let metadata = tokio::fs::metadata(&file_path)
         .await
         .map_err(|e| CommandError::ReadError(e.to_string()))?;
-    
+
     let name = file_path
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Untitled".to_string());
-    
+
     Ok(FileInfo {
         path,
         name,
@@ -265,51 +269,75 @@ pub struct FileInfo {
 pub struct FileEntry {
     pub name: String,
     pub path: String,
+    pub is_dir: bool,
 }
 
 /// List all markdown files in a directory
 #[tauri::command]
 pub async fn list_directory_files(directory: String) -> Result<Vec<FileEntry>, CommandError> {
     let dir_path = PathBuf::from(&directory);
-    
+
     if !dir_path.exists() {
         return Err(CommandError::FileNotFound(directory));
     }
-    
+
     if !dir_path.is_dir() {
-        return Err(CommandError::ReadError("Path is not a directory".to_string()));
+        return Err(CommandError::ReadError(
+            "Path is not a directory".to_string(),
+        ));
     }
-    
+
     let mut entries = Vec::new();
-    
+
     let mut read_dir = tokio::fs::read_dir(&dir_path)
         .await
         .map_err(|e| CommandError::ReadError(e.to_string()))?;
-    
-    while let Some(entry) = read_dir.next_entry().await.map_err(|e| CommandError::ReadError(e.to_string()))? {
+
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?
+    {
         let path = entry.path();
-        
-        // Only include .md files
-        if path.is_file() {
+
+        let entry_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        // Skip hidden files and directories (starting with a dot)
+        if entry_name.starts_with('.') {
+            continue;
+        }
+
+        if path.is_dir() {
+            // Add directories
+            entries.push(FileEntry {
+                name: entry_name,
+                path: path.to_string_lossy().to_string(),
+                is_dir: true,
+            });
+        } else if path.is_file() {
+            // Only include .md files
             if let Some(ext) = path.extension() {
                 if ext == "md" || ext == "markdown" {
-                    let name = path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
-                    
                     entries.push(FileEntry {
-                        name,
+                        name: entry_name,
                         path: path.to_string_lossy().to_string(),
+                        is_dir: false,
                     });
                 }
             }
         }
     }
-    
-    // Sort alphabetically, case-insensitively.
-    entries.sort_by_key(|a| a.name.to_lowercase());
+
+    // Sort: Directories first, then alphabetically case-insensitive
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
 
     Ok(entries)
 }
@@ -368,7 +396,11 @@ pub async fn search_files(
 /// it can be unit-tested without a Tauri/async harness. `query` is assumed
 /// non-empty and already trimmed.
 fn search_markdown_tree(root: PathBuf, query: &str, case_sensitive: bool) -> Vec<FileSearchResult> {
-    let needle = if case_sensitive { query.to_string() } else { query.to_lowercase() };
+    let needle = if case_sensitive {
+        query.to_string()
+    } else {
+        query.to_lowercase()
+    };
     let mut results: Vec<FileSearchResult> = Vec::new();
     let mut files_scanned = 0usize;
     let mut stack = vec![root];
@@ -474,17 +506,23 @@ fn search_markdown_tree(root: PathBuf, query: &str, case_sensitive: bool) -> Vec
 fn sanitize_image_name(name: &str) -> Result<String, CommandError> {
     let trimmed = name.trim();
     if trimmed.is_empty() || trimmed == "." || trimmed == ".." {
-        return Err(CommandError::WriteError("Invalid image filename".to_string()));
+        return Err(CommandError::WriteError(
+            "Invalid image filename".to_string(),
+        ));
     }
     if trimmed.contains('\0') {
-        return Err(CommandError::WriteError("Invalid image filename".to_string()));
+        return Err(CommandError::WriteError(
+            "Invalid image filename".to_string(),
+        ));
     }
     // Reject both path separators explicitly, on every platform. On Unix a
     // backslash is a legal filename character, so the Path::file_name() check
     // below would let a Windows-style "..\foo.png" traversal payload through;
     // rejecting separators up front keeps the behavior identical cross-platform.
     if trimmed.contains('/') || trimmed.contains('\\') {
-        return Err(CommandError::WriteError("Invalid image filename".to_string()));
+        return Err(CommandError::WriteError(
+            "Invalid image filename".to_string(),
+        ));
     }
     // Reject any path-like input — only a bare basename is allowed.
     let basename = std::path::Path::new(trimmed)
@@ -492,7 +530,9 @@ fn sanitize_image_name(name: &str) -> Result<String, CommandError> {
         .and_then(|s| s.to_str())
         .ok_or_else(|| CommandError::WriteError("Invalid image filename".to_string()))?;
     if basename != trimmed {
-        return Err(CommandError::WriteError("Invalid image filename".to_string()));
+        return Err(CommandError::WriteError(
+            "Invalid image filename".to_string(),
+        ));
     }
     // Enforce extension whitelist (case-insensitive). A name with no extension,
     // or one whose extension isn't a known image type, is rejected — this is
@@ -535,9 +575,9 @@ pub async fn save_image(
     // Create images subdirectory
     let images_dir = parent_dir.join("images");
     if !images_dir.exists() {
-        tokio::fs::create_dir_all(&images_dir)
-            .await
-            .map_err(|e| CommandError::WriteError(format!("Failed to create images directory: {}", e)))?;
+        tokio::fs::create_dir_all(&images_dir).await.map_err(|e| {
+            CommandError::WriteError(format!("Failed to create images directory: {}", e))
+        })?;
     }
 
     // Full path for the image (basename only, no traversal possible).
@@ -564,11 +604,15 @@ fn validate_rel_path(rel: &str) -> Result<(), CommandError> {
     // checks below would miss them.
     let b = rel.as_bytes();
     if b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':' {
-        return Err(CommandError::ReadError("Image path must be relative".to_string()));
+        return Err(CommandError::ReadError(
+            "Image path must be relative".to_string(),
+        ));
     }
     let p = std::path::Path::new(rel);
     if p.is_absolute() {
-        return Err(CommandError::ReadError("Image path must be relative".to_string()));
+        return Err(CommandError::ReadError(
+            "Image path must be relative".to_string(),
+        ));
     }
     for comp in p.components() {
         match comp {
@@ -669,7 +713,9 @@ pub fn set_ai_key(key: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_eol, sanitize_image_name, save_file, search_markdown_tree, validate_rel_path, Eol};
+    use super::{
+        apply_eol, sanitize_image_name, save_file, search_markdown_tree, validate_rel_path, Eol,
+    };
 
     #[test]
     fn search_finds_matches_recursively_and_case_insensitively() {
@@ -700,7 +746,8 @@ mod tests {
 
     #[test]
     fn search_skips_hidden_and_ignored_dirs() {
-        let dir = std::env::temp_dir().join(format!("paperling-search-skip-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("paperling-search-skip-{}", std::process::id()));
         let hidden = dir.join(".git");
         let modules = dir.join("node_modules");
         std::fs::create_dir_all(&hidden).unwrap();
@@ -775,8 +822,13 @@ mod tests {
             // Seed a CRLF file, then "edit" it with LF-only content (as the editor
             // would hand us) and confirm the CRLF convention survives the save.
             std::fs::write(&path, "one\r\ntwo\r\n").unwrap();
-            save_file(path.clone(), "one\ntwo\nthree".into()).await.unwrap();
-            assert_eq!(std::fs::read_to_string(&path).unwrap(), "one\r\ntwo\r\nthree");
+            save_file(path.clone(), "one\ntwo\nthree".into())
+                .await
+                .unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                "one\r\ntwo\r\nthree"
+            );
 
             // A brand-new file keeps the editor's LF.
             let lf_path = dir.join("new.md").to_string_lossy().to_string();
@@ -808,7 +860,10 @@ mod tests {
     #[test]
     fn accepts_basename() {
         assert_eq!(sanitize_image_name("foo.png").unwrap(), "foo.png");
-        assert_eq!(sanitize_image_name("image-1234-abc.jpg").unwrap(), "image-1234-abc.jpg");
+        assert_eq!(
+            sanitize_image_name("image-1234-abc.jpg").unwrap(),
+            "image-1234-abc.jpg"
+        );
     }
 
     #[test]

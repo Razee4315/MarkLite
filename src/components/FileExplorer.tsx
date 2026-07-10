@@ -7,6 +7,7 @@ import mascotShrug from "../assets/mascot/mascot-shrug.png";
 interface FileEntry {
     name: string;
     path: string;
+    is_dir: boolean;
 }
 
 interface FileExplorerProps {
@@ -25,6 +26,7 @@ export function FileExplorer({
     const [files, setFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [currentViewDir, setCurrentViewDir] = useState<string | null>(null);
     const panelRef = useRef<HTMLElement>(null);
 
     // Get directory from current file path
@@ -35,26 +37,33 @@ export function FileExplorer({
         return lastSlash > 0 ? filePath.substring(0, lastSlash) : null;
     };
 
+    // Initialize the view directory when opening the panel
     useEffect(() => {
-        if (isOpen && currentFilePath) {
+        if (isOpen && currentFilePath && !currentViewDir) {
             const directory = getDirectory(currentFilePath);
-            if (directory) {
-                loadFiles(directory);
-            }
+            setCurrentViewDir(directory);
+        } else if (!isOpen) {
+            // Reset view when closed so it snaps back to the active file next time
+            setCurrentViewDir(null); 
         }
     }, [isOpen, currentFilePath]);
+
+    // Load files whenever the currentViewDir changes
+    useEffect(() => {
+        if (isOpen && currentViewDir) {
+            loadFiles(currentViewDir);
+        }
+    }, [isOpen, currentViewDir]);
 
     // Refresh when the window regains focus — files may have been created or
     // deleted in another app while the explorer sat open. Mirrors App's
     // external-change-on-focus detection so the list never goes stale.
     useEffect(() => {
-        if (!isOpen) return;
-        const directory = getDirectory(currentFilePath);
-        if (!directory) return;
-        const onFocus = () => loadFiles(directory);
+        if (!isOpen || !currentViewDir) return;
+        const onFocus = () => loadFiles(currentViewDir);
         window.addEventListener("focus", onFocus);
         return () => window.removeEventListener("focus", onFocus);
-    }, [isOpen, currentFilePath]);
+    }, [isOpen, currentViewDir]);
 
     // Escape key to close and focus management + focus trap
     useEffect(() => {
@@ -93,14 +102,26 @@ export function FileExplorer({
         }
     };
 
-    const handleFileClick = (path: string) => {
-        onFileSelect(path);
-        onClose();
+    const handleEntryClick = (entry: FileEntry) => {
+        if (entry.is_dir) {
+            // Navigate into the folder
+            setCurrentViewDir(entry.path);
+        } else {
+            // Select the file and close
+            onFileSelect(entry.path);
+            onClose();
+        }
+    };
+    
+    const handleGoUp = () => {
+        if (currentViewDir) {
+            const parentDir = getDirectory(currentViewDir);
+            if (parentDir) setCurrentViewDir(parentDir);
+        }
     };
 
-    const directory = getDirectory(currentFilePath);
-    const directoryName = directory
-        ? directory.replace(/\\/g, "/").split("/").pop()
+    const directoryName = currentViewDir
+        ? currentViewDir.replace(/\\/g, "/").split("/").pop()
         : "Files";
 
     return (
@@ -109,20 +130,31 @@ export function FileExplorer({
             role="navigation"
             aria-label="File explorer"
             tabIndex={-1}
-            className={`fixed left-0 top-12 bottom-7 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200 ease-out ${isOpen ? "translate-x-0" : "-translate-x-full"
-                }`}
+            className={`fixed left-0 top-12 bottom-7 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200 ease-out ${
+                isOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
         >
             {/* Header */}
             <div className="h-10 shrink-0 px-4 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-titlebar)]">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] no-select">
+                    <button
+                        onClick={handleGoUp}
+                        aria-label="Go up one folder"
+                        title="Go up"
+                        className="btn-press flex items-center justify-center w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] transition-colors mr-1"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">
+                            arrow_upward
+                        </span>
+                    </button>
                     <span className="material-symbols-outlined text-[18px]">
                         folder_open
                     </span>
-                    <span className="truncate max-w-[180px]">{directoryName}</span>
+                    <span className="truncate max-w-[140px]" title={directoryName}>{directoryName}</span>
                 </div>
                 <div className="flex items-center gap-1">
                     <button
-                        onClick={() => { const d = getDirectory(currentFilePath); if (d) loadFiles(d); }}
+                        onClick={() => currentViewDir && loadFiles(currentViewDir)}
                         aria-label="Refresh file list"
                         title="Refresh"
                         className="btn-press flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
@@ -157,25 +189,26 @@ export function FileExplorer({
                 ) : files.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-3 py-10 text-sm text-[var(--text-secondary)]">
                         <img src={mascotCarry} alt="" aria-hidden="true" draggable={false} className="w-20 h-20 object-contain select-none opacity-90" />
-                        <span>No markdown files here</span>
+                        <span>Folder is empty</span>
                     </div>
                 ) : (
-                    <ul className="py-2" role="listbox" aria-label="Markdown files">
+                    <ul className="py-2" role="listbox" aria-label="Files and folders">
                         {files.map((file, index) => {
-                            const isActive = file.path === currentFilePath;
+                            const isActive = file.path === currentFilePath && !file.is_dir;
                             return (
                                 <li key={file.path} className="stagger-item" style={{ animationDelay: `${index * 0.03}s` }}>
                                     <button
-                                        onClick={() => handleFileClick(file.path)}
+                                        onClick={() => handleEntryClick(file)}
                                         role="option"
                                         aria-selected={isActive}
-                                        className={`btn-press w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors ${isActive
-                                            ? "bg-[var(--accent)] text-[var(--accent-text)]"
-                                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                                            }`}
+                                        className={`btn-press w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors ${
+                                            isActive
+                                                ? "bg-[var(--accent)] text-[var(--accent-text)]"
+                                                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                        }`}
                                     >
                                         <span className="material-symbols-outlined text-[16px]">
-                                            description
+                                            {file.is_dir ? "folder" : "description"}
                                         </span>
                                         <span className="truncate">{file.name}</span>
                                     </button>
@@ -186,5 +219,5 @@ export function FileExplorer({
                 )}
             </div>
         </aside>
-    );
+);
 }
