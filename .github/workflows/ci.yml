@@ -48,7 +48,10 @@ jobs:
           bun-version: latest
 
       - name: Install frontend dependencies
-        run: bun install
+        # --frozen-lockfile makes CI fail if bun.lock doesn't match package.json,
+        # so a PR can't silently swap or add dependencies without an obvious
+        # lockfile diff to review.
+        run: bun install --frozen-lockfile
 
       - name: Build frontend (tsc + vite)
         run: bun run build
@@ -65,3 +68,46 @@ jobs:
       - name: Test Rust
         working-directory: src-tauri
         run: cargo test
+
+  # ─── Supply-chain: Rust dependencies ──────────────────────────
+  # Fails the build on a known-vulnerable crate (RUSTSEC advisory), a banned
+  # crate, or a dependency pulled from anywhere other than crates.io. Config
+  # lives in src-tauri/deny.toml. Runs once on Linux (not per-platform) since
+  # it only reads Cargo.lock — it doesn't compile the project.
+  cargo-deny:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Check advisories, bans, and sources
+        run: cargo deny --manifest-path src-tauri/Cargo.toml check advisories bans sources
+
+  # ─── Supply-chain: known-vulnerability scan (npm + Cargo) ─────
+  # Scans every lockfile in the repo against the OSV database and fails on any
+  # package with a known vulnerability. Covers the frontend (package-lock.json)
+  # and Rust (Cargo.lock) in one pass.
+  #
+  # Tag verified against github.com/google/osv-scanner-action releases; Dependabot
+  # (github-actions ecosystem) will keep it current.
+  osv-scan:
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      # Report-only for now: the existing dependency tree already has known npm
+      # advisories, so blocking would fail every PR on pre-existing debt. Results
+      # still upload to the Security tab. Once the current vulns are cleaned up,
+      # set this to true to make it a hard gate on newly-introduced vulnerabilities.
+      fail-on-vuln: false
+      scan-args: |-
+        -r
+        ./

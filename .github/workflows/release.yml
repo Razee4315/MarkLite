@@ -165,7 +165,7 @@ jobs:
           bun-version: latest
 
       - name: Install frontend dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
