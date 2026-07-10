@@ -55,14 +55,14 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 
 Dark, Light, Paper, and Dracula.
 
-| Dark | Light | Paper |
-|:----:|:-----:|:-----:|
+|                                   Dark                                   |                                   Light                                    |                                   Paper                                    |
+| :----------------------------------------------------------------------: | :------------------------------------------------------------------------: | :------------------------------------------------------------------------: |
 | <img src="images/theme-dark.png" width="280" alt="Paperling Dark theme"> | <img src="images/theme-light.png" width="280" alt="Paperling Light theme"> | <img src="images/theme-paper.png" width="280" alt="Paperling Paper theme"> |
 
 ### File explorer &amp; command palette
 
-| File explorer | Command palette |
-|:-------------:|:---------------:|
+|                                          File explorer                                          |                                  Command palette                                   |
+| :---------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: |
 | <img src="images/file-explorer.png" width="420" alt="Paperling file explorer with reader mode"> | <img src="images/command-palette.png" width="420" alt="Paperling command palette"> |
 
 ## Features
@@ -116,7 +116,7 @@ Dark, Light, Paper, and Dracula.
 - **External-change detection** — reload or keep your version when the file changes outside the app
 - **Recent files** on the welcome screen — missing files marked
 - **Restore last opened file** on launch
-- **File Explorer** for the current folder
+- **File Explorer** with folder navigation
 - **Outline pane** that follows the cursor
 
 ### <img src="images/art/icon-theme-swatches.png" width="26" alt=""> Customization
@@ -137,15 +137,15 @@ Download the latest release from the [Releases](https://github.com/Razee4315/Pap
 
 ### Available Formats
 
-| Platform | Formats |
-|----------|---------|
+| Platform    | Formats                                    |
+| ----------- | ------------------------------------------ |
 | **Windows** | `.msi` installer · `.exe` (NSIS) installer |
-| **macOS** | `.dmg` (Apple Silicon) |
-| **Linux** | `.AppImage` · `.deb` · `.rpm` |
+| **macOS**   | `.dmg` (Apple Silicon)                     |
+| **Linux**   | `.AppImage` · `.deb` · `.rpm`              |
 
 > **Note:** builds aren't code-signed yet, so Windows SmartScreen or macOS
-> Gatekeeper may warn on first launch. On Windows choose *More info → Run anyway*;
-> on macOS right-click the app and choose *Open*. Auto-update packages are signed
+> Gatekeeper may warn on first launch. On Windows choose _More info → Run anyway_;
+> on macOS right-click the app and choose _Open_. Auto-update packages are signed
 > and verified before installing.
 
 ## Development
@@ -177,22 +177,22 @@ bun run tauri build
 
 A few essentials — press `?` inside the app for the full searchable list.
 
-| Action | Shortcut |
-|--------|----------|
-| Command palette | Ctrl+P |
-| Cheatsheet | ? |
-| Settings | Ctrl+, |
-| New file | Ctrl+N |
-| Open file | Ctrl+O |
-| Save | Ctrl+S |
-| Save As | Ctrl+Shift+S |
-| Toggle Reader / Code | Ctrl+E |
-| Toggle Split view | Ctrl+\\ |
-| File explorer / Outline | Ctrl+Shift+E / Ctrl+Shift+O |
-| Find / Replace | Ctrl+F / Ctrl+H |
-| Bold / Italic / Link | Ctrl+B / Ctrl+I / Ctrl+K |
-| Toggle blockquote | Ctrl+/ |
-| AI panel / assist | Alt+J (Windows) · ⌘J (macOS/Linux) |
+| Action                  | Shortcut                           |
+| ----------------------- | ---------------------------------- |
+| Command palette         | Ctrl+P                             |
+| Cheatsheet              | ?                                  |
+| Settings                | Ctrl+,                             |
+| New file                | Ctrl+N                             |
+| Open file               | Ctrl+O                             |
+| Save                    | Ctrl+S                             |
+| Save As                 | Ctrl+Shift+S                       |
+| Toggle Reader / Code    | Ctrl+E                             |
+| Toggle Split view       | Ctrl+\\                            |
+| File explorer / Outline | Ctrl+Shift+E / Ctrl+Shift+O        |
+| Find / Replace          | Ctrl+F / Ctrl+H                    |
+| Bold / Italic / Link    | Ctrl+B / Ctrl+I / Ctrl+K           |
+| Toggle blockquote       | Ctrl+/                             |
+| AI panel / assist       | Alt+J (Windows) · ⌘J (macOS/Linux) |
 
 ## Tech Stack
 
