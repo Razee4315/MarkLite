@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { attachFocusTrap } from "../utils/focusTrap";
+import { formatShortcut, withMod, aiShortcutLabel } from "../config/keybindings";
 import iconKeyboard from "../assets/mascot/icon-keyboard.png";
 
 interface ShortcutCheatsheetProps {
@@ -17,65 +18,61 @@ interface ShortcutGroup {
     items: Shortcut[];
 }
 
-const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-const isWindows = typeof navigator !== "undefined" && /Win/.test(navigator.platform);
-const cmd = isMac ? "⌘" : "Ctrl";
-// On Windows, WebView2 grabs Ctrl+J for the built-in Downloads UI before
-// the page can preventDefault, so we surface Alt+J as the primary AI
-// shortcut there. macOS / Linux see Ctrl+J fine.
-const aiShortcut = isWindows ? "Alt+J" : `${cmd}+J`;
-
+// Every displayed shortcut is derived from the central platform config
+// (src/config/keybindings.ts) so the cheatsheet can never drift from what the
+// handler actually listens for. formatShortcut renders ⌘/⇧/⌥ glyphs on macOS
+// and "Ctrl+Shift+…" on Windows/Linux.
 const groups: ShortcutGroup[] = [
     {
         title: "File",
         items: [
-            { keys: `${cmd}+O`, description: "Open file" },
-            { keys: `${cmd}+N`, description: "New file (new tab)" },
-            { keys: `${cmd}+W`, description: "Close tab" },
-            { keys: `${cmd}+S`, description: "Save" },
-            { keys: `${cmd}+Shift+S`, description: "Save As…" },
+            { keys: formatShortcut("openFile"), description: "Open file" },
+            { keys: formatShortcut("newFile"), description: "New file (new tab)" },
+            { keys: formatShortcut("closeTab"), description: "Close tab" },
+            { keys: formatShortcut("save"), description: "Save" },
+            { keys: formatShortcut("saveAs"), description: "Save As…" },
         ],
     },
     {
         title: "Tabs",
         items: [
-            { keys: `${cmd}+N`, description: "New tab" },
-            { keys: `${cmd}+W`, description: "Close tab" },
-            { keys: `${cmd}+Shift+T`, description: "Reopen closed tab" },
-            { keys: `${cmd}+Tab`, description: "Next tab" },
-            { keys: `${cmd}+Shift+Tab`, description: "Previous tab" },
+            { keys: formatShortcut("newFile"), description: "New tab" },
+            { keys: formatShortcut("closeTab"), description: "Close tab" },
+            { keys: formatShortcut("reopenClosedTab"), description: "Reopen closed tab" },
+            { keys: formatShortcut("nextTab"), description: "Next tab" },
+            { keys: formatShortcut("prevTab"), description: "Previous tab" },
             { keys: "Alt+←/→", description: "Previous / next tab" },
-            { keys: `${cmd}+1-8`, description: "Jump to tab N" },
-            { keys: `${cmd}+9`, description: "Jump to last tab" },
+            { keys: withMod("1–8"), description: "Jump to tab N" },
+            { keys: withMod("9"), description: "Jump to last tab" },
         ],
     },
     {
         title: "View",
         items: [
-            { keys: `${cmd}+E`, description: "Toggle Reader / Code" },
-            { keys: `${cmd}+\\`, description: "Toggle split view" },
-            { keys: "F11", description: "Toggle fullscreen" },
-            { keys: `${cmd}+Shift+E`, description: "Toggle file explorer" },
-            { keys: `${cmd}+Shift+F`, description: "Search across files" },
-            { keys: `${cmd}+Shift+O`, description: "Toggle outline" },
-            { keys: `${cmd}+P`, description: "Command palette" },
-            { keys: `${cmd}+,`, description: "Open settings" },
-            { keys: "?", description: "Show this cheatsheet" },
+            { keys: formatShortcut("toggleMode"), description: "Toggle Reader / Code" },
+            { keys: formatShortcut("toggleSplit"), description: "Toggle split view" },
+            { keys: formatShortcut("fullscreen"), description: "Toggle fullscreen" },
+            { keys: formatShortcut("toggleFileExplorer"), description: "Toggle file explorer" },
+            { keys: formatShortcut("searchInFolder"), description: "Search across files" },
+            { keys: formatShortcut("toggleTOC"), description: "Toggle outline" },
+            { keys: formatShortcut("palette"), description: "Command palette" },
+            { keys: formatShortcut("settings"), description: "Open settings" },
+            { keys: formatShortcut("cheatsheet"), description: "Show this cheatsheet" },
         ],
     },
     {
         title: "AI",
         items: [
-            { keys: aiShortcut, description: "AI assist on selection (also: ✨ toolbar button, command palette)" },
+            { keys: aiShortcutLabel, description: "AI assist on selection (also: ✨ toolbar button, command palette)" },
         ],
     },
     {
         title: "Editor — Formatting",
         items: [
-            { keys: `${cmd}+B`, description: "Bold (toggle)" },
-            { keys: `${cmd}+I`, description: "Italic (toggle)" },
-            { keys: `${cmd}+K`, description: "Insert link" },
-            { keys: `${cmd}+/`, description: "Toggle blockquote on line" },
+            { keys: formatShortcut("bold"), description: "Bold (toggle)" },
+            { keys: formatShortcut("italic"), description: "Italic (toggle)" },
+            { keys: formatShortcut("link"), description: "Insert link" },
+            { keys: formatShortcut("blockquote"), description: "Toggle blockquote on line" },
         ],
     },
     {
@@ -84,8 +81,8 @@ const groups: ShortcutGroup[] = [
             { keys: "Tab", description: "Indent line / selection" },
             { keys: "Shift+Tab", description: "Outdent line / selection" },
             { keys: "Enter", description: "Continue list, blockquote, or task item" },
-            { keys: `${cmd}+F`, description: "Find" },
-            { keys: `${cmd}+H`, description: "Find and replace" },
+            { keys: formatShortcut("find"), description: "Find" },
+            { keys: formatShortcut("replace"), description: "Find and replace" },
         ],
     },
     {

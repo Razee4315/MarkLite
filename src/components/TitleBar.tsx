@@ -3,6 +3,8 @@ import type { MouseEvent } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
+import { EditMenu } from "./EditMenu";
+import { formatShortcut } from "../config/keybindings";
 
 interface TitleBarProps {
     fileName?: string;
@@ -17,9 +19,13 @@ interface TitleBarProps {
     aiActive?: boolean;
     isFullscreen?: boolean;
     onToggleFullscreen?: () => void;
+    /** Edit-menu actions: open find / find-and-replace / cross-file search. */
+    onFind?: () => void;
+    onReplace?: () => void;
+    onFindInFiles?: () => void;
 }
 
-function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive, isFullscreen, onToggleFullscreen }: TitleBarProps) {
+function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive, isFullscreen, onToggleFullscreen, onFind, onReplace, onFindInFiles }: TitleBarProps) {
     const handleMinimize = async () => {
         try {
             const appWindow = Window.getCurrent();
@@ -119,7 +125,7 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                             {fileName || "Paperling"}
                         </span>
                         {!fileName && (
-                            <span className="text-[var(--text-muted)] text-xs ml-1 hidden sm:inline">— drop a .md file or Ctrl+O</span>
+                            <span className="text-[var(--text-muted)] text-xs ml-1 hidden sm:inline">— drop a .md file or {formatShortcut("openFile")}</span>
                         )}
                         {isDirty && (
                             <span className="text-[var(--status-unsaved)] ml-1 italic text-xs">— Edited</span>
@@ -135,7 +141,7 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                                     onClick={onNewFile}
                                     aria-label="New file"
                                     className="flex items-center gap-1 px-2 py-1 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
-                                    title="New File (Ctrl+N)"
+                                    title={`New File (${formatShortcut("newFile")})`}
                                 >
                                     <span className="material-symbols-outlined text-[16px]">edit_note</span>
                                     <span className="hidden sm:inline">New</span>
@@ -145,11 +151,14 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                                 onClick={onOpenFile}
                                 aria-label="Open file"
                                 className="flex items-center gap-1 px-2 py-1 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
-                                title="Open File (Ctrl+O)"
+                                title={`Open File (${formatShortcut("openFile")})`}
                             >
                                 <span className="material-symbols-outlined text-[16px]">folder_open</span>
                                 <span className="hidden sm:inline">Open</span>
                             </button>
+                            {onFind && onReplace && onFindInFiles && (
+                                <EditMenu onFind={onFind} onReplace={onReplace} onFindInFiles={onFindInFiles} />
+                            )}
                             <ExportMenu
                                 fileName={fileName || 'document.md'}
                                 getExportHtml={getExportHtml}

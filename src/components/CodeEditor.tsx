@@ -35,6 +35,7 @@ import { getAIEnabled } from "../utils/persistence";
 import { invoke } from "@tauri-apps/api/core";
 import { matchWikilinkPrefix, rankFileNames, toWikiName } from "../utils/wikilinkComplete";
 import { applyTableOp, findTableAt, locateCell, type Align } from "../utils/tableModel";
+import { toCmKey } from "../config/keybindings";
 import type { Scroller } from "../utils/scrollSync";
 
 interface CodeEditorProps {
@@ -303,11 +304,11 @@ function CodeEditorImpl({
         const editingKeymap = Prec.highest(keymap.of([
             { key: "Tab", run: (v) => runAction(v, (st) => handleTab(st, false)), shift: (v) => runAction(v, (st) => handleTab(st, true)) },
             { key: "Enter", run: (v) => runAction(v, handleEnter) },
-            { key: "Mod-b", run: (v) => { applyResultToView(v, wrapSelection(toEdState(v), "**", "**", "bold")); return true; } },
-            { key: "Mod-i", run: (v) => { applyResultToView(v, wrapSelection(toEdState(v), "*", "*", "italic")); return true; } },
-            { key: "Mod-k", run: (v) => { applyResultToView(v, insertLink(toEdState(v))); return true; } },
+            { key: toCmKey("bold"), run: (v) => { applyResultToView(v, wrapSelection(toEdState(v), "**", "**", "bold")); return true; } },
+            { key: toCmKey("italic"), run: (v) => { applyResultToView(v, wrapSelection(toEdState(v), "*", "*", "italic")); return true; } },
+            { key: toCmKey("link"), run: (v) => { applyResultToView(v, insertLink(toEdState(v))); return true; } },
             {
-                key: "Mod-/", run: (v) => {
+                key: toCmKey("blockquote"), run: (v) => {
                     const st = toEdState(v);
                     const ls = st.text.lastIndexOf("\n", st.selStart - 1) + 1;
                     const lineEnd = st.text.indexOf("\n", st.selStart);
@@ -320,8 +321,8 @@ function CodeEditorImpl({
                     return true;
                 }
             },
-            { key: "Mod-f", run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("find"); setFindOpen(true); return true; } },
-            { key: "Mod-h", run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("replace"); setFindOpen(true); return true; } },
+            { key: toCmKey("find"), run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("find"); setFindOpen(true); return true; } },
+            { key: toCmKey("replace"), run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("replace"); setFindOpen(true); return true; } },
             // NB: the AI shortcut (Alt+J / ⌘J) is handled at the App window level
             // so it fires regardless of editor focus — see App.tsx. The editor
             // opens the bubble via the paperling:ai-assist event listener below.
@@ -682,6 +683,31 @@ function CodeEditorImpl({
         };
         window.addEventListener("paperling:goto-line", handler);
         return () => window.removeEventListener("paperling:goto-line", handler);
+    }, []);
+
+    // Open the find / find-and-replace bar from outside the editor (the Edit
+    // menu and command palette), mirroring the internal Mod-f / Mod-h keymap.
+    // The editor's find bar has no other external trigger; this is the same
+    // outside→editor idiom as paperling:goto-line above.
+    useEffect(() => {
+        const openFind = () => {
+            const v = viewRef.current;
+            setSelStartForFind(v ? v.state.selection.main.from : 0);
+            setFindMode("find");
+            setFindOpen(true);
+        };
+        const openReplace = () => {
+            const v = viewRef.current;
+            setSelStartForFind(v ? v.state.selection.main.from : 0);
+            setFindMode("replace");
+            setFindOpen(true);
+        };
+        window.addEventListener("paperling:open-find", openFind);
+        window.addEventListener("paperling:open-replace", openReplace);
+        return () => {
+            window.removeEventListener("paperling:open-find", openFind);
+            window.removeEventListener("paperling:open-replace", openReplace);
+        };
     }, []);
 
     // Snap the caret and viewport to the start when a different file opens, so
