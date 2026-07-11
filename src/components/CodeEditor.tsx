@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState, memo } from "react";
+import { useRef, useCallback, useEffect, useState, useMemo, memo } from "react";
 import { EditorState as CMEditorState, Compartment, Prec } from "@codemirror/state";
 import {
     EditorView,
@@ -25,7 +25,9 @@ import {
     type EditorResult,
     type EditorState,
 } from "../utils/editorActions";
-import { FindReplaceBar } from "./FindReplaceBar";
+import { FindBar, type FindController } from "./FindBar";
+import { findAll, matchLength, replaceOne, replaceAllMatches, isValidPattern } from "../utils/findReplace";
+import { findHighlightField, setFindMatches, type FindRange } from "../utils/editorFindHighlight";
 import { FormatToolbar } from "./FormatToolbar";
 import { SlashMenu, type SlashCommand } from "./SlashMenu";
 import { AIBubble } from "./AIBubble";
@@ -177,7 +179,6 @@ function CodeEditorImpl({
 
     const [findOpen, setFindOpen] = useState(false);
     const [findMode, setFindMode] = useState<"find" | "replace">("find");
-    const [selStartForFind, setSelStartForFind] = useState(0);
     const [slashState, setSlashState] = useState<{ from: number; pos: { x: number; y: number } } | null>(null);
     const [slashQuery, setSlashQuery] = useState("");
     const [aiBubble, setAIBubble] = useState<{ x: number; y: number; selStart: number; selEnd: number; text: string } | null>(null);
@@ -321,8 +322,8 @@ function CodeEditorImpl({
                     return true;
                 }
             },
-            { key: toCmKey("find"), run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("find"); setFindOpen(true); return true; } },
-            { key: toCmKey("replace"), run: (v) => { setSelStartForFind(v.state.selection.main.from); setFindMode("replace"); setFindOpen(true); return true; } },
+            { key: toCmKey("find"), run: () => { setFindMode("find"); setFindOpen(true); return true; } },
+            { key: toCmKey("replace"), run: () => { setFindMode("replace"); setFindOpen(true); return true; } },
             // NB: the AI shortcut (Alt+J / ⌘J) is handled at the App window level
             // so it fires regardless of editor focus — see App.tsx. The editor
             // opens the bubble via the paperling:ai-assist event listener below.
@@ -387,6 +388,7 @@ function CodeEditorImpl({
                     autocompletion({ override: [wikiCompletionSource], icons: false, aboveCursor: false }),
                     markdown(),
                     syntaxHighlighting(markdownHighlight),
+                    findHighlightField,
                     editorTheme,
                     wrapComp.of(wordWrap ? EditorView.lineWrapping : []),
                     spellComp.of(EditorView.contentAttributes.of(spellAttrs(spellCheck))),
@@ -691,14 +693,10 @@ function CodeEditorImpl({
     // outside→editor idiom as paperling:goto-line above.
     useEffect(() => {
         const openFind = () => {
-            const v = viewRef.current;
-            setSelStartForFind(v ? v.state.selection.main.from : 0);
             setFindMode("find");
             setFindOpen(true);
         };
         const openReplace = () => {
-            const v = viewRef.current;
-            setSelStartForFind(v ? v.state.selection.main.from : 0);
             setFindMode("replace");
             setFindOpen(true);
         };
@@ -776,20 +774,65 @@ function CodeEditorImpl({
         v.focus();
     }, []);
 
-    const handleFindJump = useCallback((start: number, end: number) => {
-        const v = viewRef.current;
-        if (!v) return;
-        // No v.focus() here: the find bar owns focus while open. Focusing the
-        // editor on every auto-jump meant the keystroke after the 100ms match
-        // debounce landed IN THE DOCUMENT, overwriting the matched text.
-        // drawSelection keeps the match visible while the editor is unfocused;
-        // onClose below hands focus back.
-        v.dispatch({ selection: { anchor: start, head: end }, scrollIntoView: true });
-    }, []);
-    const handleFindReplace = useCallback((newContent: string, newCursor: number) => {
-        const v = viewRef.current;
-        if (!v) return;
-        applyResultToView(v, { text: newContent, selStart: newCursor, selEnd: newCursor });
+    // Editor adapter for the shared FindBar: match the live doc with the pure
+    // findReplace helpers, paint matches via the findHighlightField decoration,
+    // and replace through applyResultToView. Stable identity (refs + module-level
+    // helpers only) so FindBar's effects don't churn.
+    const findRangesRef = useRef<FindRange[]>([]);
+    const editorFindController = useMemo<FindController>(() => {
+        const rangesFor = (query: string, opts: { caseSensitive: boolean; regex: boolean }): FindRange[] => {
+            const v = viewRef.current;
+            if (!v) return [];
+            const doc = v.state.doc.toString();
+            return findAll(doc, query, opts.caseSensitive, opts.regex)
+                .map((from) => ({ from, to: from + matchLength(doc, from, query, opts.caseSensitive, opts.regex) }))
+                .filter((r) => r.to > r.from);
+        };
+        return {
+            supportsReplace: true,
+            supportsRegex: true,
+            isValidPattern: (query, opts) => isValidPattern(query, opts.regex),
+            search: (query, opts) => {
+                const v = viewRef.current;
+                const ranges = rangesFor(query, opts);
+                findRangesRef.current = ranges;
+                let activeIndex = -1;
+                if (v && ranges.length) {
+                    const caret = v.state.selection.main.from;
+                    activeIndex = ranges.findIndex((r) => r.from >= caret);
+                    if (activeIndex === -1) activeIndex = 0;
+                    v.dispatch({ effects: setFindMatches.of({ ranges, activeIndex: -1 }) });
+                }
+                return { count: ranges.length, activeIndex };
+            },
+            setActive: (index) => {
+                const v = viewRef.current;
+                const ranges = findRangesRef.current;
+                const r = ranges[index];
+                if (!v || !r) return;
+                v.dispatch({
+                    effects: [setFindMatches.of({ ranges, activeIndex: index }), EditorView.scrollIntoView(r.from, { y: "center" })],
+                });
+            },
+            clear: () => {
+                findRangesRef.current = [];
+                viewRef.current?.dispatch({ effects: setFindMatches.of({ ranges: [], activeIndex: -1 }) });
+            },
+            replaceActive: (index, replacement, query, opts) => {
+                const v = viewRef.current;
+                const r = findRangesRef.current[index];
+                if (!v || !r) return;
+                const res = replaceOne(v.state.doc.toString(), r.from, query, replacement, opts.caseSensitive, opts.regex);
+                if (res) applyResultToView(v, { text: res.content, selStart: res.cursor, selEnd: res.cursor });
+            },
+            replaceAll: (replacement, query, opts) => {
+                const v = viewRef.current;
+                if (!v) return;
+                const starts = findRangesRef.current.map((r) => r.from);
+                const res = replaceAllMatches(v.state.doc.toString(), starts, query, replacement, opts.caseSensitive, opts.regex);
+                if (res) applyResultToView(v, { text: res.content, selStart: res.cursor, selEnd: res.cursor });
+            },
+        };
     }, []);
 
     const handleSlashSelect = useCallback((cmd: SlashCommand) => {
@@ -823,14 +866,12 @@ function CodeEditorImpl({
             <div className="flex-1 overflow-hidden relative">
                 <div ref={containerRef} className="absolute inset-0 [&_.cm-editor]:h-full [&_.cm-editor]:outline-none" />
 
-                <FindReplaceBar
+                <FindBar
                     isOpen={findOpen}
                     initialMode={findMode}
-                    content={content}
-                    selectionStart={selStartForFind}
+                    controller={editorFindController}
+                    revision={content}
                     onClose={() => { setFindOpen(false); viewRef.current?.focus(); }}
-                    onJumpTo={handleFindJump}
-                    onReplace={handleFindReplace}
                 />
 
                 <SlashMenu

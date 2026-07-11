@@ -115,7 +115,8 @@ import {
 } from "./utils/tabsModel";
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
-import { PreviewFindBar } from "./components/PreviewFindBar";
+import { FindBar } from "./components/FindBar";
+import { createPreviewFindController } from "./utils/previewFind";
 // The interactive feature guide, shipped as raw markdown so it opens as a real,
 // editable document (offered at the end of the welcome tour / from the palette).
 import tutorialMarkdown from "./assets/tutorial.md?raw";
@@ -224,6 +225,9 @@ function AppContent() {
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
+  // Reader-mode adapter for the shared FindBar. Stable identity (reads previewRef
+  // at call time) so the bar's effects don't churn.
+  const previewFindController = useMemo(() => createPreviewFindController(previewRef), []);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // Bidirectional scroll sync between editor and preview (split mode only).
@@ -2008,14 +2012,15 @@ function AppContent() {
                 />
               </Suspense>
 
-              {/* Reader-mode find. Searches the rendered preview text and
+              {/* Reader-mode find. The same FindBar as the editor, driven by a
+                  preview controller that searches the rendered text and
                   highlights matches via the CSS Custom Highlight API. */}
-              {previewFindOpen && (
-                <PreviewFindBar
-                  rootRef={previewRef}
-                  onClose={() => setPreviewFindOpen(false)}
-                />
-              )}
+              <FindBar
+                isOpen={previewFindOpen}
+                controller={previewFindController}
+                revision={content}
+                onClose={() => setPreviewFindOpen(false)}
+              />
             </div>
           </div>
 

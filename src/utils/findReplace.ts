@@ -1,4 +1,4 @@
-// Pure find-and-replace primitives, extracted from FindReplaceBar so the search
+// Pure find-and-replace primitives, extracted so the editor's find/search
 // and replacement logic can be unit-tested in isolation (the component only
 // wires these to inputs and the editor). Plain-text and regex modes are both
 // supported; invalid regex is treated as "no match" rather than throwing, so a
