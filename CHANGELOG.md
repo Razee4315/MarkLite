@@ -7,10 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **More markdown syntax.** `==highlight==`, superscript (`x^2^`), subscript
+  (`H~2~O`), definition lists (`Term` / `: definition`) and custom heading ids
+  (`# Title {#my-id}`) now render in the preview and in every export. Note: a
+  single `~tilde~` now means subscript; `~~double~~` is still strikethrough.
+- **One-click AI setup.** The AI settings page now has provider presets
+  (Google Gemini, OpenAI, Ollama): pick one and the endpoint and model fill
+  themselves, so you only paste your API key.
+- **"Open files in reader mode" setting.** When on, every file you open starts
+  in the comfortable reading view; editing stays one click away. New files
+  still open in the editor.
+- **Subfolders in the file explorer.** Nested folders now show up and can be
+  browsed without leaving Paperling.
+- **Windows on ARM.** Releases now include a native arm64 installer.
+
 ### Fixed
 
-- Fixed Paperling failing to launch on some GNOME/Wayland systems (WebKitGTK
-  DMABUF "Error 71 Protocol error").
+- **Find could edit your document.** Typing in the find bar moved focus into
+  the document a moment later, so your next keystroke overwrote the matched
+  text. Focus now stays in the find bar, and Enter / Shift+Enter cycle through
+  matches from the keyboard.
+- **Selected text was unreadable.** The editor painted every selection in a
+  fixed pale lavender regardless of theme. Selections now use each theme's own
+  colors in all four themes.
+- **Custom AI endpoints.** OpenAI-compatible endpoints failed with "Failed to
+  fetch" even though they worked in curl. AI requests now go through the app
+  itself instead of the browser layer, so any endpoint curl can reach works,
+  including plain-http servers on your local network. Wrong keys, timeouts and
+  unreachable servers now show clear messages.
+- **Word export.** Exporting to .docx failed with an internal error; it now
+  produces a proper Word document.
+- **Footnote links.** Clicking a footnote reference now scrolls to the note
+  and the return arrow scrolls back, in the app and in exported HTML.
+- **Local links in exported HTML.** Links to other .md files used to export as
+  dead "#" anchors; they now keep their real target.
+- **Small Mermaid diagrams.** Diagrams now scale to the reading column so
+  their text is legible, in the app and in exports.
+- **Phantom unsaved changes on Windows files.** Opening a file with Windows
+  (CRLF) line endings immediately marked it as modified. Files open clean, and
+  saving preserves the file's original line-ending style.
+- **White flash at startup.** The window now appears only after your theme has
+  painted, so dark-theme users no longer get a white flare on launch.
+- **A friendlier welcome tour.** The first card asks before starting, skipping
+  is impossible to miss, the tour covers just the three least discoverable
+  features, and its buttons no longer wrap onto two lines.
+- **macOS: PDF export.** Exporting to PDF used to spin forever and produce
+  nothing; it now saves directly through the system's native PDF path.
+- **Linux: launch crash on GNOME/Wayland** (WebKitGTK DMABUF "Error 71
+  Protocol error") is fixed.
 
 ## [1.0.48] - 2026-07-04
 
