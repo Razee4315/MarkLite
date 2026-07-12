@@ -58,6 +58,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Linux: launch crash on GNOME/Wayland** (WebKitGTK DMABUF "Error 71
   Protocol error") is fixed.
 
+### Thanks
+
+This release was shaped by the community, and it shows:
+
+- [Andreu Rodríguez Donaire](https://github.com/anrodon) contributed the
+  subfolder support in the file explorer.
+- [Eli Pinkerton](https://github.com/wallstop) contributed Windows on ARM
+  support.
+- [techie-monk0](https://github.com/techie-monk0) added supply chain security
+  scanning to every build.
+- The detailed reviews and bug reports from Reddit users CodenameFlux,
+  Individual-Diet-5051, Fantastic_Back3191 and Cast_Iron_Skillet drove most of
+  the fixes above. Thank you for taking the time to write them up.
+
 ## [1.0.48] - 2026-07-04
 
 ### Fixed
