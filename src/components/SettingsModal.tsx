@@ -10,6 +10,7 @@ import {
     getAutoSave, setAutoSave,
     getOpenInReader, setOpenInReader,
 } from "../utils/persistence";
+import { AI_PROVIDERS, matchProvider, type AIProvider } from "../utils/aiProviders";
 import { attachFocusTrap } from "../utils/focusTrap";
 import { isValidEndpoint, runAIAction } from "../utils/aiAssist";
 import mascotWave from "../assets/mascot/mascot-wave.png";
@@ -116,6 +117,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setAiTest({ state: "idle" });
         if (!next.endpoint || isValidEndpoint(next.endpoint)) setAIConfig(next);
     };
+
+    // Derived, not stored: the provider pill is whichever preset the current
+    // endpoint equals, so hand-edited endpoints simply select nothing.
+    const activeProvider = matchProvider(ai.endpoint);
+    // Fills endpoint + default model; the key is deliberately left alone so
+    // re-picking a provider never wipes a pasted key.
+    const applyProvider = (p: AIProvider) => updateAi({ endpoint: p.endpoint, model: p.defaultModel });
 
     const testAIConnection = async () => {
         setAiTest({ state: "testing" });
@@ -351,6 +359,31 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     </span>
                                 </div>
                                 <div className="space-y-3">
+                                    <div>
+                                        <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Provider</span>
+                                        <div className="mt-1 flex flex-wrap gap-2" role="group" aria-label="AI provider presets">
+                                            {AI_PROVIDERS.map((p) => {
+                                                const active = activeProvider?.id === p.id;
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        onClick={() => applyProvider(p)}
+                                                        aria-pressed={active}
+                                                        className={`px-3 py-1.5 text-sm rounded-[var(--radius-md)] border transition-colors ${active
+                                                            ? "bg-[var(--accent)] text-[var(--accent-text)] border-[var(--accent)]"
+                                                            : "border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
+                                                    >
+                                                        {p.name}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <span className="block mt-1 text-[11px] text-[var(--text-muted)]">
+                                            Pick a provider to fill in the endpoint and model; then just paste your API key.
+                                            Any other OpenAI-compatible endpoint works too, entered below.
+                                        </span>
+                                    </div>
                                     <label className="block">
                                         <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Endpoint URL</span>
                                         <input
@@ -381,9 +414,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                             type="password"
                                             value={ai.apiKey}
                                             onChange={(e) => updateAi({ apiKey: e.target.value })}
-                                            placeholder="(optional for local providers)"
+                                            placeholder={activeProvider?.keyOptional ? "(not needed for this provider)" : activeProvider ? `paste your ${activeProvider.name} API key` : "(optional for local providers)"}
                                             className="mt-1 w-full px-3 py-2 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] font-mono"
                                         />
+                                        {activeProvider && (
+                                            <span className="block mt-1 text-[11px] text-[var(--text-muted)]">{activeProvider.keyHint}</span>
+                                        )}
                                     </label>
                                     <div className="flex items-center gap-3">
                                         <button
