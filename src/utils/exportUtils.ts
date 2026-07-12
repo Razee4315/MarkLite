@@ -504,6 +504,24 @@ type HtmlToDocx = (
     footer?: string | null
 ) => Promise<ArrayBuffer | Blob | Uint8Array>;
 
+// @turbodocx/html-to-docx's browser build still reaches for Node's `global`,
+// `Buffer` and `process`; the webview provides none of them, so conversion
+// threw "global is not defined" the moment the chunk ran. Tests never caught
+// it because vitest runs in Node, which supplies all three. Shim them right
+// before the library loads — the Buffer polyfill is itself dynamically
+// imported, so none of this weighs on cold start. EXPORT-05.
+async function ensureDocxRuntime(): Promise<void> {
+    const g = globalThis as Record<string, unknown>;
+    if (typeof g.global === "undefined") g.global = g;
+    if (typeof g.process === "undefined") g.process = { env: {} };
+    if (typeof g.Buffer === "undefined") {
+        // In the browser bundle "buffer" resolves to the npm polyfill package;
+        // under Node (vitest) it resolves to the builtin. Both export Buffer.
+        const { Buffer } = await import("buffer");
+        g.Buffer = Buffer;
+    }
+}
+
 export async function exportToDocx(
     htmlContent: string,
     fileName: string,
@@ -530,6 +548,7 @@ export async function exportToDocx(
     });
     if (!filePath) return false;
 
+    await ensureDocxRuntime();
     const mod = await import('@turbodocx/html-to-docx');
     // The package uses `export =`; the function is the default export under the
     // browser/ESM build. Fall back to the namespace itself for the CJS shape.

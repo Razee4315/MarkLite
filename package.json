@@ -36,6 +36,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@turbodocx/html-to-docx": "^1.22.0",
+    "buffer": "^6.0.3",
     "katex": "^0.16.47",
     "material-symbols": "^0.44.12",
     "mermaid": "^11.16.0",

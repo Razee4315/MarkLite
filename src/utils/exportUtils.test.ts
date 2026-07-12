@@ -124,4 +124,12 @@ describe("exportToDocx", () => {
         // not an HTML blob with a .docx extension.
         expect(Array.from(bytes.slice(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
     }, 20000);
+
+    // NOTE (EXPORT-05): the webview provides no Node globals, and the
+    // converter's browser build reaches for global/Buffer/process anyway —
+    // exportToDocx shims them via ensureDocxRuntime before loading the chunk.
+    // That scenario is untestable under vitest (removing Node's own globals
+    // takes the runner down); it was verified against the built bundle in a
+    // real browser, where conversion fails without the shims and succeeds
+    // with them.
 });
