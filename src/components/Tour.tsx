@@ -232,7 +232,10 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
             >
                 <div
                     ref={cardRef}
-                    className="w-[340px] max-w-[calc(100vw-2rem)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl shadow-2xl p-6 flex flex-col items-center gap-4 text-center animate-fade-in"
+                    // 400px: wide enough that the last step's three buttons
+                    // ("Just start writing" / "Back" / "Open the guide") fit on
+                    // one row without their labels wrapping to two lines.
+                    className="w-[400px] max-w-[calc(100vw-2rem)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl shadow-2xl p-6 flex flex-col items-center gap-4 text-center animate-fade-in"
                 >
                     <img
                         src={step.image}
@@ -258,7 +261,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                     <div className="w-full flex items-center justify-between gap-2">
                         <button
                             onClick={onClose}
-                            className="btn-press text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
+                            className="btn-press whitespace-nowrap text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
                         >
                             {isFirst || isLast ? "Just start writing" : "Skip tour"}
                         </button>
@@ -266,7 +269,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                             {!isFirst && (
                                 <button
                                     onClick={back}
-                                    className="btn-press text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
+                                    className="btn-press whitespace-nowrap text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
                                 >
                                     Back
                                 </button>
@@ -274,7 +277,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                             <button
                                 ref={nextRef}
                                 onClick={advance}
-                                className="btn-press text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] transition-all duration-200"
+                                className="btn-press whitespace-nowrap text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] transition-all duration-200"
                             >
                                 {isLast ? "Open the guide" : isFirst ? "Show me around" : "Next"}
                             </button>
