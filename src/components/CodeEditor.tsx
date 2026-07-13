@@ -131,21 +131,24 @@ function toEdState(view: EditorView): EditorState {
     return { text: view.state.doc.toString(), selStart: s.from, selEnd: s.to };
 }
 
-/** Apply an EditorResult (full new text + selection) as a MINIMAL change — diff
- *  the common prefix/suffix so CodeMirror only touches what actually changed
- *  (keeps undo granular and avoids full-doc churn). Selection is set atomically,
- *  so there's no one-frame caret flicker (fixes the old rAF restore). */
-function applyResultToView(view: EditorView, r: EditorResult) {
-    const old = view.state.doc.toString();
-    const next = r.text;
+/** Smallest single replacement turning `old` into `next`: diff the common
+ *  prefix/suffix so CodeMirror only touches what actually changed. */
+function minimalDiff(old: string, next: string): { from: number; to: number; insert: string } {
     let p = 0;
     const maxP = Math.min(old.length, next.length);
     while (p < maxP && old.charCodeAt(p) === next.charCodeAt(p)) p++;
     let s = 0;
     const maxS = Math.min(old.length - p, next.length - p);
     while (s < maxS && old.charCodeAt(old.length - 1 - s) === next.charCodeAt(next.length - 1 - s)) s++;
+    return { from: p, to: old.length - s, insert: next.slice(p, next.length - s) };
+}
+
+/** Apply an EditorResult (full new text + selection) as a MINIMAL change
+ *  (keeps undo granular and avoids full-doc churn). Selection is set atomically,
+ *  so there's no one-frame caret flicker (fixes the old rAF restore). */
+function applyResultToView(view: EditorView, r: EditorResult) {
     view.dispatch({
-        changes: { from: p, to: old.length - s, insert: next.slice(p, next.length - s) },
+        changes: minimalDiff(view.state.doc.toString(), r.text),
         selection: { anchor: r.selStart, head: r.selEnd },
         scrollIntoView: true,
     });
@@ -522,14 +525,20 @@ function CodeEditorImpl({
         return false; // let CodeMirror insert plain text
     }
 
-    // Sync external content changes (file open, AI replace via App, frontmatter
-    // edits) into the editor — skipping our own keystroke echoes cheaply.
+    // Sync external content changes (file open, AI replace via App, preview
+    // task-checkbox toggles, frontmatter edits) into the editor — skipping our
+    // own keystroke echoes cheaply. Dispatch a minimal diff, NOT a whole-doc
+    // replace: replacing the entire document maps CodeMirror's scroll anchor
+    // to position 0, which yanked the editor (and, through split-mode scroll
+    // sync, the preview) to the top every time a checkbox was clicked in the
+    // preview (#111).
     useEffect(() => {
         if (content === lastEmittedRef.current) return;
         const view = viewRef.current;
         if (!view) return;
-        if (content !== view.state.doc.toString()) {
-            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+        const old = view.state.doc.toString();
+        if (content !== old) {
+            view.dispatch({ changes: minimalDiff(old, content) });
         }
         lastEmittedRef.current = content;
     }, [content]);

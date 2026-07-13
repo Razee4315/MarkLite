@@ -16,8 +16,10 @@ import { MermaidBlock, isMermaidLanguage } from "./MermaidBlock";
 
 // Detect KaTeX-style math so we only load the heavy katex bundle when needed.
 // $$...$$ for block math, $...$ for inline math (not preceded/followed by digit
-// to avoid false positives like "$5 and $10"). Also matches chemistry blocks
-// written as \ce{...} / \pu{...} so people can use mhchem without explicit $$.
+// to avoid false positives like "$5 and $10"). Bare \ce{...} / \pu{...} also
+// matches, but only to warm the bundle while someone is mid-typing a chemistry
+// block: RENDERING still requires math delimiters ($...$ or $$...$$), because
+// nothing converts a bare \ce{} into a math node (#111).
 const MATH_DETECTION_REGEX = /(\$\$[\s\S]+?\$\$)|((?:^|[^\d$])\$[^\s$][^\n$]*?[^\s$]\$(?!\d))|(\\ce\{)|(\\pu\{)/m;
 const hasMath = (s: string): boolean => MATH_DETECTION_REGEX.test(s);
 

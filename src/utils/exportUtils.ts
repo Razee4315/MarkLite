@@ -608,10 +608,13 @@ function waitForImages(doc: Document): Promise<void> {
     ).then(() => undefined);
 }
 
-// Render `html` in a hidden iframe and invoke the webview's native print dialog.
-// Resolves once printing has been triggered and cleaned up (or the dialog was
-// dismissed). A webview that never fires `afterprint` is cleaned up by the
-// fallback timer so we don't leak frames.
+// Render `html` in a hidden iframe and invoke the webview's native print
+// dialog. Resolves as soon as the dialog has been handed off, NOT when it
+// closes: WebKitGTK does not fire `afterprint` for a cancelled dialog, and
+// waiting on it left the export button spinning for the full fallback window
+// when the user cancelled (#111). The caller already treats the hand-off as
+// terminal (EXPORT-01: the system dialog is its own feedback), so frame
+// cleanup happens in the background on afterprint or a long reap timer.
 function printHtmlDocument(html: string): Promise<void> {
     return new Promise((resolve) => {
         // Remove any frame left over from a previous (e.g. cancelled) export.
@@ -642,27 +645,46 @@ function printHtmlDocument(html: string): Promise<void> {
             }
         };
 
+        // A srcdoc iframe fires `load` twice in WebKit engines: once for the
+        // initial about:blank document and once for the srcdoc content. The
+        // handler used to call print() on both, stacking two print dialogs
+        // (#111). Trigger exactly once, and only on a load whose document
+        // actually has content (about:blank has an empty body).
+        let printed = false;
+
+        // If a content-bearing load never arrives, give up instead of hanging
+        // the caller behind a spinner.
+        const safetyTimer = setTimeout(() => {
+            if (!printed) {
+                iframe.remove();
+                finish();
+            }
+        }, 15000);
+
         iframe.onload = () => {
             const win = iframe.contentWindow;
             if (!win) {
+                clearTimeout(safetyTimer);
                 iframe.remove();
                 finish();
                 return;
             }
+            if (printed || !win.document.body || win.document.body.childNodes.length === 0) return;
+            printed = true;
+            clearTimeout(safetyTimer);
 
-            let fallbackTimer: ReturnType<typeof setTimeout>;
-            const cleanup = () => {
-                win.removeEventListener('afterprint', cleanup);
-                clearTimeout(fallbackTimer);
-                // Defer removal a tick — some engines read the document
-                // asynchronously after print() returns.
+            // The frame must outlive the dialog: the print engine reads the
+            // document lazily. Reap it on afterprint when the engine emits
+            // one, or by timer when it doesn't.
+            const reapTimer = setTimeout(() => iframe.remove(), 120000);
+            const reap = () => {
+                win.removeEventListener('afterprint', reap);
+                clearTimeout(reapTimer);
+                // Defer removal a tick: some engines read the document
+                // asynchronously after the dialog closes.
                 setTimeout(() => iframe.remove(), 300);
-                finish();
             };
-            // Fires when the dialog closes, whether the user saved or cancelled.
-            win.addEventListener('afterprint', cleanup);
-            // Safety net for webviews that don't emit afterprint.
-            fallbackTimer = setTimeout(cleanup, 120000);
+            win.addEventListener('afterprint', reap);
 
             Promise.all([
                 win.document.fonts?.ready?.catch(() => undefined),
@@ -672,7 +694,11 @@ function printHtmlDocument(html: string): Promise<void> {
                     win.focus();
                     win.print();
                 } catch {
-                    cleanup();
+                    reap();
+                } finally {
+                    // Hand-off complete. Unblock the caller regardless of how,
+                    // or whether, the dialog closes.
+                    finish();
                 }
             });
         };
