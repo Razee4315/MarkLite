@@ -85,7 +85,8 @@ $$
 A = \begin{bmatrix} 1 & 0 \\ 0 & 1 \end{bmatrix}
 $$
 
-Chemistry works as well, via the `mhchem` extension:
+Chemistry works as well, via KaTeX's bundled `mhchem` extension. Wrap it in
+`$...$` or `$$...$$` like any other math, no LaTeX install needed:
 
 $$
 \ce{CO2 + C -> 2 CO}

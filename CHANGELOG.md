@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Double print dialog when exporting PDF on Linux.** The system print dialog
+  opened twice for one export, and cancelling both left the Export button
+  stuck on a spinner. The dialog now opens once and the button frees up as
+  soon as the dialog appears.
+- **Checkbox clicks jumped the view to the top.** Ticking a task checkbox in
+  the preview snapped both panes to the top of the document in split view. The
+  toggle now edits only that one line, so your scroll position stays put.
+- **Chemistry guidance.** The feature guide now explains that chemistry
+  notation renders through the bundled KaTeX `mhchem` extension and needs to
+  be wrapped in `$...$` or `$$...$$` like any other math, no LaTeX
+  installation needed.
 - **Find could edit your document.** Typing in the find bar moved focus into
   the document a moment later, so your next keystroke overwrote the matched
   text. Focus now stays in the find bar, and Enter / Shift+Enter cycle through
