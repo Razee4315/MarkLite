@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { matchesBinding, isPlainModCombo } from "../config/keybindings";
 
 /** Everything the global keyboard handler needs. Kept in a ref so the window
  *  listener is attached once and never re-bound on a handler/state change. */
@@ -18,21 +19,21 @@ export interface ShortcutHandlers {
     openSettings: () => void;
     /** Open the reader-mode find bar. Only invoked when mode === "preview". */
     openPreviewFind?: () => void;
-    /** Open cross-file search (Ctrl+Shift+F). */
+    /** Open cross-file search (mod+Shift+F). */
     openSearch?: () => void;
-    /** Close the active tab (Ctrl+W). */
+    /** Close the active tab (mod+W). */
     closeActiveTab?: () => void;
     /** Switch to the previous/next tab (Alt+Left/Right, Ctrl+Shift+Tab / Ctrl+Tab). */
     prevTab?: () => void;
     nextTab?: () => void;
-    /** Reopen the most recently closed tab (Ctrl+Shift+T). */
+    /** Reopen the most recently closed tab (mod+Shift+T). */
     reopenClosedTab?: () => void;
-    /** Jump to a tab by index; -1 means the last tab (Ctrl+1..9). */
+    /** Jump to a tab by index; -1 means the last tab (mod+1..9). */
     gotoTab?: (index: number) => void;
     hasFile: boolean;
     content: string;
-    /** Current view mode — Ctrl+F routes to the preview find bar in reader
-     *  mode (the CodeMirror keymap owns find when the editor has focus). */
+    /** Current view mode — the find shortcut routes to the preview find bar in
+     *  reader mode (the CodeMirror keymap owns find when the editor has focus). */
     mode?: "preview" | "code" | "split";
 }
 
@@ -40,6 +41,12 @@ export interface ShortcutHandlers {
  * App-wide keyboard shortcuts, mounted once on the window. Reads the latest
  * handlers/state through a ref so the listener never has to be torn down and
  * re-added on a keystroke (which an effect dep-array on `content` would force).
+ *
+ * All combos are matched through the central platform config
+ * (src/config/keybindings.ts): the primary modifier resolves to Cmd on macOS
+ * and Ctrl on Windows/Linux, so these shortcuts are Mac-native. Tab cycling is
+ * the deliberate exception — it stays a literal Ctrl everywhere because ⌘Tab is
+ * the macOS app-switcher.
  */
 export function useGlobalShortcuts(handlers: ShortcutHandlers) {
     const ref = useRef(handlers);
@@ -53,138 +60,153 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
             // fullscreen via the green title-bar button; the underlying Tauri
             // setFullscreen drives the same window state either way. No file
             // needed — works on the welcome screen too. FULLSCREEN-01.
-            if (e.key === "F11") {
+            if (matchesBinding(e, "fullscreen")) {
                 e.preventDefault();
                 s.toggleFullscreen();
                 return;
             }
-            // Ctrl+Shift+E - Toggle file explorer (check before Ctrl+E)
-            if (e.ctrlKey && e.shiftKey && e.key === "E") {
+            // mod+Shift+E - Toggle file explorer
+            if (matchesBinding(e, "toggleFileExplorer")) {
                 e.preventDefault();
                 if (s.hasFile) s.handleToggleFileExplorer();
                 return;
             }
-            // Ctrl+Shift+O - Toggle TOC (check before Ctrl+O)
-            if (e.ctrlKey && e.shiftKey && e.key === "O") {
+            // mod+Shift+O - Toggle TOC
+            if (matchesBinding(e, "toggleTOC")) {
                 e.preventDefault();
                 if (s.hasFile) s.handleToggleTOC();
                 return;
             }
-            // Ctrl+O - Open file (without Shift). Match both cases so CapsLock
-            // (where an unshifted key reports uppercase) doesn't dead-zone it.
-            if (e.ctrlKey && !e.shiftKey && (e.key === "o" || e.key === "O")) {
+            // mod+O - Open file
+            if (matchesBinding(e, "openFile")) {
                 e.preventDefault();
                 s.handleOpenFile();
+                return;
             }
-            // Ctrl+S - Save file. Match "s" AND "S": with CapsLock on, an unshifted
-            // Ctrl+S reports e.key === "S", which previously fell through and made
-            // the keypress silently do nothing (while Ctrl+Shift+S still worked).
-            if (e.ctrlKey && !e.shiftKey && (e.key === "s" || e.key === "S")) {
+            // mod+S - Save file
+            if (matchesBinding(e, "save")) {
                 e.preventDefault();
                 if (s.hasFile || s.content) s.handleSaveFile();
+                return;
             }
-            // Ctrl+Shift+S - Save As
-            if (e.ctrlKey && e.shiftKey && (e.key === "s" || e.key === "S")) {
+            // mod+Shift+S - Save As
+            if (matchesBinding(e, "saveAs")) {
                 e.preventDefault();
                 if (s.hasFile || s.content) s.handleSaveAs();
+                return;
             }
-            // Ctrl+N - New file (case-insensitive for the CapsLock case)
-            if (e.ctrlKey && !e.shiftKey && (e.key === "n" || e.key === "N")) {
+            // mod+N - New file
+            if (matchesBinding(e, "newFile")) {
                 e.preventDefault();
                 s.handleNewFile();
+                return;
             }
-            // Ctrl+E - Toggle preview/code mode (without Shift, case-insensitive)
-            if (e.ctrlKey && !e.shiftKey && (e.key === "e" || e.key === "E")) {
+            // mod+E - Toggle preview/code mode
+            if (matchesBinding(e, "toggleMode")) {
                 e.preventDefault();
                 if (s.hasFile) s.handleToggleMode();
+                return;
             }
-            // Ctrl+\ - Toggle split view
-            if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
+            // mod+\ - Toggle split view
+            if (matchesBinding(e, "toggleSplit")) {
                 e.preventDefault();
                 if (s.hasFile) s.handleToggleSplit();
+                return;
             }
-            // Ctrl+W - close the active tab (falls back to the welcome screen
-            // when it's the last one). The webview doesn't reserve Ctrl+W.
-            if (e.ctrlKey && !e.shiftKey && (e.key === "w" || e.key === "W")) {
+            // mod+W - close the active tab (falls back to the welcome screen
+            // when it's the last one). The webview doesn't reserve this.
+            if (matchesBinding(e, "closeTab")) {
                 e.preventDefault();
                 if (s.hasFile) s.closeActiveTab?.();
                 return;
             }
-            // Ctrl+Shift+F - search across all files in the folder (checked
-            // before the unshifted Ctrl+F find-in-document below).
-            if (e.ctrlKey && e.shiftKey && (e.key === "f" || e.key === "F")) {
+            // mod+Shift+F - search across all files in the folder (checked
+            // before the unshifted find below, which shift-exclusivity already
+            // separates, but keeping it first mirrors the original intent).
+            if (matchesBinding(e, "searchInFolder")) {
                 e.preventDefault();
                 if (s.hasFile) s.openSearch?.();
                 return;
             }
-            // Ctrl+F in reader mode - find in preview. In code/split mode the
-            // focused editor's own keymap handles Mod-f, so this never races it.
-            if (e.ctrlKey && !e.shiftKey && (e.key === "f" || e.key === "F")) {
+            // Find in reader mode - find in preview. In code/split mode the
+            // focused editor's own keymap handles Mod-f, so we do nothing here
+            // (no preventDefault) and let the editor keymap take it.
+            if (matchesBinding(e, "find")) {
                 if (s.hasFile && s.mode === "preview" && s.openPreviewFind) {
                     e.preventDefault();
                     s.openPreviewFind();
                 }
+                return;
             }
             // Alt+Left / Alt+Right - switch to the previous/next tab. Alt (not
             // Ctrl) keeps Ctrl+Arrow free for word-wise caret movement in the
             // editor. TABS-01.
-            if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowLeft") {
+            if (matchesBinding(e, "prevTabAlt")) {
                 e.preventDefault();
                 if (s.hasFile) s.prevTab?.();
                 return;
             }
-            if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === "ArrowRight") {
+            if (matchesBinding(e, "nextTabAlt")) {
                 e.preventDefault();
                 if (s.hasFile) s.nextTab?.();
                 return;
             }
-            // Ctrl+Tab / Ctrl+Shift+Tab - cycle tabs (the browser/VS Code pair),
-            // and Ctrl+PageDown / Ctrl+PageUp as the other common alias. TABS-16.
-            if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "Tab") {
-                e.preventDefault();
-                if (s.hasFile) (e.shiftKey ? s.prevTab : s.nextTab)?.();
-                return;
-            }
-            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key === "PageDown") {
-                e.preventDefault();
-                if (s.hasFile) s.nextTab?.();
-                return;
-            }
-            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key === "PageUp") {
+            // Ctrl+Tab / Ctrl+Shift+Tab - cycle tabs (literal Ctrl on all
+            // platforms; ⌘Tab is the macOS app-switcher). TABS-16.
+            if (matchesBinding(e, "prevTab")) {
                 e.preventDefault();
                 if (s.hasFile) s.prevTab?.();
                 return;
             }
-            // Ctrl+Shift+T - reopen the most recently closed tab. TABS-15.
-            if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && (e.key === "t" || e.key === "T")) {
+            if (matchesBinding(e, "nextTab")) {
+                e.preventDefault();
+                if (s.hasFile) s.nextTab?.();
+                return;
+            }
+            // Ctrl+PageDown / Ctrl+PageUp - the other common tab-cycle alias.
+            if (matchesBinding(e, "nextTabPage")) {
+                e.preventDefault();
+                if (s.hasFile) s.nextTab?.();
+                return;
+            }
+            if (matchesBinding(e, "prevTabPage")) {
+                e.preventDefault();
+                if (s.hasFile) s.prevTab?.();
+                return;
+            }
+            // mod+Shift+T - reopen the most recently closed tab. TABS-15.
+            if (matchesBinding(e, "reopenClosedTab")) {
                 e.preventDefault();
                 s.reopenClosedTab?.();
                 return;
             }
-            // Ctrl+1..9 - jump to tab N (Ctrl+9 = last tab, like browsers). TABS-16.
-            if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key >= "1" && e.key <= "9") {
+            // mod+1..9 - jump to tab N (9 = last tab, like browsers). TABS-16.
+            if (isPlainModCombo(e) && e.key >= "1" && e.key <= "9") {
                 e.preventDefault();
                 if (s.hasFile) s.gotoTab?.(e.key === "9" ? -1 : Number(e.key) - 1);
                 return;
             }
             // ? - Show cheatsheet (only when no input is focused)
-            if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (matchesBinding(e, "cheatsheet")) {
                 const target = e.target as HTMLElement | null;
                 const isTyping = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
                 if (!isTyping) {
                     e.preventDefault();
                     s.openCheatsheet();
                 }
+                return;
             }
-            // Ctrl+P / Ctrl+Shift+P - command palette
-            if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+            // mod+P - command palette
+            if (matchesBinding(e, "palette")) {
                 e.preventDefault();
                 s.openPalette();
+                return;
             }
-            // Ctrl+, - Settings
-            if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+            // mod+, - Settings
+            if (matchesBinding(e, "settings")) {
                 e.preventDefault();
                 s.openSettings();
+                return;
             }
             // AI assist - Alt+J everywhere, Cmd+J on macOS. Handled here (window
             // level) rather than only in the editor so it fires regardless of

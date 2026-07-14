@@ -30,7 +30,7 @@ async function mountEditorWithFindOpen(onChange = vi.fn()) {
     return { ...utils, input, content, onChange };
 }
 
-describe("FindReplaceBar focus ownership", () => {
+describe("FindBar focus ownership", () => {
     it("keeps focus in the find input after typing a character and passing the debounce", async () => {
         const { input, onChange } = await mountEditorWithFindOpen();
         expect(document.activeElement).toBe(input);

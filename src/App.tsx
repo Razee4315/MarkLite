@@ -17,6 +17,7 @@ import { SplitDivider } from "./components/SplitDivider";
 import { type PaletteCommand } from "./components/CommandPalette";
 import { useToast } from "./hooks/useToast";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { formatShortcut } from "./config/keybindings";
 import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useFullscreen } from "./hooks/useFullscreen";
@@ -114,7 +115,8 @@ import {
 } from "./utils/tabsModel";
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
-import { PreviewFindBar } from "./components/PreviewFindBar";
+import { FindBar } from "./components/FindBar";
+import { createPreviewFindController } from "./utils/previewFind";
 // The interactive feature guide, shipped as raw markdown so it opens as a real,
 // editable document (offered at the end of the welcome tour / from the palette).
 import tutorialMarkdown from "./assets/tutorial.md?raw";
@@ -223,6 +225,9 @@ function AppContent() {
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
+  // Reader-mode adapter for the shared FindBar. Stable identity (reads previewRef
+  // at call time) so the bar's effects don't churn.
+  const previewFindController = useMemo(() => createPreviewFindController(previewRef), []);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // Bidirectional scroll sync between editor and preview (split mode only).
@@ -1433,6 +1438,23 @@ function AppContent() {
     return "";
   }, []);
 
+  // Open find / find-and-replace from the Edit menu and command palette. In
+  // reader mode "find" uses the preview find bar; "replace" only applies to the
+  // editor, so from reader mode we switch to code mode first. The editor listens
+  // for these events (CodeEditor's paperling:open-find / paperling:open-replace).
+  const openFind = useCallback(() => {
+    if (mode === "preview") setPreviewFindOpen(true);
+    else window.dispatchEvent(new CustomEvent("paperling:open-find"));
+  }, [mode]);
+  const openReplace = useCallback(() => {
+    if (mode === "preview") {
+      setMode("code");
+      setTimeout(() => window.dispatchEvent(new CustomEvent("paperling:open-replace")), 0);
+    } else {
+      window.dispatchEvent(new CustomEvent("paperling:open-replace"));
+    }
+  }, [mode, setMode]);
+
   // Build the command palette item list. Rebuilds on relevant state changes —
   // recent files, current file, current view mode, toggles.
   const paletteItems = useMemo<PaletteCommand[]>(() => {
@@ -1442,7 +1464,7 @@ function AppContent() {
     items.push({
       id: "file.new",
       label: "New file",
-      hint: "Ctrl+N",
+      hint: formatShortcut("newFile"),
       section: "File",
       icon: "edit_note",
       run: handleNewFile,
@@ -1450,7 +1472,7 @@ function AppContent() {
     items.push({
       id: "file.open",
       label: "Open file…",
-      hint: "Ctrl+O",
+      hint: formatShortcut("openFile"),
       section: "File",
       icon: "folder_open",
       run: handleOpenFile,
@@ -1460,7 +1482,7 @@ function AppContent() {
       items.push({
         id: "file.save",
         label: "Save",
-        hint: "Ctrl+S",
+        hint: formatShortcut("save"),
         section: "File",
         icon: "save",
         run: handleSaveFile,
@@ -1468,7 +1490,7 @@ function AppContent() {
       items.push({
         id: "file.saveas",
         label: "Save As…",
-        hint: "Ctrl+Shift+S",
+        hint: formatShortcut("saveAs"),
         section: "File",
         icon: "save_as",
         run: handleSaveAs,
@@ -1514,7 +1536,7 @@ function AppContent() {
       items.push({
         id: "tab.close",
         label: "Close tab",
-        hint: "Ctrl+W",
+        hint: formatShortcut("closeTab"),
         section: "File",
         icon: "tab_close",
         keywords: "close current tab",
@@ -1527,7 +1549,7 @@ function AppContent() {
       items.push({
         id: "view.preview",
         label: "Switch to Reader mode",
-        hint: "Ctrl+E",
+        hint: formatShortcut("toggleMode"),
         section: "View",
         icon: "visibility",
         run: () => setMode("preview"),
@@ -1542,7 +1564,7 @@ function AppContent() {
       items.push({
         id: "view.split",
         label: "Toggle Split view",
-        hint: "Ctrl+\\",
+        hint: formatShortcut("toggleSplit"),
         section: "View",
         icon: "vertical_split",
         run: handleToggleSplit,
@@ -1550,15 +1572,33 @@ function AppContent() {
       items.push({
         id: "view.explorer",
         label: "Toggle file explorer",
-        hint: "Ctrl+Shift+E",
+        hint: formatShortcut("toggleFileExplorer"),
         section: "View",
         icon: "folder",
         run: handleToggleFileExplorer,
       });
       items.push({
+        id: "edit.find",
+        label: "Find",
+        hint: formatShortcut("find"),
+        section: "View",
+        icon: "search",
+        keywords: "find search in document text current file",
+        run: openFind,
+      });
+      items.push({
+        id: "edit.replace",
+        label: "Find and Replace",
+        hint: formatShortcut("replace"),
+        section: "View",
+        icon: "find_replace",
+        keywords: "replace substitute find and swap text",
+        run: openReplace,
+      });
+      items.push({
         id: "search.files",
         label: "Search in files…",
-        hint: "Ctrl+Shift+F",
+        hint: formatShortcut("searchInFolder"),
         section: "View",
         icon: "search",
         keywords: "find across folder grep global content",
@@ -1567,7 +1607,7 @@ function AppContent() {
       items.push({
         id: "view.toc",
         label: "Toggle outline",
-        hint: "Ctrl+Shift+O",
+        hint: formatShortcut("toggleTOC"),
         section: "View",
         icon: "format_list_bulleted",
         run: handleToggleTOC,
@@ -1637,7 +1677,7 @@ function AppContent() {
     items.push({
       id: "settings.open",
       label: "Open Settings…",
-      hint: "Ctrl+,",
+      hint: formatShortcut("settings"),
       section: "Toggles",
       icon: "settings",
       run: () => setShowSettings(true),
@@ -1699,7 +1739,7 @@ function AppContent() {
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, toggleFullscreen,
     loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
-    theme, setTheme,
+    theme, setTheme, openFind, openReplace,
   ]);
 
   // Heading items are recomputed only while the palette is actually open.
@@ -1847,6 +1887,9 @@ function AppContent() {
         aiActive={showAIPanel}
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
+        onFind={openFind}
+        onReplace={openReplace}
+        onFindInFiles={() => setShowSearch(true)}
       />
 
       {/* Tab bar — always shown once a file is open (even with one tab), with a
@@ -1969,14 +2012,15 @@ function AppContent() {
                 />
               </Suspense>
 
-              {/* Reader-mode find. Searches the rendered preview text and
+              {/* Reader-mode find. The same FindBar as the editor, driven by a
+                  preview controller that searches the rendered text and
                   highlights matches via the CSS Custom Highlight API. */}
-              {previewFindOpen && (
-                <PreviewFindBar
-                  rootRef={previewRef}
-                  onClose={() => setPreviewFindOpen(false)}
-                />
-              )}
+              <FindBar
+                isOpen={previewFindOpen}
+                controller={previewFindController}
+                revision={content}
+                onClose={() => setPreviewFindOpen(false)}
+              />
             </div>
           </div>
 
