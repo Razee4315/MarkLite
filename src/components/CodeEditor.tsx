@@ -111,7 +111,10 @@ const editorTheme = EditorView.theme({
         border: "none",
         borderRight: "1px solid var(--border-subtle)",
     },
-    ".cm-activeLine": { backgroundColor: "var(--bg-hover)" },
+    // Semi-transparent so the selection layer beneath shows through: --bg-hover is
+    // opaque and paints on the content line ON TOP of the selection, which would
+    // otherwise hide the selection background on the caret's line.
+    ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--bg-hover) 55%, transparent)" },
     ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text-primary)" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
