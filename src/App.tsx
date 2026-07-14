@@ -140,6 +140,11 @@ const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
 // padding-right when it's open so content reflows beside it (not under it).
 const AI_PANEL_WIDTH = 400;
 
+// Width of the left-side drawers (FileExplorer / TableOfContents); they are
+// `fixed left-0 w-72` (18rem = 288px), so the editor reserves this much
+// padding-left when one is open so content reflows beside it (not under it).
+const SIDEBAR_WIDTH = 288;
+
 // The launch-file resolution must run exactly once per webview load. React
 // StrictMode double-invokes effects in dev: without this guard the second run
 // would find the CLI file already consumed (the backend take()s it) and start
@@ -1940,7 +1945,14 @@ function AppContent() {
             // right-0 (above the status bar), which keeps window controls at the edge.
             // min() mirrors the panel's own w-[400px] max-w-[90vw] so a narrow
             // window reserves only as much space as the panel actually takes.
-            style={{ paddingRight: showAIPanel ? `min(${AI_PANEL_WIDTH}px, 90vw)` : 0, transition: "padding-right 0.15s ease" }}
+            // The left drawers (FileExplorer / TableOfContents) are likewise fixed
+            // at left-0, so reserve padding-left when one is open so they reflow the
+            // editor beside them instead of overlaying it.
+            style={{
+                paddingLeft: (showFileExplorer || showTOC) ? `${SIDEBAR_WIDTH}px` : 0,
+                paddingRight: showAIPanel ? `min(${AI_PANEL_WIDTH}px, 90vw)` : 0,
+                transition: "padding 0.15s ease",
+            }}
           >
             <div
               data-split-left
