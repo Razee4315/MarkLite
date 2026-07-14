@@ -393,6 +393,17 @@ select:focus-visible,
   color: var(--selection-text);
 }
 
+/* AI chat composer selection in the LIGHT and PAPER themes only: the global
+   --selection-bg is near-black/dark-brown, which over the near-white input reads
+   as an almost-solid block that hides the text. Blend it heavily toward the input
+   background for a light tint, and keep dark primary text so the selection stays
+   readable. Dark/Dracula are already fine (selection lighter than the input). */
+[data-theme="light"] .ai-composer ::selection,
+[data-theme="paper"] .ai-composer ::selection {
+  background: color-mix(in srgb, var(--selection-bg) 22%, var(--bg-input));
+  color: var(--text-primary);
+}
+
 /* ===== Material Icons ===== */
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
