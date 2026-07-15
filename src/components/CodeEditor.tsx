@@ -111,7 +111,10 @@ const editorTheme = EditorView.theme({
         border: "none",
         borderRight: "1px solid var(--border-subtle)",
     },
-    ".cm-activeLine": { backgroundColor: "var(--bg-hover)" },
+    // Semi-transparent so the selection layer beneath shows through: --bg-hover is
+    // opaque and paints on the content line ON TOP of the selection, which would
+    // otherwise hide the selection background on the caret's line.
+    ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--bg-hover) 55%, transparent)" },
     ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text-primary)" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
@@ -198,6 +201,7 @@ function CodeEditorImpl({
     const onImagePasteRef = useRef(onImagePaste); onImagePasteRef.current = onImagePaste;
     const onErrorRef = useRef(onError); onErrorRef.current = onError;
     const onNoticeRef = useRef(onNotice); onNoticeRef.current = onNotice;
+    const onReviewResolveRef = useRef(onReviewResolve); onReviewResolveRef.current = onReviewResolve;
     const filePathRef = useRef(filePath); filePathRef.current = filePath;
     // Base names (without .md) of the sibling files, for `[[` autocomplete. Kept
     // in a ref so the once-created completion source always sees the latest list.
@@ -226,6 +230,10 @@ function CodeEditorImpl({
     const reviewingRef = useRef(false);
     const reviewOriginalRef = useRef("");
     const lastReviewRef = useRef<string | null>(null);
+    // Whether the current review has ever reported at least one chunk. Guards
+    // against a false "all resolved" completion: right after entering review the
+    // merge field can momentarily report 0 chunks before it computes them.
+    const reviewHadChunksRef = useRef(false);
 
     // `[[` autocomplete: when the caret is inside an open wikilink target, offer
     // the folder's other markdown files. Reads wikiNamesRef (refreshed below) so
@@ -289,6 +297,12 @@ function CodeEditorImpl({
             return;
         }
         const sel = view.state.selection.main;
+        if (sel.from === sel.to) {
+            // Every remaining AI action needs a selection; opening the bubble with
+            // an empty selection would show no action buttons at all.
+            onNoticeRef.current?.("Select some text to use AI assist.");
+            return;
+        }
         const coords = view.coordsAtPos(sel.head);
         const rect = view.scrollDOM.getBoundingClientRect();
         const x = coords ? coords.left : rect.left + 28;
@@ -345,6 +359,30 @@ function CodeEditorImpl({
                 if (accepted !== null && accepted !== lastEmittedRef.current) {
                     lastEmittedRef.current = accepted;
                     onChangeRef.current?.(accepted);
+                }
+                // Detect when the user has resolved every chunk individually via the
+                // gutter buttons (Accept-all/Reject-all clear reviewingRef themselves).
+                // NOT gated on docChanged: accepting a chunk folds the change into the
+                // merge view's ORIGINAL side and leaves the editor doc unchanged
+                // (docChanged = false), so accepting every chunk one-by-one would never
+                // be observed if we only ran this on doc-changing updates. Rejecting a
+                // chunk does change the doc, but running unconditionally covers both.
+                let chunkCount = -1;
+                try { chunkCount = getChunks(update.state)?.chunks.length ?? -1; } catch { /* merge field not ready */ }
+                if (chunkCount > 0) reviewHadChunksRef.current = true;
+                // Only finalize AFTER we've seen at least one chunk: the merge
+                // field can briefly report 0 chunks right after entering review.
+                if (reviewHadChunksRef.current && chunkCount === 0) {
+                    // Defer: dispatching synchronously from inside the update
+                    // listener is re-entrant and unsafe. Re-check in the rAF that
+                    // nothing else (a manual Accept/Reject-all) resolved it first.
+                    requestAnimationFrame(() => {
+                        const v = viewRef.current;
+                        if (!v || !reviewingRef.current) return;
+                        let stillZero = false;
+                        try { stillZero = (getChunks(v.state)?.chunks.length ?? -1) === 0; } catch { /* ignore */ }
+                        if (stillZero) finishReview(v.state.doc.toString());
+                    });
                 }
             } else if (update.docChanged) {
                 const value = update.state.doc.toString();
@@ -586,7 +624,12 @@ function CodeEditorImpl({
         if (!view) return;
         if (reviewDoc != null) {
             if (reviewingRef.current && reviewDoc === lastReviewRef.current) return;
-            if (!reviewingRef.current) reviewOriginalRef.current = view.state.doc.toString();
+            if (!reviewingRef.current) {
+                reviewOriginalRef.current = view.state.doc.toString();
+                // Fresh review: reset the chunk-seen guard here (not on every
+                // re-render) so a mid-review re-render can't reset it.
+                reviewHadChunksRef.current = false;
+            }
             reviewingRef.current = true;
             lastReviewRef.current = reviewDoc;
             setReviewActive(true);
@@ -613,17 +656,26 @@ function CodeEditorImpl({
         }
     }, [reviewDoc]);
 
+    // Tear down the merge view and resolve with `final` (the current editor doc,
+    // which — once every chunk is accepted/rejected — already equals the final
+    // result). Shared by acceptAllChanges and the individual-resolve completion
+    // path in the updateListener. Stable identity (reads only refs) so the
+    // one-time updateListener can call it without going stale.
+    const finishReview = useCallback((final: string) => {
+        reviewingRef.current = false;
+        lastReviewRef.current = null;
+        reviewHadChunksRef.current = false;
+        setReviewActive(false);
+        viewRef.current?.dispatch({ effects: mergeCompRef.current.reconfigure([]) });
+        lastEmittedRef.current = final; // keep the App content-sync from re-dispatching
+        onReviewResolveRef.current?.(final);
+    }, []);
+
     const acceptAllChanges = useCallback(() => {
         const view = viewRef.current;
         if (!view) return;
-        const final = view.state.doc.toString();
-        reviewingRef.current = false;
-        lastReviewRef.current = null;
-        setReviewActive(false);
-        view.dispatch({ effects: mergeCompRef.current.reconfigure([]) });
-        lastEmittedRef.current = final; // keep the App content-sync from re-dispatching
-        onReviewResolve?.(final);
-    }, [onReviewResolve]);
+        finishReview(view.state.doc.toString());
+    }, [finishReview]);
 
     const rejectAllChanges = useCallback(() => {
         const view = viewRef.current;

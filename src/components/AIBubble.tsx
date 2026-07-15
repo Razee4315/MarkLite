@@ -18,7 +18,6 @@ const ACTIONS: Array<{ id: AIAction; label: string; icon: string; needsSelection
     { id: "rewrite", label: "Rewrite", icon: "auto_fix_high", needsSelection: true },
     { id: "shorten", label: "Shorten", icon: "compress", needsSelection: true },
     { id: "expand", label: "Expand", icon: "expand", needsSelection: true },
-    { id: "continue", label: "Continue", icon: "play_arrow", needsSelection: false },
     { id: "translate", label: "Translate → EN", icon: "translate", needsSelection: true },
 ];
 
