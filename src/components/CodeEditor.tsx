@@ -297,6 +297,12 @@ function CodeEditorImpl({
             return;
         }
         const sel = view.state.selection.main;
+        if (sel.from === sel.to) {
+            // Every remaining AI action needs a selection; opening the bubble with
+            // an empty selection would show no action buttons at all.
+            onNoticeRef.current?.("Select some text to use AI assist.");
+            return;
+        }
         const coords = view.coordsAtPos(sel.head);
         const rect = view.scrollDOM.getBoundingClientRect();
         const x = coords ? coords.left : rect.left + 28;

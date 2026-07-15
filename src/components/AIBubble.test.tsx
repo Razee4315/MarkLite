@@ -13,11 +13,11 @@ describe("AIBubble", () => {
         expect(container.firstChild).toBeNull();
     });
 
-    it("shows only selection-free actions when nothing is selected", () => {
+    it("shows no action buttons when nothing is selected", () => {
         render(
             <AIBubble anchor={{ x: 0, y: 0 }} selectedText="" config={cfg} onReplace={noop} onInsert={noop} onClose={noop} />
         );
-        expect(screen.getByText("Continue")).toBeInTheDocument();
+        expect(screen.queryByText("Continue")).toBeNull();
         expect(screen.queryByText("Rewrite")).toBeNull();
     });
 
