@@ -356,26 +356,27 @@ function CodeEditorImpl({
                 }
                 // Detect when the user has resolved every chunk individually via the
                 // gutter buttons (Accept-all/Reject-all clear reviewingRef themselves).
-                // Only on doc-changing updates — resolving a chunk edits the doc; a
-                // bare selection change never completes a review.
-                if (update.docChanged) {
-                    let chunkCount = -1;
-                    try { chunkCount = getChunks(update.state)?.chunks.length ?? -1; } catch { /* merge field not ready */ }
-                    if (chunkCount > 0) reviewHadChunksRef.current = true;
-                    // Only finalize AFTER we've seen at least one chunk: the merge
-                    // field can briefly report 0 chunks right after entering review.
-                    if (reviewHadChunksRef.current && chunkCount === 0) {
-                        // Defer: dispatching synchronously from inside the update
-                        // listener is re-entrant and unsafe. Re-check in the rAF that
-                        // nothing else (a manual Accept/Reject-all) resolved it first.
-                        requestAnimationFrame(() => {
-                            const v = viewRef.current;
-                            if (!v || !reviewingRef.current) return;
-                            let stillZero = false;
-                            try { stillZero = (getChunks(v.state)?.chunks.length ?? -1) === 0; } catch { /* ignore */ }
-                            if (stillZero) finishReview(v.state.doc.toString());
-                        });
-                    }
+                // NOT gated on docChanged: accepting a chunk folds the change into the
+                // merge view's ORIGINAL side and leaves the editor doc unchanged
+                // (docChanged = false), so accepting every chunk one-by-one would never
+                // be observed if we only ran this on doc-changing updates. Rejecting a
+                // chunk does change the doc, but running unconditionally covers both.
+                let chunkCount = -1;
+                try { chunkCount = getChunks(update.state)?.chunks.length ?? -1; } catch { /* merge field not ready */ }
+                if (chunkCount > 0) reviewHadChunksRef.current = true;
+                // Only finalize AFTER we've seen at least one chunk: the merge
+                // field can briefly report 0 chunks right after entering review.
+                if (reviewHadChunksRef.current && chunkCount === 0) {
+                    // Defer: dispatching synchronously from inside the update
+                    // listener is re-entrant and unsafe. Re-check in the rAF that
+                    // nothing else (a manual Accept/Reject-all) resolved it first.
+                    requestAnimationFrame(() => {
+                        const v = viewRef.current;
+                        if (!v || !reviewingRef.current) return;
+                        let stillZero = false;
+                        try { stillZero = (getChunks(v.state)?.chunks.length ?? -1) === 0; } catch { /* ignore */ }
+                        if (stillZero) finishReview(v.state.doc.toString());
+                    });
                 }
             } else if (update.docChanged) {
                 const value = update.state.doc.toString();
