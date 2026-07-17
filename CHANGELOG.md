@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Familiar shortcuts.** Ctrl+F4 also closes the current tab, and F1 also
   opens the command palette, alongside the existing Ctrl+W and Ctrl+P. Thanks
   to [@skycommand](https://github.com/skycommand).
+- **LM Studio preset.** The AI settings now offer LM Studio next to Gemini,
+  OpenAI and Ollama: pick it and the local server endpoint fills itself, no
+  API key needed. (#115)
+- **Chat history depth setting.** Choose how many previous chat turns are sent
+  with each AI panel message (Settings → AI, default 8). Lower it to save
+  tokens with local models, or set 0 to make every message start fresh. (#111)
 
 ### Fixed
 
@@ -29,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The About page now shows the version you are running.** Settings, About
   reported only the app name, which made it awkward to file a bug report.
   Thanks to [@skycommand](https://github.com/skycommand).
+- **Undo in the AI chat box.** Ctrl+Z now works while typing a message in the
+  AI panel; the composer no longer resets the native undo history on Linux.
+  (#111)
 
 ## [1.0.49] - 2026-07-12
 
