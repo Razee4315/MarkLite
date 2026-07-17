@@ -38,6 +38,16 @@ export const AI_PROVIDERS: AIProvider[] = [
         keyHint: "No key needed. Everything stays on your machine.",
         keyOptional: true,
     },
+    {
+        id: "lmstudio",
+        name: "LM Studio (local)",
+        endpoint: "http://localhost:1234/v1/chat/completions",
+        // LM Studio has no universal model id — recent versions route unknown
+        // names to the loaded model, older ones want the model's API identifier.
+        defaultModel: "local-model",
+        keyHint: "No key needed. Start the server in LM Studio's Developer tab; set Model to the loaded model's API identifier if requests are rejected.",
+        keyOptional: true,
+    },
 ];
 
 const normalize = (url: string) => url.trim().replace(/\/+$/, "");
