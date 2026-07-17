@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { streamChat, buildAskMessages, buildAgentMessages, parseEdits, type ChatMessage } from "../utils/aiChat";
 import type { AIConfig } from "../utils/aiAssist";
+import { getAIHistoryTurns } from "../utils/persistence";
 import mascotWizard from "../assets/mascot/mascot-wizard.png";
 
 interface AIPanelProps {
@@ -23,13 +24,16 @@ interface UIMessage {
     content: string;
 }
 
-// Keep the last N turns as conversation context (token efficiency — the document
-// itself is attached only to the latest turn inside buildAskMessages).
-const MAX_HISTORY_TURNS = 8;
+// The number of prior turns sent as conversation context is a user setting
+// (Settings → AI, default 8), read live per send — the document itself is
+// attached only to the latest turn inside buildAskMessages.
 
 export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConfig, onProposeEdit }: AIPanelProps) {
     const [messages, setMessages] = useState<UIMessage[]>([]);
     const [input, setInput] = useState("");
+    // Ref twin of `input` so the open-effect can restore the draft without
+    // re-running on every keystroke.
+    const inputDraftRef = useRef("");
     const [mode, setMode] = useState<"ask" | "agent">("ask");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -39,7 +43,16 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
 
     const configured = !!aiConfig.endpoint && !!aiConfig.model;
 
-    useEffect(() => { if (isOpen) inputRef.current?.focus(); }, [isOpen]);
+    // On open, the textarea has just remounted (closing renders null): restore
+    // any draft from the state mirror into the uncontrolled DOM node, then focus.
+    useEffect(() => {
+        if (!isOpen) return;
+        const el = inputRef.current;
+        if (el) {
+            el.value = inputDraftRef.current;
+            el.focus();
+        }
+    }, [isOpen]);
     useEffect(() => {
         const el = scrollRef.current;
         if (el) el.scrollTop = el.scrollHeight;
@@ -63,13 +76,18 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
         if (!text || busy) return;
         if (!configured) { setError("Configure an AI endpoint in Settings → AI first."); return; }
         setError(null);
+        // The textarea is uncontrolled (see below) — clear the DOM value directly
+        // and keep the state mirror in sync for the send button / auto-grow.
+        if (inputRef.current) inputRef.current.value = "";
+        inputDraftRef.current = "";
         setInput("");
 
         // Prior turns as plain Q/A (no document) — the doc is attached only to the
         // newest user turn by buildAskMessages.
-        const history: ChatMessage[] = messages
-            .slice(-MAX_HISTORY_TURNS * 2)
-            .map((m) => ({ role: m.role, content: m.content }));
+        const turns = getAIHistoryTurns();
+        const history: ChatMessage[] = turns > 0
+            ? messages.slice(-turns * 2).map((m) => ({ role: m.role, content: m.content }))
+            : [];
 
         const withUser: UIMessage[] = [...messages, { role: "user", content: text }, { role: "assistant", content: "" }];
         const assistantIdx = withUser.length - 1;
@@ -244,10 +262,15 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
             {configured && (
                 <div className="shrink-0 p-3 pt-2">
                     <div className="ai-composer flex items-end gap-2 bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-lg)] px-3 py-2 shadow-sm transition-all duration-150">
+                        {/* Uncontrolled on purpose: a controlled textarea has React
+                            re-assign value/defaultValue on renders, which WebKitGTK
+                            treats as a programmatic edit and purges the native undo
+                            stack — Ctrl+Z stopped working on Linux (#111). `input`
+                            is a read-only mirror kept via onChange. */}
                         <textarea
                             ref={inputRef}
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
+                            defaultValue=""
+                            onChange={(e) => { inputDraftRef.current = e.target.value; setInput(e.target.value); }}
                             onKeyDown={onKeyDown}
                             rows={1}
                             placeholder={mode === "agent" ? "Describe the change…" : "Ask about this note…"}
