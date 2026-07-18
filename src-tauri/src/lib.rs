@@ -2,9 +2,12 @@ mod ai;
 mod commands;
 mod pdf;
 
-use commands::{read_file, save_file, get_file_info, list_directory_files, search_files, save_image, read_image_file, get_ai_key, set_ai_key};
-use tauri::{Manager, Emitter};
+use commands::{
+    get_ai_key, get_file_info, list_directory_files, read_file, read_image_file, save_file,
+    save_image, search_files, set_ai_key,
+};
 use std::sync::Mutex;
+use tauri::{Emitter, Manager};
 
 /// File path passed on the command line (double-clicking a .md in the OS).
 /// Held until the frontend asks for it via `get_cli_file`.
@@ -34,7 +37,7 @@ fn get_cli_file(state: tauri::State<CliFile>) -> Option<String> {
 pub fn run() {
     let cli_file = md_arg(&std::env::args().collect::<Vec<_>>());
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         // Must be the first plugin so it wins the instance lock race.
         // A second launch (double-clicking another .md while Paperling runs)
         // forwards its argv here and exits; we surface the window and hand
@@ -50,7 +53,14 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    }
+
+    builder
         .setup(|app| {
             // Updater (GitHub latest.json) + process (relaunch after install)
             // are desktop-only plugins, hence registered here behind cfg
