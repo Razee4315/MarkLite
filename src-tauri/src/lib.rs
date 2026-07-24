@@ -2,9 +2,12 @@ mod ai;
 mod commands;
 mod pdf;
 
-use commands::{read_file, save_file, get_file_info, list_directory_files, search_files, save_image, read_image_file, get_ai_key, set_ai_key};
-use tauri::{Manager, Emitter};
+use commands::{
+    get_ai_key, get_file_info, list_directory_files, read_file, read_image_file, save_file,
+    save_image, search_files, set_ai_key,
+};
 use std::sync::Mutex;
+use tauri::{Emitter, Manager};
 
 /// File path passed on the command line (double-clicking a .md in the OS).
 /// Held until the frontend asks for it via `get_cli_file`.
@@ -34,7 +37,7 @@ fn get_cli_file(state: tauri::State<CliFile>) -> Option<String> {
 pub fn run() {
     let cli_file = md_arg(&std::env::args().collect::<Vec<_>>());
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         // Must be the first plugin so it wins the instance lock race.
         // A second launch (double-clicking another .md while Paperling runs)
         // forwards its argv here and exits; we surface the window and hand
@@ -50,7 +53,39 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // Remembers where the window was and how big it was across launches.
+    // Geometry ONLY — the plugin's default flag set is all(), and three of
+    // those flags fight code we already have:
+    //   VISIBLE     restore_state ends in `show() + set_focus()`, which fires
+    //               at window-ready and so undoes `visible: false` in
+    //               tauri.conf.json. That flag plus revealMainWindow() is what
+    //               kills the white startup flash on the dark theme.
+    //   FULLSCREEN  useFullscreen tracks fullscreen in a ref because
+    //               isFullscreen() lies on frameless windows (FULLSCREEN-01).
+    //               Reopening fullscreen behind its back desyncs the title bar
+    //               and eats the first F11 press.
+    //   DECORATIONS meaningless for a window that is always decorations:false.
+    //
+    // Filtered to "main" as well, because the plugin manages EVERY window and
+    // PDF export spins up its own (pdf.rs, label "pdf-export-{seq}"). Those are
+    // deliberately hidden and deliberately sized to US Letter at 96dpi; letting
+    // the plugin persist and then re-apply their geometry would mean a stale
+    // saved size silently overriding the size pdf.rs asks for. A denylist can't
+    // express this since the labels carry a counter.
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_window_state::StateFlags;
+        builder = builder.plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .with_filter(|label| label == "main")
+                .build(),
+        );
+    }
+
+    builder
         .setup(|app| {
             // Updater (GitHub latest.json) + process (relaunch after install)
             // are desktop-only plugins, hence registered here behind cfg
