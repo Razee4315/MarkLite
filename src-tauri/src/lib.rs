@@ -67,12 +67,20 @@ pub fn run() {
     //               Reopening fullscreen behind its back desyncs the title bar
     //               and eats the first F11 press.
     //   DECORATIONS meaningless for a window that is always decorations:false.
+    //
+    // Filtered to "main" as well, because the plugin manages EVERY window and
+    // PDF export spins up its own (pdf.rs, label "pdf-export-{seq}"). Those are
+    // deliberately hidden and deliberately sized to US Letter at 96dpi; letting
+    // the plugin persist and then re-apply their geometry would mean a stale
+    // saved size silently overriding the size pdf.rs asks for. A denylist can't
+    // express this since the labels carry a counter.
     #[cfg(desktop)]
     {
         use tauri_plugin_window_state::StateFlags;
         builder = builder.plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .with_filter(|label| label == "main")
                 .build(),
         );
     }
