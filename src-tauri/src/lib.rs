@@ -55,9 +55,26 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init());
 
+    // Remembers where the window was and how big it was across launches.
+    // Geometry ONLY — the plugin's default flag set is all(), and three of
+    // those flags fight code we already have:
+    //   VISIBLE     restore_state ends in `show() + set_focus()`, which fires
+    //               at window-ready and so undoes `visible: false` in
+    //               tauri.conf.json. That flag plus revealMainWindow() is what
+    //               kills the white startup flash on the dark theme.
+    //   FULLSCREEN  useFullscreen tracks fullscreen in a ref because
+    //               isFullscreen() lies on frameless windows (FULLSCREEN-01).
+    //               Reopening fullscreen behind its back desyncs the title bar
+    //               and eats the first F11 press.
+    //   DECORATIONS meaningless for a window that is always decorations:false.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+        use tauri_plugin_window_state::StateFlags;
+        builder = builder.plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .build(),
+        );
     }
 
     builder

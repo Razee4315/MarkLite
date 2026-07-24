@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Paperling remembers your window.** Size, position and whether it was
+  maximized are restored the next time you launch, instead of always reopening
+  at the default 1000x700 in the middle of the screen. Thanks to
+  [@andychey](https://github.com/andychey).
+
 ## [1.0.49] - 2026-07-12
 
 ### Added
