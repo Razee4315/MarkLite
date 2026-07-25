@@ -63,7 +63,7 @@ jobs:
       # failing the build on any lint warning, keeping the Rust side clean.
       - name: Lint Rust (clippy)
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Test Rust
         working-directory: src-tauri
