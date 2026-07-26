@@ -56,7 +56,7 @@ tauri-plugin-window-state = "2"
 # its native PrintToPdf (no OS print dialog). Versions track what wry/tauri
 # already resolve so we don't pull a second copy of the Windows bindings.
 [target."cfg(windows)".dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 windows = "0.61"
 
 # Same silent PDF export on macOS: an NSPrintOperation on the hidden WKWebView
