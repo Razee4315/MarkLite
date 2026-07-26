@@ -67,7 +67,7 @@
     "sharp": "^0.35.3",
     "typescript": "~5.8.3",
     "vite": "^7.3.6",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "@babel/core": "^7.29.6",
