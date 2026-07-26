@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# This project installs with bun; bun.lock is the lockfile of record. A stray
+# `npm install` regenerates these, and committing one puts Dependabot back on
+# the npm ecosystem, whose PRs fail CI's `bun install --frozen-lockfile`.
+package-lock.json
+docs/package-lock.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
