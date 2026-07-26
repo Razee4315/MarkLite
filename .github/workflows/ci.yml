@@ -91,8 +91,8 @@ jobs:
 
   # ─── Supply-chain: known-vulnerability scan (npm + Cargo) ─────
   # Scans every lockfile in the repo against the OSV database and fails on any
-  # package with a known vulnerability. Covers the frontend (package-lock.json)
-  # and Rust (Cargo.lock) in one pass.
+  # package with a known vulnerability. Covers the frontend (bun.lock, both the
+  # app and docs/) and Rust (Cargo.lock) in one pass.
   #
   # Tag verified against github.com/google/osv-scanner-action releases; Dependabot
   # (github-actions ecosystem) will keep it current.
