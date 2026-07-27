@@ -473,9 +473,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                         <div className="flex items-baseline gap-2">
                                             <span className="text-[var(--text-primary)] font-semibold">Paperling</span>
                                             {/* Convention: the About box reports the running version (#148).
-                                                Selectable so it can be pasted straight into a bug report. */}
+                                                Selectable so it can be pasted straight into a bug report, and
+                                                --text-secondary rather than --text-muted because a version people
+                                                are meant to read back to you has to be legible in every theme. */}
                                             {appVersion && (
-                                                <span className="text-[11px] font-mono text-[var(--text-muted)] select-text">
+                                                <span className="text-[11px] font-mono text-[var(--text-secondary)] select-text">
                                                     v{appVersion}
                                                 </span>
                                             )}
