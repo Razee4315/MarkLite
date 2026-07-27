@@ -19,10 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Unreadable text selection.** Selecting text in the editor showed a dark
-  block over dark text in the Light and Paper themes, so you could see what was
-  selected but not read it. Both themes now tint the selection instead. Thanks
-  to [@skycommand](https://github.com/skycommand).
+- **Hard-to-see text selection.** In the Light and Paper themes, selecting text
+  in the editor painted a dark block over dark text, so you could see what was
+  selected but not read it; both themes now tint the selection instead. In every
+  theme, the highlight on the line you are typing on also washed the selection
+  out on that line, which is the one line every selection touches. That
+  highlight now steps aside while text is selected. Thanks to
+  [@skycommand](https://github.com/skycommand).
 - **The About page now shows the version you are running.** Settings, About
   reported only the app name, which made it awkward to file a bug report.
   Thanks to [@skycommand](https://github.com/skycommand).
