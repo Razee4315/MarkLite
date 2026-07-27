@@ -59,6 +59,44 @@ describe("keybindings on macOS", () => {
     });
 });
 
+describe("alias bindings (#147)", () => {
+    beforeEach(() => setPlatform("Win32"));
+
+    it("closes a tab on Ctrl+F4 as well as Ctrl+W", async () => {
+        const kb = await loadFresh();
+        expect(kb.matchesBinding(kev({ key: "w", ctrlKey: true }), "closeTab")).toBe(true);
+        expect(kb.matchesBinding(kev({ key: "F4", ctrlKey: true }), "closeTab")).toBe(true);
+        // Bare F4 and Alt+F4 must NOT close the tab — Alt+F4 closes the window.
+        expect(kb.matchesBinding(kev({ key: "F4" }), "closeTab")).toBe(false);
+        expect(kb.matchesBinding(kev({ key: "F4", altKey: true }), "closeTab")).toBe(false);
+    });
+
+    it("opens the command palette on F1 as well as Ctrl+P", async () => {
+        const kb = await loadFresh();
+        expect(kb.matchesBinding(kev({ key: "p", ctrlKey: true }), "palette")).toBe(true);
+        expect(kb.matchesBinding(kev({ key: "F1" }), "palette")).toBe(true);
+        expect(kb.matchesBinding(kev({ key: "F1", ctrlKey: true }), "palette")).toBe(false);
+    });
+
+    it("keeps aliases scoped to their own action", async () => {
+        const kb = await loadFresh();
+        expect(kb.matchesBinding(kev({ key: "F1" }), "closeTab")).toBe(false);
+        expect(kb.matchesBinding(kev({ key: "F4", ctrlKey: true }), "palette")).toBe(false);
+        // F11 (fullscreen) must not be swallowed by the F1 alias.
+        expect(kb.matchesBinding(kev({ key: "F11" }), "palette")).toBe(false);
+        expect(kb.matchesBinding(kev({ key: "F11" }), "fullscreen")).toBe(true);
+    });
+
+    it("displays the primary combo, and exposes aliases separately", async () => {
+        const kb = await loadFresh();
+        expect(kb.formatShortcut("closeTab")).toBe("Ctrl+W");
+        expect(kb.formatShortcut("palette")).toBe("Ctrl+P");
+        expect(kb.formatAliases("closeTab")).toEqual(["Ctrl+F4"]);
+        expect(kb.formatAliases("palette")).toEqual(["F1"]);
+        expect(kb.formatAliases("save")).toEqual([]);
+    });
+});
+
 describe("keybindings on Windows/Linux", () => {
     beforeEach(() => setPlatform("Win32"));
 

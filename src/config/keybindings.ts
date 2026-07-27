@@ -72,6 +72,22 @@ export const BINDINGS = {
 
 export type BindingId = keyof typeof BINDINGS;
 
+/**
+ * Secondary combos that fire the same action as their primary binding, for
+ * muscle memory carried in from other apps (#147). Ctrl+F4 is the long-standing
+ * Windows "close document" combo, and F1 is VS Code's command-palette alias
+ * alongside Ctrl+P.
+ *
+ * These are matched but NOT displayed: the cheatsheet and menus stay on the
+ * primary so they don't turn into a list of synonyms. Alt+F4 (close window) is
+ * unaffected — it never reaches this config, the Tauri close-requested handler
+ * owns it.
+ */
+export const ALIASES: Partial<Record<BindingId, Binding[]>> = {
+    closeTab: [{ key: "F4", mod: true }],
+    palette: [{ key: "F1" }],
+};
+
 /** Is the primary modifier (Cmd on Mac, Ctrl elsewhere) the one pressed here? */
 export function isModPressed(e: KeyboardEvent): boolean {
     return isMac ? e.metaKey : e.ctrlKey;
@@ -89,8 +105,12 @@ const isSymbolKey = (key: string) => key.length === 1 && !/[a-z0-9]/i.test(key);
 
 /** Does a keyboard event match the given binding, resolving `mod` per platform? */
 export function matchesBinding(e: KeyboardEvent, id: BindingId): boolean {
-    const b: Binding = BINDINGS[id];
+    if (matchesOne(e, BINDINGS[id])) return true;
+    return (ALIASES[id] ?? []).some((alias) => matchesOne(e, alias));
+}
 
+/** Match a single combo. `matchesBinding` layers the aliases on top of this. */
+function matchesOne(e: KeyboardEvent, b: Binding): boolean {
     if (e.key.toLowerCase() !== b.key.toLowerCase()) return false;
 
     // Primary/secondary modifier resolution.
@@ -156,6 +176,11 @@ export function formatBinding(b: Binding): string {
 /** Display string for a registered binding, e.g. formatShortcut("saveAs"). */
 export function formatShortcut(id: BindingId): string {
     return formatBinding(BINDINGS[id]);
+}
+
+/** Display strings for a binding's secondary combos, if it has any (#147). */
+export function formatAliases(id: BindingId): string[] {
+    return (ALIASES[id] ?? []).map(formatBinding);
 }
 
 /** Prefix an arbitrary label with the primary modifier: mod("1–8") → "⌘1–8". */
