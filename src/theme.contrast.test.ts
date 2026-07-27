@@ -55,9 +55,10 @@ describe("theme selection contrast", () => {
 
     it.each(THEMES)("%s keeps the selection distinguishable from the editor background", (selector) => {
         const vars = themeVars(selector);
-        // Low bar on purpose — this only catches a selection that vanishes into
-        // the page, which is the other half of #146.
-        expect(contrast(vars["--selection-bg"], vars["--bg-editor"])).toBeGreaterThanOrEqual(1.3);
+        // The other half of #146: a selection that vanishes into the page. 1.45
+        // is where the four themes currently sit (dark, the strongest, is 1.9);
+        // anything much below reads as "did my selection take?".
+        expect(contrast(vars["--selection-bg"], vars["--bg-editor"])).toBeGreaterThanOrEqual(1.45);
     });
 
     it.each(THEMES)("%s recolors natively-selected text readably too", (selector) => {

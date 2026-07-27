@@ -99,7 +99,7 @@
      BEHIND the text and never applies --selection-text, so a dark selection
      background left dark editor text unreadable (#146). Keeping the selection
      lighter than the text means it reads correctly on both surfaces. */
-  --selection-bg: #d9d3c8;
+  --selection-bg: #cbc4b8;
   --selection-text: #171717;
 }
 
@@ -148,7 +148,7 @@
 
   /* Warm tan tint of the brown accent, light enough that the editor's dark text
      stays readable on top of it (see the light-theme note above, #146). */
-  --selection-bg: #d5c5a9;
+  --selection-bg: #c9b591;
   --selection-text: #3d3d3d;
 }
 
