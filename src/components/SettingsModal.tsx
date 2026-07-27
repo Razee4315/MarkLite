@@ -101,6 +101,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [autoSave, setAutoSaveLocal] = useState(getAutoSave);
     const [openInReader, setOpenInReaderLocal] = useState(getOpenInReader);
 
+    // The running app's version for the About panel (#148). Read from the Tauri
+    // core API rather than a build-time constant so it always reflects the
+    // installed binary; empty in a plain browser (`vite dev`), where the row is
+    // simply not rendered.
+    const [appVersion, setAppVersion] = useState("");
+
     const [ai, setAi] = useState(getAIConfig);
     const [aiEnabled, setAiEnabledLocal] = useState(getAIEnabled);
     const aiEndpointInvalid = ai.endpoint.length > 0 && !isValidEndpoint(ai.endpoint);
@@ -153,6 +159,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             detach();
         };
     }, [isOpen, onClose]);
+
+    // Resolve the app version once the modal is first opened (#148). Lazily
+    // imported so a plain browser session, where the Tauri IPC doesn't exist,
+    // doesn't pay for or fail on the import at module load.
+    useEffect(() => {
+        if (!isOpen || appVersion) return;
+        let cancelled = false;
+        import("@tauri-apps/api/app")
+            .then(({ getVersion }) => getVersion())
+            .then((v) => { if (!cancelled) setAppVersion(v); })
+            .catch(() => { /* not running under Tauri — the row stays hidden */ });
+        return () => { cancelled = true; };
+    }, [isOpen, appVersion]);
 
     // Persist AI fields on close. The endpoint/model/key inputs save on blur,
     // but Escape-to-close or backdrop-click can fire before the input loses
@@ -451,7 +470,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 <div className="flex items-center gap-3">
                                     <img src="/icon.svg" alt="Paperling" className="w-10 h-10" />
                                     <div>
-                                        <div className="text-[var(--text-primary)] font-semibold">Paperling</div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-[var(--text-primary)] font-semibold">Paperling</span>
+                                            {/* Convention: the About box reports the running version (#148).
+                                                Selectable so it can be pasted straight into a bug report. */}
+                                            {appVersion && (
+                                                <span className="text-[11px] font-mono text-[var(--text-muted)] select-text">
+                                                    v{appVersion}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="text-[11px]">A minimal markdown editor</div>
                                     </div>
                                 </div>
