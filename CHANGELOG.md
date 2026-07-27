@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maximized are restored the next time you launch, instead of always reopening
   at the default 1000x700 in the middle of the screen. Thanks to
   [@andychey](https://github.com/andychey).
+- **Familiar shortcuts.** Ctrl+F4 also closes the current tab, and F1 also
+  opens the command palette, alongside the existing Ctrl+W and Ctrl+P. Thanks
+  to [@skycommand](https://github.com/skycommand).
+
+### Fixed
+
+- **Hard-to-see text selection.** In the Light and Paper themes, selecting text
+  in the editor painted a dark block over dark text, so you could see what was
+  selected but not read it; both themes now tint the selection instead. In every
+  theme, the highlight on the line you are typing on also washed the selection
+  out on that line, which is the one line every selection touches. That
+  highlight now steps aside while text is selected. Thanks to
+  [@skycommand](https://github.com/skycommand).
+- **The About page now shows the version you are running.** Settings, About
+  reported only the app name, which made it awkward to file a bug report.
+  Thanks to [@skycommand](https://github.com/skycommand).
 
 ## [1.0.49] - 2026-07-12
 

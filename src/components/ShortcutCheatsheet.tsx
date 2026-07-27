@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { attachFocusTrap } from "../utils/focusTrap";
-import { formatShortcut, withMod, aiShortcutLabel } from "../config/keybindings";
+import { formatShortcut, formatAliases, withMod, aiShortcutLabel } from "../config/keybindings";
 import iconKeyboard from "../assets/mascot/icon-keyboard.png";
 
 interface ShortcutCheatsheetProps {
@@ -11,6 +11,9 @@ interface ShortcutCheatsheetProps {
 interface Shortcut {
     keys: string;
     description: string;
+    /** Secondary combo shown as "… or F1" — kept out of `keys` so filtering and
+     *  the primary chip stay clean. */
+    alsoKeys?: string;
 }
 
 interface ShortcutGroup {
@@ -28,7 +31,7 @@ const groups: ShortcutGroup[] = [
         items: [
             { keys: formatShortcut("openFile"), description: "Open file" },
             { keys: formatShortcut("newFile"), description: "New file (new tab)" },
-            { keys: formatShortcut("closeTab"), description: "Close tab" },
+            { keys: formatShortcut("closeTab"), description: "Close tab", alsoKeys: formatAliases("closeTab")[0] },
             { keys: formatShortcut("save"), description: "Save" },
             { keys: formatShortcut("saveAs"), description: "Save As…" },
         ],
@@ -37,7 +40,7 @@ const groups: ShortcutGroup[] = [
         title: "Tabs",
         items: [
             { keys: formatShortcut("newFile"), description: "New tab" },
-            { keys: formatShortcut("closeTab"), description: "Close tab" },
+            { keys: formatShortcut("closeTab"), description: "Close tab", alsoKeys: formatAliases("closeTab")[0] },
             { keys: formatShortcut("reopenClosedTab"), description: "Reopen closed tab" },
             { keys: formatShortcut("nextTab"), description: "Next tab" },
             { keys: formatShortcut("prevTab"), description: "Previous tab" },
@@ -55,7 +58,7 @@ const groups: ShortcutGroup[] = [
             { keys: formatShortcut("toggleFileExplorer"), description: "Toggle file explorer" },
             { keys: formatShortcut("searchInFolder"), description: "Search across files" },
             { keys: formatShortcut("toggleTOC"), description: "Toggle outline" },
-            { keys: formatShortcut("palette"), description: "Command palette" },
+            { keys: formatShortcut("palette"), description: "Command palette", alsoKeys: formatAliases("palette")[0] },
             { keys: formatShortcut("settings"), description: "Open settings" },
             { keys: formatShortcut("cheatsheet"), description: "Show this cheatsheet" },
         ],
@@ -146,7 +149,10 @@ export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps)
         ? groups
             .map((g) => ({
                 ...g,
-                items: g.items.filter((it) => it.description.toLowerCase().includes(q) || it.keys.toLowerCase().includes(q)),
+                items: g.items.filter((it) =>
+                    it.description.toLowerCase().includes(q)
+                    || it.keys.toLowerCase().includes(q)
+                    || !!it.alsoKeys?.toLowerCase().includes(q)),
             }))
             .filter((g) => g.items.length > 0)
         : groups;
@@ -193,7 +199,15 @@ export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps)
                                 {g.items.map((it, i) => (
                                     <li key={i} className="flex items-center justify-between gap-3">
                                         <span className="text-sm text-[var(--text-primary)]">{it.description}</span>
-                                        <span className="flex items-center gap-1 shrink-0">{renderKey(it.keys)}</span>
+                                        <span className="flex items-center gap-1 shrink-0">
+                                            {renderKey(it.keys)}
+                                            {it.alsoKeys && (
+                                                <>
+                                                    <span className="text-[11px] text-[var(--text-muted)]">or</span>
+                                                    {renderKey(it.alsoKeys)}
+                                                </>
+                                            )}
+                                        </span>
                                     </li>
                                 ))}
                             </ul>

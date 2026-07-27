@@ -4,7 +4,6 @@ import {
     EditorView,
     keymap,
     lineNumbers,
-    highlightActiveLine,
     highlightActiveLineGutter,
     drawSelection,
     dropCursor,
@@ -38,6 +37,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { matchWikilinkPrefix, rankFileNames, toWikiName } from "../utils/wikilinkComplete";
 import { applyTableOp, findTableAt, locateCell, type Align } from "../utils/tableModel";
 import { toCmKey } from "../config/keybindings";
+import { highlightCaretLine } from "../utils/caretLineHighlight";
 import type { Scroller } from "../utils/scrollSync";
 
 interface CodeEditorProps {
@@ -111,10 +111,10 @@ const editorTheme = EditorView.theme({
         border: "none",
         borderRight: "1px solid var(--border-subtle)",
     },
-    // Semi-transparent so the selection layer beneath shows through: --bg-hover is
-    // opaque and paints on the content line ON TOP of the selection, which would
-    // otherwise hide the selection background on the caret's line.
-    ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--bg-hover) 55%, transparent)" },
+    // Fully opaque again: highlightCaretLine drops this decoration entirely
+    // while a selection exists, so it can no longer paint over the selection
+    // layer, and the caret-only case gets a line tint you can actually see.
+    ".cm-activeLine": { backgroundColor: "var(--bg-hover)" },
     ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text-primary)" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
@@ -421,7 +421,9 @@ function CodeEditorImpl({
                 extensions: [
                     lineNumbers(),
                     highlightActiveLineGutter(),
-                    highlightActiveLine(),
+                    // Not CodeMirror's highlightActiveLine: ours yields while a
+                    // selection is up, so the line tint can't hide it (#146).
+                    highlightCaretLine,
                     historyComp.of(history()),
                     drawSelection(),
                     dropCursor(),

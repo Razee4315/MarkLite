@@ -95,8 +95,12 @@
   --scrollbar-thumb: #d4d4d4;
   --scrollbar-hover: #a3a3a3;
 
-  --selection-bg: #171717;
-  --selection-text: #ffffff;
+  /* A light tint, NOT a near-black slab: CodeMirror's drawSelection paints this
+     BEHIND the text and never applies --selection-text, so a dark selection
+     background left dark editor text unreadable (#146). Keeping the selection
+     lighter than the text means it reads correctly on both surfaces. */
+  --selection-bg: #cbc4b8;
+  --selection-text: #171717;
 }
 
 /* Paper Theme */
@@ -142,8 +146,10 @@
   --scrollbar-thumb: #c9c0ae;
   --scrollbar-hover: #a69d8d;
 
-  --selection-bg: #5c4033;
-  --selection-text: #faf8f3;
+  /* Warm tan tint of the brown accent, light enough that the editor's dark text
+     stays readable on top of it (see the light-theme note above, #146). */
+  --selection-bg: #c9b591;
+  --selection-text: #3d3d3d;
 }
 
 /* Dracula Theme */
@@ -391,17 +397,6 @@ select:focus-visible,
 ::selection {
   background: var(--selection-bg);
   color: var(--selection-text);
-}
-
-/* AI chat composer selection in the LIGHT and PAPER themes only: the global
-   --selection-bg is near-black/dark-brown, which over the near-white input reads
-   as an almost-solid block that hides the text. Blend it heavily toward the input
-   background for a light tint, and keep dark primary text so the selection stays
-   readable. Dark/Dracula are already fine (selection lighter than the input). */
-[data-theme="light"] .ai-composer ::selection,
-[data-theme="paper"] .ai-composer ::selection {
-  background: color-mix(in srgb, var(--selection-bg) 22%, var(--bg-input));
-  color: var(--text-primary);
 }
 
 /* ===== Material Icons ===== */
