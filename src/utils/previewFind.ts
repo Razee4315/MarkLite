@@ -8,8 +8,8 @@
 // acceptable for a reading aid, the same trade-off VS Code's webview find makes.
 
 import type { FindController, FindOpts, FindResult } from "../components/FindBar";
+import { collectDomMatches } from "./domTextMatches";
 
-const MAX_MATCHES = 5000;
 const HIGHLIGHT_ALL = "paperling-find";
 const HIGHLIGHT_ACTIVE = "paperling-find-active";
 
@@ -25,28 +25,6 @@ const cssHighlights = (): HighlightsRegistry | null => {
 
 const HighlightCtor = (): (new (...r: Range[]) => unknown) | undefined =>
     (globalThis as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
-
-function collectMatches(root: HTMLElement, query: string, caseSensitive: boolean): Range[] {
-    const ranges: Range[] = [];
-    if (!query) return ranges;
-    const q = caseSensitive ? query : query.toLowerCase();
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
-        const data = (node as Text).data;
-        const text = caseSensitive ? data : data.toLowerCase();
-        let i = text.indexOf(q);
-        while (i !== -1) {
-            const r = new Range();
-            r.setStart(node, i);
-            r.setEnd(node, i + q.length);
-            ranges.push(r);
-            if (ranges.length >= MAX_MATCHES) return ranges;
-            i = text.indexOf(q, i + q.length);
-        }
-    }
-    return ranges;
-}
 
 /**
  * Build a FindController over a rendered-markdown root. `rootRef` is read at call
@@ -73,7 +51,7 @@ export function createPreviewFindController(
 
         search(query: string, opts: FindOpts): FindResult {
             const root = rootRef.current;
-            ranges = root ? collectMatches(root, query.trim(), opts.caseSensitive) : [];
+            ranges = root ? collectDomMatches(root, query.trim(), opts.caseSensitive) : [];
             const reg = cssHighlights();
             const H = HighlightCtor();
             if (reg) {

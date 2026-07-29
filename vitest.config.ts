@@ -13,7 +13,10 @@ export default defineConfig({
         // and EditorState.create rejects extensions built by the other copy
         // ("Unrecognized extension value"). Vite's dep pre-bundling hides this
         // in dev/build, so it only bites in tests.
-        dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/autocomplete", "@codemirror/lint"],
+        // @codemirror/merge is here because reviewFind.integration.test.ts builds
+        // a real unifiedMergeView state; a second @codemirror/state copy behind it
+        // would fail EditorState.create with "Unrecognized extension value".
+        dedupe: ["@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/autocomplete", "@codemirror/lint", "@codemirror/merge"],
     },
     test: {
         environment: "jsdom",

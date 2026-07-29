@@ -331,6 +331,16 @@ select:focus-visible,
   color: #1a1a1a;
 }
 
+/* The active find match when it lands inside an AI review's removed lines
+   (issue #111). Those lines are a @codemirror/merge block widget, not document
+   text, so editor decorations can't reach them and the Custom Highlight API is
+   used instead. Same strong amber as the active match above, so "the one you
+   are on" looks the same wherever it is; only ever one range is registered. */
+::highlight(paperling-find-removed) {
+  background-color: rgba(255, 145, 0, 0.65);
+  color: #1a1a1a;
+}
+
 /* Editor-side find matches (CodeMirror decorations — FIND-01). Same amber as the
    reader-mode preview highlights above so find looks identical on both surfaces:
    every match dim, the active one brighter. */
