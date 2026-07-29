@@ -75,6 +75,7 @@ import {
   addRecentFile,
   getAIConfig,
   getAIEnabled,
+  getAIPanelWidth,
   initAIKey,
   getLastFile,
   getOpenInReader,
@@ -136,9 +137,10 @@ interface FileData {
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
 const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
 
-// Width of the right-side AI panel; the editor/preview area reserves this much
-// padding-right when it's open so content reflows beside it (not under it).
-const AI_PANEL_WIDTH = 400;
+// The AI panel's width is a persisted user setting, dragged from its left edge
+// (#111). App owns it because three things must agree on one number: the panel
+// itself, the padding-right the editor/preview reserves so content reflows
+// beside it (not under it), and the floating mode toggle that sits clear of it.
 
 // Width of the left-side drawers (FileExplorer / TableOfContents); they are
 // `fixed left-0 w-72` (18rem = 288px), so the editor reserves this much
@@ -219,6 +221,8 @@ function AppContent() {
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(false);
+  // Live during a drag; the panel writes the settled value to storage itself.
+  const [aiPanelWidth, setAiPanelWidth] = useState(getAIPanelWidth);
   // Proposed document from Agent mode, shown as an inline diff for accept/reject.
   const [proposedDoc, setProposedDoc] = useState<string | null>(null);
 
@@ -1950,7 +1954,7 @@ function AppContent() {
             // editor beside them instead of overlaying it.
             style={{
                 paddingLeft: (showFileExplorer || showTOC) ? `${SIDEBAR_WIDTH}px` : 0,
-                paddingRight: showAIPanel ? `min(${AI_PANEL_WIDTH}px, 90vw)` : 0,
+                paddingRight: showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
                 transition: "padding 0.15s ease",
             }}
           >
@@ -2036,7 +2040,7 @@ function AppContent() {
             </div>
           </div>
 
-          <ModeToggle mode={mode} onSetMode={setMode} aiPanelOpen={showAIPanel} />
+          <ModeToggle mode={mode} onSetMode={setMode} aiPanelOpen={showAIPanel} aiPanelWidth={aiPanelWidth} />
 
           {/* Sidebar Panels — only mount when actually open so they don't
               load their module until first use. */}
@@ -2073,6 +2077,8 @@ function AppContent() {
                 selectionText={content.slice(selectionRange.start, selectionRange.end)}
                 aiConfig={aiConfig}
                 onProposeEdit={handleProposeEdit}
+                width={aiPanelWidth}
+                onWidthChange={setAiPanelWidth}
               />
             </Suspense>
           )}

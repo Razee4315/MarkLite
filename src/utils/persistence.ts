@@ -3,6 +3,8 @@
  * Tauri's webview has localStorage available; values survive app restarts.
  */
 
+import { sanitizeSessions, pruneSessions, type ChatSession } from "./chatSessions";
+
 // One-time migration from the app's pre-rename key prefix. The bundle
 // identifier (and therefore the WebView2 storage location) is unchanged, so
 // existing users still have their old "marklite:*" entries — copy each to its
@@ -157,6 +159,40 @@ export const getAIHistoryTurns = (): number => {
 };
 export const setAIHistoryTurns = (v: number): void =>
     safeSet(KEY_AI_HISTORY_TURNS, Math.min(AI_HISTORY_TURNS_MAX, Math.max(0, Math.round(v))));
+
+// Width of the AI side panel in px, set by dragging its left edge. Issue #111.
+// Clamped on both read and write: the editor reserves this much padding, so a
+// hand-edited or stale value must never be able to squeeze the document to
+// nothing or push the panel off screen. The upper bound is also capped against
+// the viewport at render time (the panel keeps a max-w of 90vw).
+const KEY_AI_PANEL_WIDTH = "paperling:aiPanelWidth";
+export const AI_PANEL_WIDTH_DEFAULT = 400;
+export const AI_PANEL_WIDTH_MIN = 280;
+export const AI_PANEL_WIDTH_MAX = 900;
+const clampPanelWidth = (v: number): number =>
+    Math.min(AI_PANEL_WIDTH_MAX, Math.max(AI_PANEL_WIDTH_MIN, Math.round(v)));
+export const getAIPanelWidth = (): number => {
+    const v = safeGet<number>(KEY_AI_PANEL_WIDTH, AI_PANEL_WIDTH_DEFAULT);
+    if (typeof v !== "number" || !Number.isFinite(v)) return AI_PANEL_WIDTH_DEFAULT;
+    return clampPanelWidth(v);
+};
+export const setAIPanelWidth = (v: number): void => safeSet(KEY_AI_PANEL_WIDTH, clampPanelWidth(v));
+
+// The title-bar AI button's shimmering icon. On by default (unchanged look);
+// off renders it as plain text, which some users simply prefer. Issue #111.
+const KEY_AI_ICON_ANIMATION = "paperling:aiIconAnimation";
+export const getAIIconAnimation = (): boolean => safeGet<boolean>(KEY_AI_ICON_ANIMATION, true);
+export const setAIIconAnimation = (v: boolean): void => safeSet(KEY_AI_ICON_ANIMATION, v);
+
+// Stored AI chat sessions, so closing the panel or starting a new chat no longer
+// throws the conversation away. Reads go through sanitizeSessions so a corrupted
+// entry degrades to "no history" instead of breaking the panel; writes prune to
+// the count and size caps. Issue #111.
+const KEY_AI_CHAT_SESSIONS = "paperling:aiChatSessions";
+export const getChatSessions = (): ChatSession[] =>
+    sanitizeSessions(safeGet<unknown>(KEY_AI_CHAT_SESSIONS, []));
+export const setChatSessions = (sessions: readonly ChatSession[]): void =>
+    safeSet(KEY_AI_CHAT_SESSIONS, pruneSessions(sessions));
 
 // Version the user chose to skip in the update popup, so we don't nag about
 // it on every launch. A newer release has a different version string and

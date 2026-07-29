@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Chat history depth setting.** Choose how many previous chat turns are sent
   with each AI panel message (Settings → AI, default 8). Lower it to save
   tokens with local models, or set 0 to make every message start fresh. (#111)
+- **The AI panel is resizable.** Drag its left edge to make it as wide as you
+  need, or focus the edge and use the arrow keys. The width is remembered, and
+  the editor reflows beside it as you drag. (#111)
+- **Your chats are kept.** Closing the AI panel or starting a new chat no longer
+  throws the conversation away. Past chats are listed under the new history
+  button in the panel header, survive restarting the app, and can be deleted
+  individually. (#111)
+- **The AI icon animation can be turned off.** Settings → AI → "Animate the AI
+  icon" switches the shimmer on the title-bar AI button off, leaving it as plain
+  text. (#111)
 
 ### Fixed
 

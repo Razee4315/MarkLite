@@ -10,6 +10,7 @@ import {
     getAutoSave, setAutoSave,
     getOpenInReader, setOpenInReader,
     getAIHistoryTurns, setAIHistoryTurns, AI_HISTORY_TURNS_MAX,
+    getAIIconAnimation, setAIIconAnimation,
 } from "../utils/persistence";
 import { AI_PROVIDERS, matchProvider, type AIProvider } from "../utils/aiProviders";
 import { attachFocusTrap } from "../utils/focusTrap";
@@ -111,6 +112,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [ai, setAi] = useState(getAIConfig);
     const [aiEnabled, setAiEnabledLocal] = useState(getAIEnabled);
     const [aiHistoryTurns, setAiHistoryTurnsLocal] = useState(getAIHistoryTurns);
+    const [aiIconAnimation, setAiIconAnimationLocal] = useState(getAIIconAnimation);
     const aiEndpointInvalid = ai.endpoint.length > 0 && !isValidEndpoint(ai.endpoint);
     // Sending a key unencrypted off the machine is refused before the request
     // is made, so surface it here rather than as a failed "Test connection".
@@ -360,9 +362,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         {section === "ai" && (
                             <>
-                                <div className="rounded-[var(--radius-lg)] border border-[var(--border)] overflow-hidden">
+                                <div className="rounded-[var(--radius-lg)] border border-[var(--border)] divide-y divide-[var(--border-subtle)] overflow-hidden">
                                     <ToggleRow label="Enable AI" description="Show the AI button and assistant in the editor" checked={aiEnabled}
                                         onChange={(v) => { setAiEnabledLocal(v); setAIEnabled(v); fire("paperling:ai-enabled-toggle", v); }} />
+                                    {aiEnabled && (
+                                        <ToggleRow label="Animate the AI icon" description="Shimmer on the title-bar AI button; off shows it as plain text" checked={aiIconAnimation}
+                                            onChange={(v) => { setAiIconAnimationLocal(v); setAIIconAnimation(v); fire("paperling:ai-icon-animation-toggle", v); }} />
+                                    )}
                                 </div>
                                 <div className="flex items-start justify-between gap-3">
                                     <p className="text-sm text-[var(--text-secondary)]">

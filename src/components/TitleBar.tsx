@@ -1,10 +1,11 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import type { MouseEvent } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
 import { EditMenu } from "./EditMenu";
 import { formatShortcut } from "../config/keybindings";
+import { getAIIconAnimation } from "../utils/persistence";
 
 interface TitleBarProps {
     fileName?: string;
@@ -26,6 +27,16 @@ interface TitleBarProps {
 }
 
 function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive, isFullscreen, onToggleFullscreen, onFind, onReplace, onFindInFiles }: TitleBarProps) {
+    // Whether the AI button's icon shimmers. Some users prefer it plain (#111).
+    // Held locally and refreshed from the Settings event rather than threaded
+    // down from App, since nothing else on the way needs to know about it.
+    const [aiIconAnimated, setAiIconAnimated] = useState(getAIIconAnimation);
+    useEffect(() => {
+        const onToggle = (e: Event) => setAiIconAnimated(!!(e as CustomEvent).detail?.enabled);
+        window.addEventListener("paperling:ai-icon-animation-toggle", onToggle);
+        return () => window.removeEventListener("paperling:ai-icon-animation-toggle", onToggle);
+    }, []);
+
     const handleMinimize = async () => {
         try {
             const appWindow = Window.getCurrent();
@@ -176,7 +187,7 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                                         : "hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                                         }`}
                                 >
-                                    <span className="material-symbols-outlined text-[15px] ai-shimmer" aria-hidden="true">auto_awesome</span>
+                                    <span className={`material-symbols-outlined text-[15px]${aiIconAnimated ? " ai-shimmer" : ""}`} aria-hidden="true">auto_awesome</span>
                                     <span>AI</span>
                                 </button>
                             )}
