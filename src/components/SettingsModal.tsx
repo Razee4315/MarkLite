@@ -13,7 +13,7 @@ import {
 } from "../utils/persistence";
 import { AI_PROVIDERS, matchProvider, type AIProvider } from "../utils/aiProviders";
 import { attachFocusTrap } from "../utils/focusTrap";
-import { isValidEndpoint, runAIAction } from "../utils/aiAssist";
+import { isValidEndpoint, endpointLeaksKey, runAIAction } from "../utils/aiAssist";
 import mascotWave from "../assets/mascot/mascot-wave.png";
 
 // Platform-aware AI shortcut hint (Windows/Linux: Alt+J; macOS: ⌘J). Windows
@@ -112,7 +112,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [aiEnabled, setAiEnabledLocal] = useState(getAIEnabled);
     const [aiHistoryTurns, setAiHistoryTurnsLocal] = useState(getAIHistoryTurns);
     const aiEndpointInvalid = ai.endpoint.length > 0 && !isValidEndpoint(ai.endpoint);
-    const aiConfigured = !!ai.endpoint && !aiEndpointInvalid && !!ai.model;
+    // Sending a key unencrypted off the machine is refused before the request
+    // is made, so surface it here rather than as a failed "Test connection".
+    const aiKeyInsecure = endpointLeaksKey(ai.endpoint, ai.apiKey);
+    const aiEndpointBad = aiEndpointInvalid || aiKeyInsecure;
+    const aiConfigured = !!ai.endpoint && !aiEndpointBad && !!ai.model;
 
     // Connection-test state for the "Test connection" button (AI-04).
     const [aiTest, setAiTest] = useState<{ state: "idle" | "testing" | "ok" | "error"; msg?: string }>({ state: "idle" });
@@ -369,14 +373,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                         or the command palette.
                                     </p>
                                     <span
-                                        className={`shrink-0 px-2 py-0.5 rounded-[var(--radius-pill)] text-[11px] font-medium border ${aiEndpointInvalid
+                                        className={`shrink-0 px-2 py-0.5 rounded-[var(--radius-pill)] text-[11px] font-medium border ${aiEndpointBad
                                             ? "text-[var(--danger)] border-[var(--danger)]"
                                             : aiConfigured
                                                 ? "text-[var(--status-saved)] border-[var(--status-saved)]"
                                                 : "text-[var(--status-unsaved)] border-[var(--status-unsaved)]"
                                             }`}
                                     >
-                                        {aiEndpointInvalid ? "Invalid endpoint" : aiConfigured ? "Ready" : "Not configured"}
+                                        {aiEndpointInvalid
+                                            ? "Invalid endpoint"
+                                            : aiKeyInsecure
+                                                ? "Insecure endpoint"
+                                                : aiConfigured ? "Ready" : "Not configured"}
                                     </span>
                                 </div>
                                 <div className="space-y-3">
@@ -412,11 +420,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                             value={ai.endpoint}
                                             onChange={(e) => updateAi({ endpoint: e.target.value })}
                                             placeholder="https://api.openai.com/v1/chat/completions"
-                                            aria-invalid={aiEndpointInvalid}
-                                            className={`mt-1 w-full px-3 py-2 text-sm bg-[var(--bg-input)] border rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none font-mono ${aiEndpointInvalid ? "border-[var(--danger)] focus:border-[var(--danger)]" : "border-[var(--border)] focus:border-[var(--accent)]"}`}
+                                            aria-invalid={aiEndpointBad}
+                                            className={`mt-1 w-full px-3 py-2 text-sm bg-[var(--bg-input)] border rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none font-mono ${aiEndpointBad ? "border-[var(--danger)] focus:border-[var(--danger)]" : "border-[var(--border)] focus:border-[var(--accent)]"}`}
                                         />
                                         {aiEndpointInvalid && (
                                             <span className="block mt-1 text-[11px] text-[var(--danger)]">Must be a valid http:// or https:// URL.</span>
+                                        )}
+                                        {aiKeyInsecure && (
+                                            <span className="block mt-1 text-[11px] text-[var(--danger)]">
+                                                An API key would be sent unencrypted to this host. Use https://, or clear the key if this server does not need one.
+                                            </span>
                                         )}
                                     </label>
                                     <label className="block">

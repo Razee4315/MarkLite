@@ -114,6 +114,23 @@ async fn run_request(
     }
 }
 
+/// True when this URL may carry an API key: either it is https, or its host is
+/// loopback so nothing reaches a network. `IpAddr::is_loopback` covers all of
+/// 127.0.0.0/8 and `::1`; `*.localhost` is reserved as loopback by RFC 6761.
+fn endpoint_is_key_safe(url: &reqwest::Url) -> bool {
+    if url.scheme() == "https" {
+        return true;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
 // The parameter list mirrors the IPC contract with aiTransport.ts one-to-one;
 // bundling them into a struct would only move the same eight fields around.
 #[allow(clippy::too_many_arguments)]
@@ -130,11 +147,26 @@ pub async fn ai_request(
 ) -> Result<(), String> {
     // The frontend validates too, but the endpoint is user-configured input
     // crossing a trust boundary — re-check here (defense in depth).
-    let valid = reqwest::Url::parse(&endpoint)
-        .map(|u| matches!(u.scheme(), "http" | "https"))
-        .unwrap_or(false);
+    let parsed = reqwest::Url::parse(&endpoint).ok();
+    let valid = parsed
+        .as_ref()
+        .is_some_and(|u| matches!(u.scheme(), "http" | "https"));
     if !valid {
         return Err("AI endpoint must be a valid http:// or https:// URL.".to_string());
+    }
+
+    // A credential must never cross a network unencrypted. Keyless plain-http
+    // stays allowed so a local model server on the LAN keeps working (AI-01
+    // exists precisely to support those); it is the key that needs TLS.
+    // This is the real enforcement point — the frontend check is only UX.
+    // SECURITY, issue #91 item 3.
+    let has_key = api_key.as_deref().is_some_and(|k| !k.is_empty());
+    if has_key && parsed.as_ref().is_some_and(|u| !endpoint_is_key_safe(u)) {
+        return Err(
+            "Refusing to send your API key unencrypted to a remote host. Use an https:// \
+             endpoint, or clear the API key if this server does not need one."
+                .to_string(),
+        );
     }
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -164,7 +196,38 @@ pub async fn ai_cancel(state: tauri::State<'_, AiCancel>, id: u32) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::{flush_remainder, take_complete_lines};
+    use super::{endpoint_is_key_safe, flush_remainder, take_complete_lines};
+
+    fn key_safe(url: &str) -> bool {
+        endpoint_is_key_safe(&reqwest::Url::parse(url).expect("test url must parse"))
+    }
+
+    #[test]
+    fn https_may_always_carry_a_key() {
+        assert!(key_safe("https://api.openai.com/v1/chat/completions"));
+        assert!(key_safe("https://192.168.1.50/v1/chat/completions"));
+    }
+
+    #[test]
+    fn plain_http_to_loopback_may_carry_a_key() {
+        assert!(key_safe("http://localhost:1234/v1/chat/completions"));
+        assert!(key_safe("http://127.0.0.1:11434/v1/chat/completions"));
+        // All of 127.0.0.0/8 is loopback, not just .0.1.
+        assert!(key_safe("http://127.1.2.3:11434/v1"));
+        assert!(key_safe("http://[::1]:11434/v1"));
+        // RFC 6761 reserves *.localhost as loopback.
+        assert!(key_safe("http://ollama.localhost:11434/v1"));
+    }
+
+    #[test]
+    fn plain_http_off_box_must_not_carry_a_key() {
+        assert!(!key_safe("http://192.168.1.50:11434/v1/chat/completions"));
+        assert!(!key_safe("http://api.openai.com/v1/chat/completions"));
+        assert!(!key_safe("http://10.0.0.7/v1"));
+        // Not loopback despite looking local-ish.
+        assert!(!key_safe("http://0.0.0.0:11434/v1"));
+        assert!(!key_safe("http://localhost.evil.com/v1"));
+    }
 
     #[test]
     fn no_newline_returns_none_and_keeps_buffer() {

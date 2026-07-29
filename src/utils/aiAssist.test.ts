@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { isValidEndpoint, runAIAction, type AIConfig } from "./aiAssist";
+import { isValidEndpoint, endpointLeaksKey, runAIAction, type AIConfig } from "./aiAssist";
 import { aiFetch } from "./aiTransport";
 
 vi.mock("./aiTransport", () => ({ aiFetch: vi.fn() }));
@@ -31,6 +31,37 @@ describe("isValidEndpoint", () => {
     });
 });
 
+describe("endpointLeaksKey", () => {
+    it("is false whenever there is no key to leak", () => {
+        // Keyless plain-http LAN servers stay allowed on purpose (issue #91).
+        expect(endpointLeaksKey("http://192.168.1.50:11434/v1", "")).toBe(false);
+        expect(endpointLeaksKey("http://192.168.1.50:11434/v1", undefined)).toBe(false);
+        expect(endpointLeaksKey("http://192.168.1.50:11434/v1", null)).toBe(false);
+    });
+
+    it("is false for https regardless of host", () => {
+        expect(endpointLeaksKey("https://api.openai.com/v1", "sk-abc")).toBe(false);
+        expect(endpointLeaksKey("https://192.168.1.50/v1", "sk-abc")).toBe(false);
+    });
+
+    it("is false for plain http to loopback", () => {
+        expect(endpointLeaksKey("http://localhost:1234/v1", "sk-abc")).toBe(false);
+        expect(endpointLeaksKey("http://127.0.0.1:11434/v1", "sk-abc")).toBe(false);
+        expect(endpointLeaksKey("http://127.1.2.3:11434/v1", "sk-abc")).toBe(false);
+        expect(endpointLeaksKey("http://[::1]:11434/v1", "sk-abc")).toBe(false);
+        expect(endpointLeaksKey("http://ollama.localhost:11434/v1", "sk-abc")).toBe(false);
+    });
+
+    it("is true for plain http to anything off the box", () => {
+        expect(endpointLeaksKey("http://192.168.1.50:11434/v1", "sk-abc")).toBe(true);
+        expect(endpointLeaksKey("http://api.openai.com/v1", "sk-abc")).toBe(true);
+        expect(endpointLeaksKey("http://10.0.0.7/v1", "sk-abc")).toBe(true);
+        expect(endpointLeaksKey("http://0.0.0.0:11434/v1", "sk-abc")).toBe(true);
+        // A hostname merely starting with "localhost" is a different host.
+        expect(endpointLeaksKey("http://localhost.evil.com/v1", "sk-abc")).toBe(true);
+    });
+});
+
 describe("runAIAction config guards", () => {
     it("throws when endpoint missing", async () => {
         await expect(runAIAction("rewrite", "hi", cfg({ endpoint: "" }))).rejects.toThrow(/endpoint not configured/i);
@@ -40,6 +71,17 @@ describe("runAIAction config guards", () => {
     });
     it("throws when model missing", async () => {
         await expect(runAIAction("rewrite", "hi", cfg({ model: "" }))).rejects.toThrow(/model not configured/i);
+    });
+    it("refuses to send a key over plain http to a remote host", async () => {
+        const insecure = cfg({ endpoint: "http://192.168.1.50:11434/v1", apiKey: "sk-abc" });
+        await expect(runAIAction("rewrite", "hi", insecure)).rejects.toThrow(/unencrypted/i);
+        // Nothing may reach the transport: the key must not leave the app.
+        expect(mockAiFetch).not.toHaveBeenCalled();
+    });
+    it("allows the same remote host over plain http when there is no key", async () => {
+        respond(200, { choices: [{ message: { content: "ok" } }] });
+        const keyless = cfg({ endpoint: "http://192.168.1.50:11434/v1", apiKey: "" });
+        await expect(runAIAction("rewrite", "hi", keyless)).resolves.toBe("ok");
     });
 });
 
