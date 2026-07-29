@@ -3,7 +3,22 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { streamChat, buildAskMessages, buildAgentMessages, parseEdits, type ChatMessage } from "../utils/aiChat";
 import type { AIConfig } from "../utils/aiAssist";
-import { getAIHistoryTurns } from "../utils/persistence";
+import {
+    getAIHistoryTurns,
+    getChatSessions,
+    setChatSessions,
+    setAIPanelWidth,
+    AI_PANEL_WIDTH_MIN,
+    AI_PANEL_WIDTH_MAX,
+} from "../utils/persistence";
+import {
+    deriveTitle,
+    makeSessionId,
+    upsertSession,
+    removeSession,
+    type ChatSession,
+} from "../utils/chatSessions";
+import { PanelResizeHandle } from "./PanelResizeHandle";
 import mascotWizard from "../assets/mascot/mascot-wizard.png";
 
 interface AIPanelProps {
@@ -17,6 +32,10 @@ interface AIPanelProps {
     aiConfig: AIConfig;
     /** Called (Agent mode) with the proposed document to review in the editor. */
     onProposeEdit?: (proposedDoc: string) => void;
+    /** Live panel width in px; owned by App so the editor can reserve the space. */
+    width: number;
+    /** Fires continuously while the edge is dragged. */
+    onWidthChange: (px: number) => void;
 }
 
 interface UIMessage {
@@ -28,9 +47,21 @@ interface UIMessage {
 // (Settings → AI, default 8), read live per send — the document itself is
 // attached only to the latest turn inside buildAskMessages.
 
-export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConfig, onProposeEdit }: AIPanelProps) {
-    const [messages, setMessages] = useState<UIMessage[]>([]);
+export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConfig, onProposeEdit, width, onWidthChange }: AIPanelProps) {
+    // Stored chats (#111). Closing the panel unmounts it, so message state used
+    // to die with it. Read the saved history once, then resume the most recent
+    // chat, which makes close/reopen and app restarts non-destructive.
+    const storedRef = useRef<ChatSession[] | null>(null);
+    if (storedRef.current === null) storedRef.current = getChatSessions();
+    const [sessions, setSessions] = useState<ChatSession[]>(() => storedRef.current ?? []);
+    const [sessionId, setSessionId] = useState<string>(() => storedRef.current?.[0]?.id ?? makeSessionId());
+    const [messages, setMessages] = useState<UIMessage[]>(() => storedRef.current?.[0]?.messages ?? []);
+    const [historyOpen, setHistoryOpen] = useState(false);
     const [input, setInput] = useState("");
+    // Read by callbacks that must see the newest list without being rebuilt on
+    // every change (and without a self-triggering effect dependency).
+    const sessionsRef = useRef(sessions);
+    sessionsRef.current = sessions;
     // Ref twin of `input` so the open-effect can restore the draft without
     // re-running on every keystroke.
     const inputDraftRef = useRef("");
@@ -143,7 +174,85 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
     }, [input, busy, configured, messages, note, selectionText, aiConfig, mode, onProposeEdit]);
 
     const stop = useCallback(() => abortRef.current?.abort(), []);
-    const clear = useCallback(() => { abortRef.current?.abort(); setMessages([]); setError(null); }, []);
+
+    /** Write one chat into the stored history. Empty chats are not stored. */
+    const commitSession = useCallback((id: string, msgs: UIMessage[]) => {
+        if (!msgs.length) return;
+        const next = upsertSession(sessionsRef.current, {
+            id,
+            title: deriveTitle(msgs),
+            updatedAt: Date.now(),
+            messages: msgs,
+        });
+        sessionsRef.current = next;
+        setSessions(next);
+        setChatSessions(next);
+    }, []);
+
+    // Save the active chat once it settles. Gated on `busy` so a streaming reply
+    // doesn't write to localStorage on every token; the transition back to idle
+    // (success, error, or abort) is what persists the final transcript.
+    useEffect(() => {
+        if (busy) return;
+        commitSession(sessionId, messages);
+    }, [busy, messages, sessionId, commitSession]);
+
+    // Start a fresh chat, keeping the current one in history. This is the button
+    // that used to be "clear", which discarded the conversation outright (#111).
+    const newChat = useCallback(() => {
+        abortRef.current?.abort();
+        commitSession(sessionId, messages);
+        setSessionId(makeSessionId());
+        setMessages([]);
+        setError(null);
+        setHistoryOpen(false);
+    }, [commitSession, sessionId, messages]);
+
+    const selectSession = useCallback((id: string) => {
+        setHistoryOpen(false);
+        if (id === sessionId) return;
+        abortRef.current?.abort();
+        // Save where we are before moving, so switching away mid-conversation
+        // (or mid-stream) doesn't lose it.
+        commitSession(sessionId, messages);
+        const target = sessionsRef.current.find((s) => s.id === id);
+        if (!target) return;
+        setSessionId(id);
+        setMessages(target.messages);
+        setError(null);
+    }, [commitSession, sessionId, messages]);
+
+    const deleteSession = useCallback((id: string) => {
+        const next = removeSession(sessionsRef.current, id);
+        sessionsRef.current = next;
+        setSessions(next);
+        setChatSessions(next);
+        // Deleting the open chat leaves an empty one rather than a stale view.
+        if (id === sessionId) {
+            abortRef.current?.abort();
+            setSessionId(makeSessionId());
+            setMessages([]);
+            setError(null);
+        }
+    }, [sessionId]);
+
+    // Close the history dropdown on Escape or a click elsewhere.
+    const historyRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!historyOpen) return;
+        const onDown = (e: MouseEvent) => {
+            if (!historyRef.current?.contains(e.target as Node)) setHistoryOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") { e.stopPropagation(); setHistoryOpen(false); }
+        };
+        document.addEventListener("mousedown", onDown);
+        document.addEventListener("keydown", onKey, true);
+        return () => {
+            document.removeEventListener("mousedown", onDown);
+            document.removeEventListener("keydown", onKey, true);
+        };
+    }, [historyOpen]);
 
     if (!isOpen) return null;
 
@@ -158,16 +267,74 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
         <aside
             role="complementary"
             aria-label="AI assistant"
-            className="fixed right-0 top-12 bottom-7 w-[400px] max-w-[90vw] z-50 flex flex-col bg-[var(--bg-secondary)] border-l border-[var(--border)] shadow-2xl"
+            // Width is a persisted user setting dragged from the left edge (#111).
+            // max-w keeps it on screen if the window is narrower than the stored px.
+            style={{ width: `${width}px` }}
+            className="fixed right-0 top-12 bottom-7 max-w-[90vw] z-50 flex flex-col bg-[var(--bg-secondary)] border-l border-[var(--border)] shadow-2xl"
         >
+            <PanelResizeHandle
+                width={width}
+                min={AI_PANEL_WIDTH_MIN}
+                max={AI_PANEL_WIDTH_MAX}
+                onResize={onWidthChange}
+                onCommit={setAIPanelWidth}
+                label="Resize AI panel"
+            />
+
             {/* Header */}
             <div className="h-10 shrink-0 px-3 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-titlebar)]">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] no-select tracking-tight">
                     <span>AI Assistant</span>
                 </div>
                 <div className="flex items-center gap-1">
+                    {/* Chat history (#111): past chats stay reachable instead of
+                        being discarded when the panel closes or a new chat starts. */}
+                    <div ref={historyRef} className="relative">
+                        <button
+                            onClick={() => setHistoryOpen((v) => !v)}
+                            title="Chat history"
+                            aria-label="Chat history"
+                            aria-haspopup="menu"
+                            aria-expanded={historyOpen}
+                            disabled={sessions.length === 0}
+                            className="w-7 h-7 rounded-[var(--radius-sm)] enabled:hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] enabled:hover:text-[var(--text-primary)] flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                            <span className="material-symbols-outlined text-[18px]">history</span>
+                        </button>
+                        {historyOpen && sessions.length > 0 && (
+                            <div
+                                role="menu"
+                                aria-label="Previous chats"
+                                className="absolute right-0 top-8 w-64 max-h-80 overflow-y-auto z-20 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-[var(--radius-md)] shadow-2xl py-1 animate-fade-in"
+                            >
+                                {sessions.map((s) => (
+                                    <div
+                                        key={s.id}
+                                        className={`group flex items-center gap-1 px-1 ${s.id === sessionId ? "bg-[var(--bg-hover)]" : ""}`}
+                                    >
+                                        <button
+                                            role="menuitem"
+                                            onClick={() => selectSession(s.id)}
+                                            title={s.title}
+                                            className="flex-1 min-w-0 text-left px-2 py-1.5 text-xs rounded-[var(--radius-sm)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                                        >
+                                            <span className="block truncate">{s.title}</span>
+                                        </button>
+                                        <button
+                                            onClick={() => deleteSession(s.id)}
+                                            title="Delete chat"
+                                            aria-label={`Delete chat: ${s.title}`}
+                                            className="shrink-0 w-6 h-6 rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                                        >
+                                            <span className="material-symbols-outlined text-[15px]">delete</span>
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                     {messages.length > 0 && (
-                        <button onClick={clear} title="New chat" aria-label="New chat" className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors">
+                        <button onClick={newChat} title="New chat" aria-label="New chat" className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors">
                             <span className="material-symbols-outlined text-[18px]">add_comment</span>
                         </button>
                     )}
