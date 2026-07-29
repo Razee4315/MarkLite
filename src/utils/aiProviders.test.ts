@@ -12,6 +12,12 @@ describe("matchProvider", () => {
         expect(matchProvider("  https://api.openai.com/v1/chat/completions/ ")?.id).toBe("openai");
     });
 
+    it("matches LM Studio's default local server address", () => {
+        const p = matchProvider("http://localhost:1234/v1/chat/completions");
+        expect(p?.id).toBe("lmstudio");
+        expect(p?.keyOptional).toBe(true);
+    });
+
     it("returns null for empty and hand-configured endpoints", () => {
         expect(matchProvider("")).toBeNull();
         expect(matchProvider("   ")).toBeNull();

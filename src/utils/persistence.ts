@@ -144,6 +144,20 @@ const KEY_AI_ENABLED = "paperling:aiEnabled";
 export const getAIEnabled = (): boolean => safeGet<boolean>(KEY_AI_ENABLED, true);
 export const setAIEnabled = (v: boolean): void => safeSet(KEY_AI_ENABLED, v);
 
+// How many previous chat turns (user + assistant pairs) accompany each AI
+// panel request. Read live per send; clamped so a hand-edited value can't
+// balloon requests. 0 = every message starts fresh. Issue #111.
+const KEY_AI_HISTORY_TURNS = "paperling:aiHistoryTurns";
+export const AI_HISTORY_TURNS_DEFAULT = 8;
+export const AI_HISTORY_TURNS_MAX = 50;
+export const getAIHistoryTurns = (): number => {
+    const v = safeGet<number>(KEY_AI_HISTORY_TURNS, AI_HISTORY_TURNS_DEFAULT);
+    if (typeof v !== "number" || !Number.isFinite(v)) return AI_HISTORY_TURNS_DEFAULT;
+    return Math.min(AI_HISTORY_TURNS_MAX, Math.max(0, Math.round(v)));
+};
+export const setAIHistoryTurns = (v: number): void =>
+    safeSet(KEY_AI_HISTORY_TURNS, Math.min(AI_HISTORY_TURNS_MAX, Math.max(0, Math.round(v))));
+
 // Version the user chose to skip in the update popup, so we don't nag about
 // it on every launch. A newer release has a different version string and
 // prompts again.

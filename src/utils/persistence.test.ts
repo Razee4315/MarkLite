@@ -6,6 +6,7 @@ import {
     getWordWrap,
     migrateLegacyKeys, getLastFile,
     getOpenInReader, setOpenInReader,
+    getAIHistoryTurns, setAIHistoryTurns, AI_HISTORY_TURNS_DEFAULT, AI_HISTORY_TURNS_MAX,
 } from "./persistence";
 
 beforeEach(() => localStorage.clear());
@@ -102,5 +103,29 @@ describe("AI config", () => {
 describe("defaults", () => {
     it("word wrap defaults to true", () => {
         expect(getWordWrap()).toBe(true);
+    });
+});
+
+describe("AI chat history depth", () => {
+    it("defaults to 8 turns", () => {
+        expect(getAIHistoryTurns()).toBe(AI_HISTORY_TURNS_DEFAULT);
+    });
+    it("round-trips a valid value", () => {
+        setAIHistoryTurns(3);
+        expect(getAIHistoryTurns()).toBe(3);
+        setAIHistoryTurns(0);
+        expect(getAIHistoryTurns()).toBe(0);
+    });
+    it("clamps out-of-range and rounds fractional values", () => {
+        setAIHistoryTurns(999);
+        expect(getAIHistoryTurns()).toBe(AI_HISTORY_TURNS_MAX);
+        setAIHistoryTurns(-4);
+        expect(getAIHistoryTurns()).toBe(0);
+        setAIHistoryTurns(2.6);
+        expect(getAIHistoryTurns()).toBe(3);
+    });
+    it("falls back to the default on a malformed stored value", () => {
+        localStorage.setItem("paperling:aiHistoryTurns", JSON.stringify("lots"));
+        expect(getAIHistoryTurns()).toBe(AI_HISTORY_TURNS_DEFAULT);
     });
 });
