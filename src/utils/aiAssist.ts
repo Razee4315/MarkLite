@@ -54,6 +54,41 @@ export function isValidEndpoint(raw: string): boolean {
     }
 }
 
+/** Loopback hostnames, where plain http never puts bytes on a network.
+ *  Covers `localhost`, RFC 6761's reserved `*.localhost`, all of 127.0.0.0/8,
+ *  and IPv6 `::1` (URL.hostname keeps the brackets, so strip them). */
+function isLoopbackHost(hostname: string): boolean {
+    const h = hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
+    if (h === "localhost" || h.endsWith(".localhost")) return true;
+    if (h === "::1") return true;
+    return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
+}
+
+/**
+ * True when sending `apiKey` to `endpoint` would put the key on the wire in
+ * cleartext, i.e. plain http to anything that is not loopback.
+ *
+ * Keyless http stays allowed on purpose. A local model server reached over the
+ * LAN (`http://192.168.1.50:11434`) has no secret to leak, and AI-01
+ * deliberately routed requests through Rust so exactly those endpoints would
+ * work. Blocking them outright would regress that. What must never happen is a
+ * *credential* crossing a network unencrypted. Issue #91 item 3.
+ */
+export function endpointLeaksKey(endpoint: string, apiKey: string | undefined | null): boolean {
+    if (!apiKey) return false;
+    try {
+        const u = new URL(endpoint);
+        return u.protocol === "http:" && !isLoopbackHost(u.hostname);
+    } catch {
+        // Malformed URLs are already rejected by isValidEndpoint.
+        return false;
+    }
+}
+
+/** Shared copy for the cleartext-key refusal, used by both AI call paths. */
+export const INSECURE_KEY_MESSAGE =
+    "Refusing to send your API key unencrypted to a remote host. Use an https:// endpoint, or clear the API key if this server does not need one.";
+
 export async function runAIAction(
     action: AIAction,
     text: string,
@@ -64,6 +99,7 @@ export async function runAIAction(
     if (!isValidEndpoint(cfg.endpoint)) {
         throw new Error("AI endpoint must be a valid http:// or https:// URL.");
     }
+    if (endpointLeaksKey(cfg.endpoint, cfg.apiKey)) throw new Error(INSECURE_KEY_MESSAGE);
     if (!cfg.model) throw new Error("AI model not configured.");
 
     let res: AiHttpResponse;

@@ -4,7 +4,7 @@
  * with `stream: true` so the panel can render tokens as they arrive.
  */
 
-import { isValidEndpoint, type AIConfig } from "./aiAssist";
+import { isValidEndpoint, endpointLeaksKey, INSECURE_KEY_MESSAGE, type AIConfig } from "./aiAssist";
 import { aiFetch } from "./aiTransport";
 
 export type ChatRole = "system" | "user" | "assistant";
@@ -43,6 +43,7 @@ export async function streamChat(
 ): Promise<string> {
     if (!cfg.endpoint) throw new Error("AI endpoint not configured. Open Settings → AI to set one up.");
     if (!isValidEndpoint(cfg.endpoint)) throw new Error("AI endpoint must be a valid http:// or https:// URL.");
+    if (endpointLeaksKey(cfg.endpoint, cfg.apiKey)) throw new Error(INSECURE_KEY_MESSAGE);
     if (!cfg.model) throw new Error("AI model not configured.");
 
     let status = 0;

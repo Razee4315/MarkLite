@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Undo in the AI chat box.** Ctrl+Z now works while typing a message in the
   AI panel; the composer no longer resets the native undo history on Linux.
   (#111)
+- **API keys are no longer sent unencrypted.** If an AI endpoint used plain
+  `http://` and pointed at anything other than your own machine, the key went
+  over the network in the clear. Paperling now refuses that request and says so
+  in Settings, AI. Local servers keep working exactly as before: `http://` is
+  still fine for `localhost` and `127.0.0.1`, and a keyless server on your home
+  network is still allowed, since there is no key to expose. (#91)
 
 ## [1.0.49] - 2026-07-12
 
