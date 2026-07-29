@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Undo in the AI chat box.** Ctrl+Z now works while typing a message in the
   AI panel; the composer no longer resets the native undo history on Linux.
   (#111)
+- **Find now searches AI suggested changes properly.** While reviewing an AI
+  edit, Ctrl+F only looked at the proposed text, so words sitting in the removed
+  lines were never found: you could see four matches on screen and the bar would
+  say two, with next/previous skipping the ones you were looking at. Find now
+  covers both sides of the diff and steps through them in the order they appear
+  on screen. Replace still only touches the proposed text, since the removed
+  lines are the version being replaced. (#111)
 - **API keys are no longer sent unencrypted.** If an AI endpoint used plain
   `http://` and pointed at anything other than your own machine, the key went
   over the network in the clear. Paperling now refuses that request and says so

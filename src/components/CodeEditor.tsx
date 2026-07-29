@@ -25,8 +25,21 @@ import {
     type EditorState,
 } from "../utils/editorActions";
 import { FindBar, type FindController } from "./FindBar";
-import { findAll, matchLength, replaceOne, replaceAllMatches, isValidPattern } from "../utils/findReplace";
-import { findHighlightField, setFindMatches, type FindRange } from "../utils/editorFindHighlight";
+import { replaceOne, replaceAllMatches, isValidPattern } from "../utils/findReplace";
+import { findHighlightField, setFindMatches } from "../utils/editorFindHighlight";
+import {
+    collectUnifiedMatches,
+    docRanges,
+    activeDocIndex,
+    replaceableOffsets,
+    type DeletedRegion,
+    type UnifiedMatch,
+} from "../utils/reviewFind";
+import {
+    highlightRemovedMatch,
+    clearRemovedHighlight,
+    deletedChunkElementAt,
+} from "../utils/reviewFindHighlight";
 import { FormatToolbar } from "./FormatToolbar";
 import { SlashMenu, type SlashCommand } from "./SlashMenu";
 import { AIBubble } from "./AIBubble";
@@ -668,6 +681,9 @@ function CodeEditorImpl({
         lastReviewRef.current = null;
         reviewHadChunksRef.current = false;
         setReviewActive(false);
+        // The removed lines are gone, so drop any find highlight pinned to them
+        // rather than leave a stale registration behind (#111).
+        clearRemovedHighlight();
         viewRef.current?.dispatch({ effects: mergeCompRef.current.reconfigure([]) });
         lastEmittedRef.current = final; // keep the App content-sync from re-dispatching
         onReviewResolveRef.current?.(final);
@@ -686,6 +702,7 @@ function CodeEditorImpl({
         reviewingRef.current = false;
         lastReviewRef.current = null;
         setReviewActive(false);
+        clearRemovedHighlight();
         view.dispatch({
             changes: { from: 0, to: view.state.doc.length, insert: orig },
             effects: mergeCompRef.current.reconfigure([]),
@@ -841,15 +858,27 @@ function CodeEditorImpl({
     // findReplace helpers, paint matches via the findHighlightField decoration,
     // and replace through applyResultToView. Stable identity (refs + module-level
     // helpers only) so FindBar's effects don't churn.
-    const findRangesRef = useRef<FindRange[]>([]);
+    const findMatchesRef = useRef<UnifiedMatch[]>([]);
+    // setActive() gets only an index, so the query that produced the matches is
+    // stashed here for the removed-side highlighter to reuse.
+    const findQueryRef = useRef({ query: "", caseSensitive: false });
     const editorFindController = useMemo<FindController>(() => {
-        const rangesFor = (query: string, opts: { caseSensitive: boolean; regex: boolean }): FindRange[] => {
-            const v = viewRef.current;
-            if (!v) return [];
-            const doc = v.state.doc.toString();
-            return findAll(doc, query, opts.caseSensitive, opts.regex)
-                .map((from) => ({ from, to: from + matchLength(doc, from, query, opts.caseSensitive, opts.regex) }))
-                .filter((r) => r.to > r.from);
+        // During an AI review the document holds only the proposed text; the
+        // removed original lines are merge widgets, absent from the document.
+        // Feed them to the search as extra regions so a match the user can
+        // plainly see is actually found. Outside review this is empty and the
+        // search collapses to a plain document search. Issue #111.
+        const removedRegions = (v: EditorView): { regions: DeletedRegion[]; original: string } => {
+            if (!reviewingRef.current) return { regions: [], original: "" };
+            const chunks = getChunks(v.state)?.chunks;
+            if (!chunks?.length) return { regions: [], original: "" };
+            return {
+                original: getOriginalDoc(v.state).toString(),
+                // A pure insertion has toA === fromA and renders no removed lines.
+                regions: chunks
+                    .filter((c) => c.toA > c.fromA)
+                    .map((c) => ({ fromA: c.fromA, toA: c.toA, anchor: c.fromB })),
+            };
         };
         return {
             supportsReplace: true,
@@ -857,41 +886,74 @@ function CodeEditorImpl({
             isValidPattern: (query, opts) => isValidPattern(query, opts.regex),
             search: (query, opts) => {
                 const v = viewRef.current;
-                const ranges = rangesFor(query, opts);
-                findRangesRef.current = ranges;
-                let activeIndex = -1;
-                if (v && ranges.length) {
-                    const caret = v.state.selection.main.from;
-                    activeIndex = ranges.findIndex((r) => r.from >= caret);
-                    if (activeIndex === -1) activeIndex = 0;
-                    v.dispatch({ effects: setFindMatches.of({ ranges, activeIndex: -1 }) });
+                if (!v) {
+                    findMatchesRef.current = [];
+                    return { count: 0, activeIndex: -1 };
                 }
-                return { count: ranges.length, activeIndex };
+                const { regions, original } = removedRegions(v);
+                const matches = collectUnifiedMatches(v.state.doc.toString(), original, regions, query, opts);
+                findMatchesRef.current = matches;
+                findQueryRef.current = { query, caseSensitive: opts.caseSensitive };
+                clearRemovedHighlight();
+
+                let activeIndex = -1;
+                if (matches.length) {
+                    // Order by on-screen position, so `anchor` (not `from`, which
+                    // indexes the original doc for removed matches) is the cursor
+                    // comparison.
+                    const caret = v.state.selection.main.from;
+                    activeIndex = matches.findIndex((m) => m.anchor >= caret);
+                    if (activeIndex === -1) activeIndex = 0;
+                }
+                v.dispatch({ effects: setFindMatches.of({ ranges: docRanges(matches), activeIndex: -1 }) });
+                return { count: matches.length, activeIndex };
             },
             setActive: (index) => {
                 const v = viewRef.current;
-                const ranges = findRangesRef.current;
-                const r = ranges[index];
-                if (!v || !r) return;
+                const matches = findMatchesRef.current;
+                const m = matches[index];
+                if (!v || !m) return;
                 v.dispatch({
-                    effects: [setFindMatches.of({ ranges, activeIndex: index }), EditorView.scrollIntoView(r.from, { y: "center" })],
+                    effects: [
+                        // activeDocIndex, not `index`: the bar counts removed
+                        // matches too, so the two numberings differ.
+                        setFindMatches.of({ ranges: docRanges(matches), activeIndex: activeDocIndex(matches, index) }),
+                        EditorView.scrollIntoView(m.anchor, { y: "center" }),
+                    ],
+                });
+                if (m.side !== "deleted") {
+                    clearRemovedHighlight();
+                    return;
+                }
+                // The widget is only in the DOM once its chunk is near the
+                // viewport, so paint after the scroll above has been applied.
+                // Best-effort: if it can't be painted the user is still here.
+                requestAnimationFrame(() => {
+                    const view = viewRef.current;
+                    if (!view) return;
+                    const { query, caseSensitive } = findQueryRef.current;
+                    highlightRemovedMatch(deletedChunkElementAt(view, m.anchor), query, caseSensitive, m.ordinalInRegion);
                 });
             },
             clear: () => {
-                findRangesRef.current = [];
+                findMatchesRef.current = [];
+                clearRemovedHighlight();
                 viewRef.current?.dispatch({ effects: setFindMatches.of({ ranges: [], activeIndex: -1 }) });
             },
             replaceActive: (index, replacement, query, opts) => {
                 const v = viewRef.current;
-                const r = findRangesRef.current[index];
-                if (!v || !r) return;
-                const res = replaceOne(v.state.doc.toString(), r.from, query, replacement, opts.caseSensitive, opts.regex);
+                const m = findMatchesRef.current[index];
+                // Removed text is the version being replaced: it is not in the
+                // document and its offsets index the original, so splicing at
+                // them would corrupt unrelated text.
+                if (!v || !m || m.side !== "doc") return;
+                const res = replaceOne(v.state.doc.toString(), m.from, query, replacement, opts.caseSensitive, opts.regex);
                 if (res) applyResultToView(v, { text: res.content, selStart: res.cursor, selEnd: res.cursor });
             },
             replaceAll: (replacement, query, opts) => {
                 const v = viewRef.current;
                 if (!v) return;
-                const starts = findRangesRef.current.map((r) => r.from);
+                const starts = replaceableOffsets(findMatchesRef.current);
                 const res = replaceAllMatches(v.state.doc.toString(), starts, query, replacement, opts.caseSensitive, opts.regex);
                 if (res) applyResultToView(v, { text: res.content, selStart: res.cursor, selEnd: res.cursor });
             },
