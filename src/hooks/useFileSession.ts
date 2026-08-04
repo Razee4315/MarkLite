@@ -32,6 +32,7 @@ interface FileData {
   content: string;
   size: number;
   line_count: number;
+  /** Last-modified time (ms since epoch) — used to detect external edits. */
   modified: number;
 }
 
@@ -48,8 +49,11 @@ export interface UseFileSessionOptions {
   restoreOnMount?: boolean;
 }
 
-// React StrictMode remounts effects in development. Keep launch-file resolution
-// module-scoped so the backend's take-once CLI path cannot race session restore.
+// The launch-file resolution must run exactly once per webview load. React
+// StrictMode double-invokes effects in dev: without this guard the second run
+// would find the CLI file already consumed (the backend take()s it) and start
+// a racing last-session restore that can overwrite the just-opened file.
+// Module-level on purpose — StrictMode remounts share module state.
 let bootResolved = false;
 
 export function useFileSession({
@@ -61,39 +65,70 @@ export function useFileSession({
   showToast,
   restoreOnMount = true,
 }: UseFileSessionOptions) {
+  // File state
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [content, setContent] = useState("");
   const [originalContent, setOriginalContent] = useState("");
   const [fileSize, setFileSize] = useState(0);
+  // Open-file tabs. The live state above is always the ACTIVE tab; `tabs` holds
+  // the snapshots of every open file (incl. the active one). TABS-01.
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  // Bumped on every genuine document swap (tab switch, file open, new file) so
+  // the editor can reset its undo history and Ctrl+Z can't reach into the
+  // previously-shown document. See CodeEditor's docSwapId effect. TABS-03.
   const [docSwapId, setDocSwapId] = useState(0);
+  // True while the launch-time file resolution (OS-opened CLI file, then
+  // last-session restore) is still in flight. Shows a neutral splash instead
+  // of flashing the WelcomeScreen for a frame. Whether a CLI file exists is
+  // only known after asking the backend.
   const [booting, setBooting] = useState(restoreOnMount);
   const [isLoading, setIsLoading] = useState(false);
+  // Pending dirty-tab close, awaiting the Save/Discard/Cancel dialog. TABS-05.
   const [closeTabPrompt, setCloseTabPrompt] = useState<{ id: string; fileName: string } | null>(null);
 
+  // === Tabs (snapshot-swap) ===
+  // The live state (filePath/content/…) IS the active tab. `tabsRef`/`liveRef`
+  // mirror state synchronously so the open/switch/close helpers can read and
+  // commit without waiting for a re-render. We snapshot the active tab before
+  // leaving it and restore the target's snapshot into the live state — so every
+  // single-file system (autosave, AI review, external-change) is untouched. TABS-01.
   const tabSeqRef = useRef(0);
   const tabsRef = useRef<TabState[]>([]);
   tabsRef.current = tabs;
   const activeTabIdRef = useRef<string | null>(null);
   activeTabIdRef.current = activeTabId;
+  // Stack of recently-closed tabs (path + caret line) for Ctrl+Shift+T. Only
+  // saved files are recoverable; untitled buffers aren't pushed. TABS-15.
   const closedTabsRef = useRef<{ path: string; cursorLine?: number }[]>([]);
   const liveRef = useRef({ filePath, fileName, content, originalContent, fileSize });
   liveRef.current = { filePath, fileName, content, originalContent, fileSize };
+  // The line we'd return to when this file is re-activated: the caret line while
+  // editing, or the top-visible line in reader mode. TABS-02.
   const currentLineRef = useRef(1);
   currentLineRef.current = currentLine;
+  // Known on-disk modified time (ms). Compared against a fresh stat on window
+  // focus to detect the file changing under us (sync tools, other editors).
   const knownMtimeRef = useRef(0);
+  // Latest content + originalContent are read via refs inside `loadFile` so
+  // its identity stays stable across keystrokes. Without this, every typed
+  // character would change `loadFile`'s reference and churn its listeners.
   const contentRef = useRef(content);
   contentRef.current = content;
   const originalContentRef = useRef(originalContent);
   originalContentRef.current = originalContent;
   const filePathRef = useRef(filePath);
   filePathRef.current = filePath;
+  // Whether an AI review is pending, mirrored into a ref for the focus-time
+  // external-change watcher (registered once, so it can't read state directly).
+  // AI-01.
   const reviewActiveRef = useRef(isReviewActive);
   reviewActiveRef.current = isReviewActive;
 
+  // Derived state
   const isDirty = content !== originalContent;
+  // "Has a buffer" — true once a file is opened OR a blank Untitled buffer is started.
   const hasFile = filePath !== null || fileName !== null;
 
   const bumpDocSwap = useCallback(() => setDocSwapId((n) => n + 1), []);
@@ -107,11 +142,17 @@ export function useFileSession({
   }, []);
   const newTabId = useCallback(() => `tab-${++tabSeqRef.current}`, []);
 
+  // Every open tab that has unsaved changes, reading the ACTIVE tab from live
+  // state (its stored snapshot lags until the next switch) and the rest from
+  // their snapshots. Used by the window-close guard so background tabs can't be
+  // discarded silently. The dirty-collection logic itself is a pure helper so it
+  // stays unit-testable; this wrapper just feeds it the current refs. TABS-04.
   const collectDirtyTabs = useCallback(
     (): DirtyTab[] => computeDirtyTabs(tabsRef.current, activeTabIdRef.current, liveRef.current),
     [],
   );
 
+  // Write the live editor state back into the active tab's entry.
   const snapshotActiveTab = useCallback(() => {
     const id = activeTabIdRef.current;
     if (!id) return;
@@ -134,6 +175,7 @@ export function useFileSession({
     );
   }, [commitTabs]);
 
+  // Load a tab's stored snapshot into the live editor state.
   const applyTabToLive = useCallback(
     (tab: TabState) => {
       clearReview();
@@ -145,6 +187,8 @@ export function useFileSession({
       setFileSize(tab.fileSize);
       knownMtimeRef.current = tab.knownMtime;
       if (tab.filePath) setLastFile(tab.filePath);
+      // Restore where you were in this tab — jump to the remembered line, or fall
+      // back to the top for a never-focused / line-1 tab. TABS-02.
       const line = tab.cursorLine ?? 1;
       requestAnimationFrame(() => {
         if (line > 1) window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }));
@@ -154,6 +198,7 @@ export function useFileSession({
     [bumpDocSwap, clearReview],
   );
 
+  // Switch to an already-open tab, snapshotting the current one first.
   const activateTab = useCallback(
     (id: string) => {
       if (id === activeTabIdRef.current) return;
@@ -166,6 +211,7 @@ export function useFileSession({
     [applyTabToLive, setActiveTab, snapshotActiveTab],
   );
 
+  // Switch to the previous / next tab (Alt+Left / Alt+Right), wrapping around.
   const cycleTab = useCallback(
     (delta: number) => {
       const list = tabsRef.current;
@@ -177,9 +223,11 @@ export function useFileSession({
     [activateTab],
   );
 
+  // Load a file directly from disk into the tab model.
   const loadFileDirect = useCallback(
     async (path: string) => {
       const outgoing = filePathRef.current;
+      // Preserve the file we're leaving in its tab before overwriting live state.
       snapshotActiveTab();
       setIsLoading(true);
       try {
@@ -191,8 +239,11 @@ export function useFileSession({
         setOriginalContent(fileData.content);
         setFileSize(fileData.size);
         knownMtimeRef.current = fileData.modified ?? 0;
+        // Track recents + last-opened for restore-on-launch.
         addRecentFile(fileData.path, fileData.name);
         setLastFile(fileData.path);
+        // Upsert the tab: reuse an existing tab for this path (e.g. a reload),
+        // otherwise open a new one. Either way it becomes active. TABS-01.
         const loaded = {
           filePath: fileData.path,
           fileName: fileData.name,
@@ -210,12 +261,19 @@ export function useFileSession({
           commitTabs([...tabsRef.current, { id, ...loaded }]);
           setActiveTab(id);
         }
+        // Snap the new file to the top — but not on a same-path external reload,
+        // which should keep the reader where they were. NAV-04.
         if (outgoing !== fileData.path) {
           requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
         }
+        // "Open files in reader" applies to every USER file open, read live so
+        // a Settings change takes effect without a restart. Same-path reloads
+        // are excluded: the external-change watcher reloads through here
+        // (EXT-01) and must not yank an editing session to preview. READ-01.
         if (outgoing !== fileData.path && getOpenInReader()) setMode("preview");
       } catch (error) {
         console.error("Failed to load file:", error);
+        // Surface the actual Rust error so size/not-found failures reach the user.
         showToast(errMessage(error) || "Failed to open file", "error");
       } finally {
         setIsLoading(false);
@@ -224,6 +282,9 @@ export function useFileSession({
     [bumpDocSwap, commitTabs, newTabId, setActiveTab, setMode, showToast, snapshotActiveTab],
   );
 
+  // Open a file: if it's already in a tab, just switch to it (preserving any
+  // unsaved edits there); otherwise load it into a new tab. With tabs there's no
+  // need to prompt before opening — the current file stays open in its own tab.
   const loadFile = useCallback(
     async (path: string) => {
       const existing = findTabByPath(tabsRef.current, path);
@@ -236,6 +297,7 @@ export function useFileSession({
     [activateTab, loadFileDirect],
   );
 
+  // Reopen the most recently closed (saved) tab, restoring its caret line. TABS-15.
   const reopenClosedTab = useCallback(() => {
     const entry = closedTabsRef.current.pop();
     if (!entry) return;
@@ -249,6 +311,8 @@ export function useFileSession({
     }
   }, [loadFile]);
 
+  // Jump to a tab by position (Ctrl+1..8); index -1 means the last tab (Ctrl+9,
+  // browser convention). TABS-16.
   const gotoTabByIndex = useCallback(
     (index: number) => {
       const list = tabsRef.current;
@@ -259,8 +323,11 @@ export function useFileSession({
     [activateTab],
   );
 
+  // Remove a tab and refocus a neighbour (or fall back to the welcome screen).
+  // No dirty check here — callers decide whether to prompt first. TABS-01.
   const finalizeCloseTab = useCallback(
     (id: string) => {
+      // Remember saved tabs so Ctrl+Shift+T can reopen them. TABS-15.
       const closing = tabsRef.current.find((tab) => tab.id === id);
       if (closing?.filePath) {
         const isActiveClosing = id === activeTabIdRef.current;
@@ -280,6 +347,7 @@ export function useFileSession({
         setActiveTab(target.id);
         applyTabToLive(target);
       } else {
+        // Last tab closed — return to the clean welcome state.
         setActiveTab(null);
         clearReview();
         bumpDocSwap();
@@ -295,6 +363,8 @@ export function useFileSession({
     [applyTabToLive, bumpDocSwap, clearReview, commitTabs, setActiveTab],
   );
 
+  // Close a tab. A clean tab closes immediately; a dirty one opens the
+  // Save / Discard / Cancel dialog (TABS-05).
   const closeTab = useCallback(
     (id: string) => {
       const tab = tabsRef.current.find((entry) => entry.id === id);
@@ -315,6 +385,7 @@ export function useFileSession({
     [finalizeCloseTab],
   );
 
+  // The effective save target for a tab, reading the active tab from live state.
   const getTabSaveData = useCallback((id: string) => {
     const tab = tabsRef.current.find((entry) => entry.id === id);
     if (!tab) return null;
@@ -327,6 +398,8 @@ export function useFileSession({
     };
   }, []);
 
+  // "Save" in the close-tab dialog: persist the tab (prompting a location for an
+  // untitled buffer), then close it. Cancel/failure keeps the tab open. TABS-05.
   const handleSaveCloseTab = useCallback(async () => {
     const prompt = closeTabPrompt;
     if (!prompt) return;
@@ -362,6 +435,9 @@ export function useFileSession({
 
   const cancelCloseTab = useCallback(() => setCloseTabPrompt(null), []);
 
+  // New file: opens a fresh Untitled buffer in its own tab (the current file
+  // stays open in its tab, so nothing is discarded). Reuses a pristine empty
+  // untitled tab if one exists, and numbers new ones Untitled-N.md. TABS-01/08.
   const handleNewFile = useCallback(() => {
     const reusable = findReusableUntitledTab(tabsRef.current);
     if (reusable) {
@@ -370,6 +446,7 @@ export function useFileSession({
       return;
     }
     snapshotActiveTab();
+    // Fresh Untitled buffer → editor resets undo history. TABS-03.
     bumpDocSwap();
     const id = newTabId();
     const name = nextUntitledName(tabsRef.current);
@@ -389,11 +466,17 @@ export function useFileSession({
     setMode("code");
   }, [activateTab, bumpDocSwap, clearReview, commitTabs, newTabId, setActiveTab, setMode, snapshotActiveTab]);
 
+  // Open the interactive feature guide as a real, editable document. Reuse a
+  // pristine empty untitled buffer when one exists; otherwise open a new tab so
+  // the current file is left untouched. Split view shows source and result.
   const openTutorial = useCallback(
     (tutorialContent: string) => {
       const name = "Welcome to Paperling.md";
       const bytes = new TextEncoder().encode(tutorialContent).length;
+      // Snapshot first so the active tab's latest edits are preserved even when
+      // switching to (or reusing) another tab.
       snapshotActiveTab();
+      // Fresh document → reset the editor's undo history. TABS-03.
       bumpDocSwap();
       const reusable = findReusableUntitledTab(tabsRef.current);
       const id = reusable ? reusable.id : newTabId();
@@ -423,8 +506,11 @@ export function useFileSession({
     [bumpDocSwap, clearReview, commitTabs, newTabId, setActiveTab, setMode, snapshotActiveTab],
   );
 
+  // Open file dialog.
   const handleOpenFile = useCallback(async () => {
     try {
+      // Allow selecting several files at once — each opens in its own tab.
+      // Plain-text files open too (rendered as markdown). TABS-11 / TXT-01.
       const selected = await open({
         multiple: true,
         filters: [{ name: "Markdown & text", extensions: ["md", "markdown", "txt", "text"] }],
@@ -436,6 +522,7 @@ export function useFileSession({
     }
   }, [loadFile]);
 
+  // Save As — always prompts for a new path, even if a path is already set.
   const handleSaveAs = useCallback(async () => {
     const selected = await save({
       filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -450,6 +537,8 @@ export function useFileSession({
       setOriginalContent(content);
       addRecentFile(selected, name);
       setLastFile(selected);
+      // Keep the active tab's entry in step with the new path/name so reopening
+      // the just-saved file switches to this tab instead of duplicating it. TABS-01.
       const activeId = activeTabIdRef.current;
       if (activeId) {
         commitTabs(
@@ -474,6 +563,7 @@ export function useFileSession({
     }
   }, [commitTabs, content, fileName, showToast]);
 
+  // Save file (Save As if no path yet).
   const handleSaveFile = useCallback(async () => {
     if (!filePath) {
       await handleSaveAs();
@@ -489,6 +579,9 @@ export function useFileSession({
     }
   }, [content, filePath, handleSaveAs, showToast]);
 
+  // External-change detection: on window focus, stat the open file and reload
+  // a clean buffer or warn for a dirty buffer. EXT-01. Callbacks are memoised so
+  // the focus listener stays registered across renders.
   const handleExternalReloaded = useCallback(
     () => showToast("File changed on disk, reloaded the latest version", "info"),
     [showToast],
@@ -508,6 +601,8 @@ export function useFileSession({
     onConflict: handleExternalConflict,
   });
 
+  // Autosave 1.5s after the last edit. See useAutosave for throttling and the
+  // AI-review guard (AI-01); memoised callbacks keep the timer stable.
   const handleAutosaved = useCallback((mtime: number, saved: string) => {
     knownMtimeRef.current = mtime;
     setOriginalContent(saved);
@@ -523,6 +618,9 @@ export function useFileSession({
     onError: handleAutosaveError,
   });
 
+  // Autosave dirty BACKGROUND tabs too (useAutosave above covers the active
+  // buffer). Background snapshots change only when switching away, so this
+  // effect keys on `tabs` and settles after saved snapshots are updated. TABS-06.
   useEffect(() => {
     if (!autoSaveEnabled) return;
     const activeId = activeTabIdRef.current;
@@ -534,6 +632,7 @@ export function useFileSession({
       for (const tab of dirtyBackgroundTabs) {
         try {
           const mtime = await invoke<number>("save_file", { path: tab.filePath!, content: tab.content });
+          // Only mark saved if the snapshot still holds exactly what we wrote.
           commitTabs(
             tabsRef.current.map((current) =>
               current.id === tab.id && current.content === tab.content
@@ -549,6 +648,9 @@ export function useFileSession({
     return () => window.clearTimeout(timer);
   }, [autoSaveEnabled, commitTabs, tabs]);
 
+  // External-change detection for BACKGROUND tabs. The active tab is handled by
+  // useExternalChangeWatcher; clean background tabs refresh silently, while a
+  // dirty one advances its mtime and shows a one-time warning. TABS-06.
   useEffect(() => {
     const onFocus = async () => {
       const activeId = activeTabIdRef.current;
@@ -592,6 +694,9 @@ export function useFileSession({
     return () => window.removeEventListener("focus", onFocus);
   }, [commitTabs, showToast]);
 
+  // Persist the whole open-tab session so a relaunch reopens every saved tab,
+  // not just one file. Untitled buffers are omitted; the active tab's caret line
+  // comes from currentLineRef because its stored snapshot can lag. TABS-07.
   useEffect(() => {
     // The boot effect reads the saved session later in this same effect phase.
     // Do not clear it from the initial empty tab state before restore runs.
@@ -610,6 +715,9 @@ export function useFileSession({
     setSession({ tabs: sessionTabs, activeIndex: activeIndex < 0 ? 0 : activeIndex });
   }, [activeTabId, booting, tabs]);
 
+  // Resolve the launch file once on app start. PULL model: ask the backend for
+  // an OS-opened file when the UI is ready instead of racing a pushed event
+  // against webview startup and session restoration.
   useEffect(() => {
     if (!restoreOnMount) {
       setBooting(false);
@@ -624,6 +732,8 @@ export function useFileSession({
       } catch {
         // Browser development mode or an older backend: restore only.
       }
+      // Prefer the full saved session (TABS-07); fall back to lastFile for
+      // sessions saved before multi-tab restore existed.
       const session = getSession();
       const cursorByPath = new Map<string, number | undefined>();
       let paths: string[] = [];
@@ -639,6 +749,7 @@ export function useFileSession({
           activePath = lastFile;
         }
       }
+      // A CLI / double-clicked file is always the active tab, appended if new.
       if (cliFile) {
         if (!paths.includes(cliFile)) paths.push(cliFile);
         activePath = cliFile;
@@ -647,6 +758,8 @@ export function useFileSession({
         setBooting(false);
         return;
       }
+      // Read each file, skipping stale entries. Always surface a CLI file's
+      // failure because the user explicitly requested it.
       const loaded: TabState[] = [];
       let activeId: string | null = null;
       for (const path of paths) {
@@ -689,6 +802,7 @@ export function useFileSession({
       knownMtimeRef.current = activeTab.knownMtime;
       addRecentFile(activeTab.filePath!, activeTab.fileName);
       setLastFile(activeTab.filePath);
+      // Restore the active tab's caret line once the editor has mounted.
       const line = activeTab.cursorLine ?? 1;
       if (line > 1) {
         window.setTimeout(
@@ -696,6 +810,7 @@ export function useFileSession({
           150,
         );
       }
+      // Applied once for the whole restored session, not per tab. READ-01.
       if (getOpenInReader()) setMode("preview");
       setBooting(false);
     })();
@@ -703,11 +818,14 @@ export function useFileSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Drag-reorder: move a tab to a new index. TABS-10.
   const handleReorderTab = useCallback(
     (fromIndex: number, toIndex: number) => commitTabs(moveTab(tabsRef.current, fromIndex, toIndex)),
     [commitTabs],
   );
 
+  // Close a set of tabs, but only the CLEAN ones — dirty tabs are kept open
+  // and reported. Used by "Close others / Close to the right". TABS-12.
   const closeManyClean = useCallback(
     (ids: string[]) => {
       let keptDirty = 0;
@@ -739,6 +857,7 @@ export function useFileSession({
         const index = list.findIndex((tab) => tab.id === id);
         if (index >= 0) closeManyClean(list.slice(index + 1).map((tab) => tab.id));
       }
+      // Keep the anchor tab focused if it survived.
       if (tabsRef.current.some((tab) => tab.id === id) && id !== activeTabIdRef.current) activateTab(id);
     },
     [activateTab, closeManyClean],
