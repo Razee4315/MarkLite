@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open, save, ask } from "@tauri-apps/plugin-dialog";
+import { save, ask } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { Window } from "@tauri-apps/api/window";
 
@@ -22,8 +22,7 @@ import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useFullscreen } from "./hooks/useFullscreen";
 import { useScrollSync } from "./hooks/useScrollSync";
-import { useAutosave } from "./hooks/useAutosave";
-import { useExternalChangeWatcher } from "./hooks/useExternalChangeWatcher";
+import { useFileSession } from "./hooks/useFileSession";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -72,16 +71,11 @@ const UpdateDialog = lazy(() =>
 );
 import { getRecentFiles } from "./utils/persistence";
 import {
-  addRecentFile,
   getAIConfig,
   getAIEnabled,
   getAIPanelWidth,
   initAIKey,
-  getLastFile,
-  getOpenInReader,
   getSavedViewMode,
-  getSession,
-  setSession,
   getSpellCheck,
   getSplitRatio,
   getToolbarEnabled,
@@ -89,7 +83,6 @@ import {
   getTypewriterMode,
   getWordWrap,
   setAIEnabled,
-  setLastFile,
   setSavedViewMode,
   setSpellCheck,
   setSplitRatio,
@@ -105,14 +98,7 @@ import { revealMainWindow } from "./utils/appWindow";
 import { TabBar, type TabBarItem } from "./components/TabBar";
 import { TabContextMenu } from "./components/TabContextMenu";
 import {
-  findTabByPath,
-  nextActiveAfterClose,
-  nextUntitledName,
-  findReusableUntitledTab,
   computeTabLabels,
-  moveTab,
-  collectDirtyTabs as computeDirtyTabs,
-  type TabState,
 } from "./utils/tabsModel";
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
@@ -121,16 +107,6 @@ import { createPreviewFindController } from "./utils/previewFind";
 // The interactive feature guide, shipped as raw markdown so it opens as a real,
 // editable document (offered at the end of the welcome tour / from the palette).
 import tutorialMarkdown from "./assets/tutorial.md?raw";
-
-interface FileData {
-  path: string;
-  name: string;
-  content: string;
-  size: number;
-  line_count: number;
-  /** Last-modified time (ms since epoch) — used to detect external edits. */
-  modified: number;
-}
 
 // Platform-aware AI shortcut hint. Windows uses Alt+J because WebView2 reserves
 // Ctrl+J for its Downloads UI before the page sees it; macOS shows ⌘J. (AI-02.)
@@ -147,13 +123,6 @@ const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
 // padding-left when one is open so content reflows beside it (not under it).
 const SIDEBAR_WIDTH = 288;
 
-// The launch-file resolution must run exactly once per webview load. React
-// StrictMode double-invokes effects in dev: without this guard the second run
-// would find the CLI file already consumed (the backend take()s it) and start
-// a racing last-session restore that can overwrite the just-opened file.
-// Module-level on purpose — StrictMode remounts share module state.
-let bootResolved = false;
-
 // Theme options for the command palette, in the same order as Settings.
 const THEME_CHOICES: { id: Theme; label: string }[] = [
   { id: "dark", label: "Dark" },
@@ -164,12 +133,6 @@ const THEME_CHOICES: { id: Theme; label: string }[] = [
 
 function AppContent() {
   const { theme, setTheme } = useTheme();
-  // File state
-  const [filePath, setFilePath] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [content, setContent] = useState<string>("");
-  const [originalContent, setOriginalContent] = useState<string>("");
-  const [fileSize, setFileSize] = useState<number>(0);
 
   // UI state
   const [mode, setMode] = usePersistedState<ViewMode>(getSavedViewMode, setSavedViewMode);
@@ -179,15 +142,6 @@ function AppContent() {
   const [showTour, setShowTour] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  // Open-file tabs. The live state above is always the ACTIVE tab; `tabs` holds
-  // the snapshots of every open file (incl. the active one). TABS-01.
-  const [tabs, setTabs] = useState<TabState[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  // Bumped on every genuine document swap (tab switch, file open, new file) so
-  // the editor can reset its undo history and Ctrl+Z can't reach into the
-  // previously-shown document. See CodeEditor's docSwapId effect. TABS-03.
-  const [docSwapId, setDocSwapId] = useState(0);
-  const bumpDocSwap = useCallback(() => setDocSwapId((n) => n + 1), []);
   const [splitRatio, setSplitRatioState] = usePersistedState<number>(getSplitRatio, setSplitRatio);
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
   const [aiEnabled, setAiEnabledState] = usePersistedState<boolean>(getAIEnabled, setAIEnabled);
@@ -196,22 +150,13 @@ function AppContent() {
   const [wordWrapEnabled, setWordWrapEnabled] = usePersistedState<boolean>(getWordWrap, setWordWrap);
   const [spellCheckEnabled, setSpellCheckEnabled] = usePersistedState<boolean>(getSpellCheck, setSpellCheck);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
-  // True while the launch-time file resolution (OS-opened CLI file, then
-  // last-session restore) is still in flight. Shows a neutral splash instead
-  // of flashing the WelcomeScreen for a frame. Starts true unconditionally:
-  // whether a CLI file exists is only known after asking the backend, and the
-  // no-file case resolves in a couple of milliseconds anyway.
-  const [booting, setBooting] = useState<boolean>(true);
   // Editor selection range. Collapsed (start === end) means no selection;
   // when start < end we surface a "N words selected" chip in the status bar.
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
-  const [isLoading, setIsLoading] = useState(false);
 
   // Unsaved-changes dialog for window close (Alt+F4, taskbar close, the title
   // bar X). The Tauri close-requested handler below intercepts ALL of them.
   const [showUnsavedBeforeClose, setShowUnsavedBeforeClose] = useState(false);
-  // Pending dirty-tab close, awaiting the Save/Discard/Cancel dialog. TABS-05.
-  const [closeTabPrompt, setCloseTabPrompt] = useState<{ id: string; fileName: string } | null>(null);
   // Find bar over the reader-mode preview (Ctrl+F when mode === "preview").
   const [previewFindOpen, setPreviewFindOpen] = useState(false);
   // Autosave: save a moment after the user stops typing (Settings → Editor).
@@ -231,6 +176,50 @@ function AppContent() {
 
   // Toast notifications (state + show/hide helpers live in a hook).
   const { toasts, showToast, dismissToast } = useToast();
+
+  // File state and the complete open/save/new/tab lifecycle live behind one
+  // typed boundary. UI-only state remains in App; switching documents clears
+  // any review because a proposal belongs to the file it was created for.
+  const clearReview = useCallback(() => setProposedDoc(null), []);
+  const {
+    filePath,
+    fileName,
+    content,
+    setContent,
+    fileSize,
+    tabs,
+    activeTabId,
+    docSwapId,
+    booting,
+    isLoading,
+    isDirty,
+    hasFile,
+    closeTabPrompt,
+    cancelCloseTab,
+    collectDirtyTabs,
+    activateTab,
+    cycleTab,
+    loadFile,
+    reopenClosedTab,
+    gotoTabByIndex,
+    closeTab,
+    handleSaveCloseTab,
+    handleDiscardCloseTab,
+    handleNewFile,
+    openTutorial,
+    handleOpenFile,
+    handleSaveAs,
+    handleSaveFile,
+    handleReorderTab,
+    handleTabMenuAction,
+  } = useFileSession({
+    currentLine: mode === "preview" ? previewLine : cursorPosition.line,
+    autoSaveEnabled,
+    isReviewActive: proposedDoc != null,
+    clearReview,
+    setMode,
+    showToast,
+  });
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
@@ -257,11 +246,6 @@ function AppContent() {
   useEffect(() => {
     revealMainWindow();
   }, []);
-
-  // Derived state
-  const isDirty = content !== originalContent;
-  // "Has a buffer" — true once a file is opened OR a blank Untitled buffer is started
-  const hasFile = filePath !== null || fileName !== null;
 
   // Keep the native window title (taskbar / Alt-Tab) in step with the active
   // file and its dirty state, so two Paperling windows are distinguishable and
@@ -324,167 +308,6 @@ function AppContent() {
   );
   // Average adult reading speed for prose: ~200 wpm.
   const readingTimeMin = useMemo(() => wordCount / 200, [wordCount]);
-
-  // Known on-disk modified time (ms). Compared against a fresh stat on window
-  // focus to detect the file changing under us (sync tools, other editors).
-  const knownMtimeRef = useRef<number>(0);
-
-  // === Tabs (snapshot-swap) ===
-  // The live state (filePath/content/…) IS the active tab. `tabsRef`/`liveRef`
-  // mirror state synchronously so the open/switch/close helpers can read and
-  // commit without waiting for a re-render. We snapshot the active tab before
-  // leaving it and restore the target's snapshot into the live state — so every
-  // single-file system (autosave, AI review, external-change) is untouched. TABS-01.
-  const tabSeqRef = useRef(0);
-  const tabsRef = useRef<TabState[]>([]);
-  tabsRef.current = tabs;
-  const activeTabIdRef = useRef<string | null>(null);
-  activeTabIdRef.current = activeTabId;
-  // Stack of recently-closed tabs (path + caret line) for Ctrl+Shift+T. Only
-  // saved files are recoverable; untitled buffers aren't pushed. TABS-15.
-  const closedTabsRef = useRef<{ path: string; cursorLine?: number }[]>([]);
-  const liveRef = useRef({ filePath, fileName, content, originalContent, fileSize });
-  liveRef.current = { filePath, fileName, content, originalContent, fileSize };
-  // The line we'd return to when this file is re-activated: the caret line while
-  // editing, or the top-visible line in reader mode. TABS-02.
-  const currentLineRef = useRef(1);
-  currentLineRef.current = mode === "preview" ? previewLine : cursorPosition.line;
-
-  const commitTabs = useCallback((next: TabState[]) => {
-    tabsRef.current = next;
-    setTabs(next);
-  }, []);
-  const setActiveTab = useCallback((id: string | null) => {
-    activeTabIdRef.current = id;
-    setActiveTabId(id);
-  }, []);
-  const newTabId = useCallback(() => `tab-${++tabSeqRef.current}`, []);
-
-  // Every open tab that has unsaved changes, reading the ACTIVE tab from live
-  // state (its stored snapshot lags until the next switch) and the rest from
-  // their snapshots. Used by the window-close guard so background tabs can't be
-  // discarded silently. The dirty-collection logic itself is a pure helper so it
-  // stays unit-testable; this wrapper just feeds it the current refs. TABS-04.
-  const collectDirtyTabs = useCallback(
-    () => computeDirtyTabs(tabsRef.current, activeTabIdRef.current, liveRef.current),
-    []
-  );
-
-  // Write the live editor state back into the active tab's entry.
-  const snapshotActiveTab = useCallback(() => {
-    const id = activeTabIdRef.current;
-    if (!id) return;
-    const live = liveRef.current;
-    commitTabs(tabsRef.current.map((t) => (t.id === id ? {
-      ...t,
-      filePath: live.filePath,
-      fileName: live.fileName ?? "Untitled.md",
-      content: live.content,
-      originalContent: live.originalContent,
-      fileSize: live.fileSize,
-      knownMtime: knownMtimeRef.current,
-      cursorLine: currentLineRef.current,
-    } : t)));
-  }, [commitTabs]);
-
-  // Load a tab's stored snapshot into the live editor state.
-  const applyTabToLive = useCallback((tab: TabState) => {
-    setProposedDoc(null); // an AI review belongs to the file we're leaving
-    bumpDocSwap(); // new document → editor resets undo history. TABS-03.
-    setFilePath(tab.filePath);
-    setFileName(tab.fileName);
-    setContent(tab.content);
-    setOriginalContent(tab.originalContent);
-    setFileSize(tab.fileSize);
-    knownMtimeRef.current = tab.knownMtime;
-    if (tab.filePath) setLastFile(tab.filePath);
-    // Restore where you were in this tab — jump to the remembered line, or fall
-    // back to the top for a never-focused / line-1 tab. TABS-02.
-    const line = tab.cursorLine ?? 1;
-    requestAnimationFrame(() => {
-      if (line > 1) window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }));
-      else window.dispatchEvent(new CustomEvent("paperling:scroll-top"));
-    });
-  }, [bumpDocSwap]);
-
-  // Switch to an already-open tab, snapshotting the current one first.
-  const activateTab = useCallback((id: string) => {
-    if (id === activeTabIdRef.current) return;
-    snapshotActiveTab();
-    const target = tabsRef.current.find((t) => t.id === id);
-    if (!target) return;
-    setActiveTab(id);
-    applyTabToLive(target);
-  }, [snapshotActiveTab, setActiveTab, applyTabToLive]);
-
-  // Switch to the previous / next tab (Alt+Left / Alt+Right), wrapping around.
-  const cycleTab = useCallback((delta: number) => {
-    const list = tabsRef.current;
-    if (list.length < 2) return;
-    const idx = list.findIndex((t) => t.id === activeTabIdRef.current);
-    if (idx === -1) return;
-    const next = list[(idx + delta + list.length) % list.length];
-    activateTab(next.id);
-  }, [activateTab]);
-
-  // Load file from path (with unsaved changes check)
-  const loadFileDirect = useCallback(async (path: string) => {
-    const outgoing = filePathRef.current;
-    // Preserve the file we're leaving in its tab before overwriting live state.
-    snapshotActiveTab();
-    setIsLoading(true);
-    try {
-      const fileData = await invoke<FileData>("read_file", { path });
-      bumpDocSwap(); // new document → editor resets undo history. TABS-03.
-      setFilePath(fileData.path);
-      setFileName(fileData.name);
-      setContent(fileData.content);
-      setOriginalContent(fileData.content);
-      setFileSize(fileData.size);
-      knownMtimeRef.current = fileData.modified ?? 0;
-      // Track recents + last-opened for restore-on-launch
-      addRecentFile(fileData.path, fileData.name);
-      setLastFile(fileData.path);
-      // Upsert the tab: reuse an existing tab for this path (e.g. a reload),
-      // otherwise open a new one. Either way it becomes active. TABS-01.
-      const loaded = {
-        filePath: fileData.path, fileName: fileData.name,
-        content: fileData.content, originalContent: fileData.content,
-        fileSize: fileData.size, knownMtime: fileData.modified ?? 0,
-      };
-      const existing = findTabByPath(tabsRef.current, fileData.path);
-      if (existing) {
-        commitTabs(tabsRef.current.map((t) => (t.id === existing.id ? { ...t, ...loaded } : t)));
-        setActiveTab(existing.id);
-      } else {
-        const id = newTabId();
-        commitTabs([...tabsRef.current, { id, ...loaded }]);
-        setActiveTab(id);
-      }
-      // Snap the new file to the top — but not on a same-path external reload,
-      // which should keep the reader where they were. NAV-04.
-      if (outgoing !== fileData.path) {
-        requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
-      }
-      // "Open files in reader" applies to every USER file open, read live so
-      // a Settings change takes effect without a restart. Mode is global
-      // across tabs, so opening a file mid-edit flips the view — that's the
-      // setting's promise. Same-path reloads are excluded: the external-change
-      // watcher reloads silently through here (EXT-01) and must not yank an
-      // editing session back to preview. New files still force code mode
-      // (handleNewFile). READ-01.
-      if (outgoing !== fileData.path && getOpenInReader()) setMode("preview");
-    } catch (err) {
-      console.error("Failed to load file:", err);
-      // Surface the actual error from Rust so "File too large" / "File not
-      // found" reaches the user instead of a generic message — without this,
-      // hitting the new 50 MB cap looked exactly like a permission error.
-      const msg = errMessage(err);
-      showToast(msg || "Failed to open file", "error");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, setMode]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -554,130 +377,6 @@ function AppContent() {
     initAIKey().then(() => setAiConfigState(getAIConfig()));
   }, []);
 
-  useEffect(() => {
-    // Resolve the launch file once on app start. PULL model: ask the backend
-    // for an OS-opened file (double-clicked .md → CLI arg) when WE are ready,
-    // instead of the backend pushing an event after an arbitrary delay. The
-    // old push design raced the webview: on slow cold starts the event fired
-    // before the listener existed and was lost, so the last-session restore
-    // won and the app reopened the previous file instead of the clicked one.
-    if (bootResolved) return;
-    bootResolved = true;
-    (async () => {
-      let cliFile: string | null = null;
-      try {
-        cliFile = await invoke<string | null>("get_cli_file");
-      } catch {
-        // Browser dev mode / older backend without the command — restore only.
-      }
-
-      // Assemble the ordered list of paths to reopen and which one is active.
-      // Prefer the full saved session (TABS-07); fall back to the single
-      // lastFile for sessions saved before multi-tab restore existed.
-      const session = getSession();
-      const cursorByPath = new Map<string, number | undefined>();
-      let paths: string[] = [];
-      let activePath: string | null = null;
-      if (session) {
-        paths = session.tabs.map((t) => t.path);
-        session.tabs.forEach((t) => cursorByPath.set(t.path, t.cursorLine));
-        activePath = session.tabs[session.activeIndex]?.path ?? paths[0] ?? null;
-      } else {
-        const last = getLastFile();
-        if (last) { paths = [last]; activePath = last; }
-      }
-      // A CLI / double-clicked file is always the active tab, appended if new.
-      if (cliFile) {
-        if (!paths.includes(cliFile)) paths.push(cliFile);
-        activePath = cliFile;
-      }
-
-      if (paths.length === 0) {
-        setBooting(false);
-        return;
-      }
-
-      // Read each file, skipping any that have gone missing / too large. The CLI
-      // file's failure is always surfaced (the user explicitly asked for it).
-      const loaded: TabState[] = [];
-      let activeId: string | null = null;
-      for (const p of paths) {
-        try {
-          const fd = await invoke<FileData>("read_file", { path: p });
-          const id = newTabId();
-          loaded.push({
-            id, filePath: fd.path, fileName: fd.name,
-            content: fd.content, originalContent: fd.content,
-            fileSize: fd.size, knownMtime: fd.modified ?? 0,
-            cursorLine: cursorByPath.get(p),
-          });
-          if (p === activePath) activeId = id;
-        } catch (err) {
-          const msg = errMessage(err);
-          if (cliFile && p === cliFile) {
-            showToast(`Could not open file: ${msg || p}`, "error");
-          } else if (/too large/i.test(msg)) {
-            showToast(`Could not restore "${p}": ${msg}`, "error");
-          }
-          // Otherwise a stale session entry — drop it quietly.
-        }
-      }
-
-      if (loaded.length === 0) {
-        setSession(null);
-        setLastFile(null);
-        setBooting(false);
-        return;
-      }
-      if (!activeId) activeId = loaded[0].id;
-      const activeTabData = loaded.find((t) => t.id === activeId)!;
-
-      bumpDocSwap(); // restored document → editor starts with clean undo history
-      commitTabs(loaded);
-      setActiveTab(activeId);
-      setFilePath(activeTabData.filePath);
-      setFileName(activeTabData.fileName);
-      setContent(activeTabData.content);
-      setOriginalContent(activeTabData.content);
-      setFileSize(activeTabData.fileSize);
-      knownMtimeRef.current = activeTabData.knownMtime;
-      addRecentFile(activeTabData.filePath!, activeTabData.fileName);
-      setLastFile(activeTabData.filePath);
-      // Restore the active tab's caret line once the editor has mounted.
-      const line = activeTabData.cursorLine ?? 1;
-      if (line > 1) {
-        window.setTimeout(
-          () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
-          150
-        );
-      }
-      // Applied once for the whole restored session, not per tab. READ-01.
-      if (getOpenInReader()) setMode("preview");
-      setBooting(false);
-    })();
-    // Run only once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Latest content + originalContent are read via refs inside `loadFile` so
-  // its identity stays stable across keystrokes. Without this, every typed
-  // character would change `loadFile`'s reference, which would tear down and
-  // re-register the Tauri DRAG_DROP listener, the file-open-from-cli listener,
-  // and the global keydown handler — all of which depend on `loadFile` —
-  // causing per-keystroke listener churn (and a small but real OS-level IPC
-  // round-trip for the Tauri ones).
-  const contentRef = useRef(content);
-  contentRef.current = content;
-  const originalContentRef = useRef(originalContent);
-  originalContentRef.current = originalContent;
-  const filePathRef = useRef(filePath);
-  filePathRef.current = filePath;
-  // Whether an AI review is pending, mirrored into a ref for the focus-time
-  // external-change watcher (registered once, so it can't read state directly).
-  // AI-01.
-  const reviewActiveRef = useRef(false);
-  reviewActiveRef.current = proposedDoc != null;
-
   // Intercept EVERY window-close path (Alt+F4, taskbar close, the title bar X,
   // OS shutdown) and route dirty buffers through the unsaved-changes dialog.
   // Previously only the custom X button checked isDirty, so Alt+F4 silently
@@ -745,259 +444,6 @@ function AppContent() {
     setShowUnsavedBeforeClose(false);
     forceCloseWindow();
   }, [forceCloseWindow]);
-
-  // External-change detection: on window focus, stat the open file and reload
-  // (clean buffer) or warn (dirty buffer). EXT-01. Callbacks are memoised so the
-  // focus listener stays registered across renders.
-  const handleExternalReloaded = useCallback(
-    () => showToast("File changed on disk, reloaded the latest version", "info"),
-    [showToast]
-  );
-  const handleExternalConflict = useCallback(
-    () => showToast("This file changed on disk. Saving will overwrite those changes.", "error"),
-    [showToast]
-  );
-  useExternalChangeWatcher({
-    filePathRef, contentRef, originalContentRef, knownMtimeRef,
-    isReviewActiveRef: reviewActiveRef,
-    reload: loadFileDirect,
-    onReloaded: handleExternalReloaded,
-    onConflict: handleExternalConflict,
-  });
-
-  // Autosave 1.5s after the last edit. See useAutosave for the throttling and
-  // the AI-review guard (AI-01). Callbacks are memoised so the debounce timer
-  // isn't reset on every unrelated re-render.
-  const handleAutosaved = useCallback((mtime: number, saved: string) => {
-    knownMtimeRef.current = mtime;
-    setOriginalContent(saved);
-  }, []);
-  const handleAutosaveError = useCallback((msg: string) => showToast(msg, "error"), [showToast]);
-  useAutosave({
-    enabled: autoSaveEnabled,
-    filePath,
-    content,
-    originalContent,
-    isReviewActive: proposedDoc != null,
-    onSaved: handleAutosaved,
-    onError: handleAutosaveError,
-  });
-
-  // Autosave dirty BACKGROUND tabs too (useAutosave above only covers the active
-  // buffer). A background tab's content only changes when you switch away from
-  // it, so this effect keys on `tabs` — it never re-runs on active-tab keystrokes
-  // (those live in `content`, not the snapshot). Saved tabs get their
-  // originalContent/knownMtime updated, which clears them from the dirty set so
-  // the effect settles without looping. TABS-06.
-  useEffect(() => {
-    if (!autoSaveEnabled) return;
-    const activeId = activeTabIdRef.current;
-    const dirtyBg = tabs.filter(
-      (t) => t.id !== activeId && t.filePath && t.content !== t.originalContent
-    );
-    if (dirtyBg.length === 0) return;
-    const timer = window.setTimeout(async () => {
-      for (const t of dirtyBg) {
-        try {
-          const mtime = await invoke<number>("save_file", { path: t.filePath!, content: t.content });
-          // Only mark saved if the snapshot still holds exactly what we wrote.
-          commitTabs(
-            tabsRef.current.map((x) =>
-              x.id === t.id && x.content === t.content
-                ? { ...x, originalContent: t.content, knownMtime: mtime }
-                : x
-            )
-          );
-        } catch {/* best-effort; the active-tab path surfaces disk errors */}
-      }
-    }, 1500);
-    return () => window.clearTimeout(timer);
-  }, [tabs, autoSaveEnabled, commitTabs]);
-
-  // External-change detection for BACKGROUND tabs. The active tab is handled by
-  // useExternalChangeWatcher; on window focus we also stat every other open
-  // file. A clean background tab silently refreshes its snapshot; a dirty one
-  // gets a one-time conflict warning (its knownMtime is advanced so it won't
-  // re-toast every focus). TABS-06.
-  useEffect(() => {
-    const onFocus = async () => {
-      const activeId = activeTabIdRef.current;
-      const bg = tabsRef.current.filter((t) => t.id !== activeId && t.filePath);
-      for (const t of bg) {
-        try {
-          const info = await invoke<{ modified: number }>("get_file_info", { path: t.filePath! });
-          if (!(t.knownMtime > 0 && info.modified > t.knownMtime)) continue;
-          if (t.content === t.originalContent) {
-            const fd = await invoke<FileData>("read_file", { path: t.filePath! });
-            commitTabs(
-              tabsRef.current.map((x) =>
-                x.id === t.id
-                  ? { ...x, content: fd.content, originalContent: fd.content, fileSize: fd.size, knownMtime: fd.modified ?? 0 }
-                  : x
-              )
-            );
-          } else {
-            commitTabs(tabsRef.current.map((x) => (x.id === t.id ? { ...x, knownMtime: info.modified } : x)));
-            showToast(`"${t.fileName}" changed on disk in a background tab. Saving it will overwrite those changes.`, "error");
-          }
-        } catch {/* file gone / stat failed — surfaced when that tab is saved */}
-      }
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [commitTabs, showToast]);
-
-  // Persist the whole open-tab session (paths + which is active) so a relaunch
-  // reopens everything, not just one file. Runs whenever the tab list or the
-  // active tab changes. Untitled buffers have no path and are omitted. The
-  // active tab's caret line comes from the live currentLineRef (its snapshot
-  // lags until the next switch). TABS-07.
-  useEffect(() => {
-    const activeId = activeTabIdRef.current;
-    const persistable = tabs.filter((t) => t.filePath);
-    if (persistable.length === 0) {
-      setSession(null);
-      return;
-    }
-    const sessTabs = persistable.map((t) => ({
-      path: t.filePath!,
-      cursorLine: t.id === activeId ? currentLineRef.current : t.cursorLine,
-    }));
-    const activeIdx = persistable.findIndex((t) => t.id === activeId);
-    setSession({ tabs: sessTabs, activeIndex: activeIdx < 0 ? 0 : activeIdx });
-  }, [tabs, activeTabId]);
-
-  // Open a file: if it's already in a tab, just switch to it (preserving any
-  // unsaved edits there); otherwise load it into a new tab. With tabs there's no
-  // need to prompt before opening — the current file stays open in its own tab.
-  const loadFile = useCallback(async (path: string) => {
-    const existing = findTabByPath(tabsRef.current, path);
-    if (existing) { activateTab(existing.id); return; }
-    await loadFileDirect(path);
-  }, [activateTab, loadFileDirect]);
-
-  // Reopen the most recently closed (saved) tab, restoring its caret line. TABS-15.
-  const reopenClosedTab = useCallback(() => {
-    const entry = closedTabsRef.current.pop();
-    if (!entry) return;
-    loadFile(entry.path);
-    if (entry.cursorLine && entry.cursorLine > 1) {
-      const line = entry.cursorLine;
-      window.setTimeout(
-        () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
-        150
-      );
-    }
-  }, [loadFile]);
-
-  // Jump to a tab by position (Ctrl+1..8); index -1 means the last tab (Ctrl+9,
-  // browser convention). TABS-16.
-  const gotoTabByIndex = useCallback((index: number) => {
-    const list = tabsRef.current;
-    if (list.length === 0) return;
-    const target = index === -1 ? list[list.length - 1] : list[index];
-    if (target) activateTab(target.id);
-  }, [activateTab]);
-
-  // Remove a tab and refocus a neighbour (or fall back to the welcome screen).
-  // No dirty check here — callers decide whether to prompt first. TABS-01.
-  const finalizeCloseTab = useCallback((id: string) => {
-    // Remember saved tabs so Ctrl+Shift+T can reopen them. TABS-15.
-    const closing = tabsRef.current.find((t) => t.id === id);
-    if (closing?.filePath) {
-      const isActiveClosing = id === activeTabIdRef.current;
-      closedTabsRef.current.push({
-        path: closing.filePath,
-        cursorLine: isActiveClosing ? currentLineRef.current : closing.cursorLine,
-      });
-      if (closedTabsRef.current.length > 25) closedTabsRef.current.shift();
-    }
-    const isActive = id === activeTabIdRef.current;
-    const nextId = nextActiveAfterClose(tabsRef.current, id);
-    const remaining = tabsRef.current.filter((t) => t.id !== id);
-    commitTabs(remaining);
-    if (!isActive) return;
-    const target = nextId ? remaining.find((t) => t.id === nextId) : undefined;
-    if (target) {
-      setActiveTab(target.id);
-      applyTabToLive(target);
-    } else {
-      // Last tab closed — return to the clean welcome state.
-      setActiveTab(null);
-      setProposedDoc(null);
-      bumpDocSwap();
-      setFilePath(null);
-      setFileName(null);
-      setContent("");
-      setOriginalContent("");
-      setFileSize(0);
-      knownMtimeRef.current = 0;
-      setLastFile(null);
-    }
-  }, [commitTabs, setActiveTab, applyTabToLive, bumpDocSwap]);
-
-  // Close a tab. A clean tab closes immediately; a dirty one opens the
-  // Save / Discard / Cancel dialog (TABS-05) rather than the old two-button
-  // discard-or-cancel prompt.
-  const closeTab = useCallback((id: string) => {
-    const tab = tabsRef.current.find((t) => t.id === id);
-    if (!tab) return;
-    const isActive = id === activeTabIdRef.current;
-    const dirty = isActive
-      ? liveRef.current.content !== liveRef.current.originalContent
-      : tab.content !== tab.originalContent;
-    if (dirty) {
-      setCloseTabPrompt({ id, fileName: isActive ? (liveRef.current.fileName ?? "Untitled.md") : tab.fileName });
-      return;
-    }
-    finalizeCloseTab(id);
-  }, [finalizeCloseTab]);
-
-  // The effective save target for a tab, reading the active tab from live state.
-  const getTabSaveData = useCallback((id: string) => {
-    const t = tabsRef.current.find((x) => x.id === id);
-    if (!t) return null;
-    const isActive = id === activeTabIdRef.current;
-    const live = liveRef.current;
-    return {
-      filePath: isActive ? live.filePath : t.filePath,
-      fileName: isActive ? (live.fileName ?? "Untitled.md") : t.fileName,
-      content: isActive ? live.content : t.content,
-    };
-  }, []);
-
-  // "Save" in the close-tab dialog: persist the tab (prompting a location for an
-  // untitled buffer), then close it. Cancel/failure keeps the tab open. TABS-05.
-  const handleSaveCloseTab = useCallback(async () => {
-    const prompt = closeTabPrompt;
-    if (!prompt) return;
-    const data = getTabSaveData(prompt.id);
-    if (!data) { setCloseTabPrompt(null); return; }
-    let path = data.filePath;
-    if (!path) {
-      const selected = await save({
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-        defaultPath: data.fileName,
-      });
-      if (!selected) return; // cancelled save-as → keep the tab open
-      path = selected;
-    }
-    try {
-      await invoke("save_file", { path, content: data.content });
-    } catch (err) {
-      const msg = errMessage(err);
-      showToast(msg || "Failed to save file", "error");
-      return; // keep the tab open on a failed save
-    }
-    setCloseTabPrompt(null);
-    finalizeCloseTab(prompt.id);
-  }, [closeTabPrompt, getTabSaveData, showToast, finalizeCloseTab]);
-
-  const handleDiscardCloseTab = useCallback(() => {
-    const prompt = closeTabPrompt;
-    setCloseTabPrompt(null);
-    if (prompt) finalizeCloseTab(prompt.id);
-  }, [closeTabPrompt, finalizeCloseTab]);
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
@@ -1110,13 +556,13 @@ function AppContent() {
   const handleOpenSearchResult = useCallback(async (path: string, line: number) => {
     // Wait for the file to actually load before jumping, instead of racing a
     // fixed timeout that a large document could lose (landing at the top). SEARCH-01.
-    if (path !== filePathRef.current) {
+    if (path !== filePath) {
       await loadFile(path);
     }
     requestAnimationFrame(() =>
       window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }))
     );
-  }, [loadFile]);
+  }, [filePath, loadFile]);
 
   // Folder the cross-file search runs in: the open file's directory.
   const currentDirectory = useMemo(() => {
@@ -1125,76 +571,7 @@ function AppContent() {
     return lastSep > 0 ? filePath.slice(0, lastSep) : null;
   }, [filePath]);
 
-  // New file: opens a fresh Untitled buffer in its own tab (the current file
-  // stays open in its tab, so nothing is discarded). Reuses a pristine empty
-  // untitled tab if one exists, and numbers new ones Untitled-N.md. TABS-01/08.
-  const handleNewFile = useCallback(() => {
-    const reusable = findReusableUntitledTab(tabsRef.current);
-    if (reusable) {
-      if (reusable.id !== activeTabIdRef.current) activateTab(reusable.id);
-      setMode("code");
-      return;
-    }
-    snapshotActiveTab();
-    bumpDocSwap(); // fresh Untitled buffer → editor resets undo history. TABS-03.
-    const id = newTabId();
-    const name = nextUntitledName(tabsRef.current);
-    commitTabs([...tabsRef.current, {
-      id, filePath: null, fileName: name,
-      content: "", originalContent: "", fileSize: 0, knownMtime: 0,
-    }]);
-    setActiveTab(id);
-    setProposedDoc(null);
-    setFilePath(null);
-    setFileName(name);
-    setContent("");
-    setOriginalContent("");
-    setFileSize(0);
-    knownMtimeRef.current = 0;
-    setLastFile(null);
-    setMode("code");
-  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, activateTab]);
-
-  // Open the interactive feature guide (offered at the end of the tour and from
-  // the command palette). It opens as a real, editable document so users can
-  // poke at live math, diagrams and tables. Reuses a pristine empty untitled
-  // buffer when one exists (e.g. right after replay-tour spawns a blank one);
-  // otherwise opens a new tab so the current file is left untouched. Split view
-  // shows the markdown and the rendered result side by side.
-  const handleOpenTutorial = useCallback(() => {
-    const name = "Welcome to Paperling.md";
-    const bytes = new TextEncoder().encode(tutorialMarkdown).length;
-
-    // Snapshot first so the active tab's latest edits are preserved even when we
-    // switch to (or reuse) a different tab. snapshotActiveTab updates tabsRef
-    // synchronously, so the reuse lookup below sees the up-to-date list.
-    snapshotActiveTab();
-    bumpDocSwap(); // fresh document → reset the editor's undo history. TABS-03.
-
-    const reusable = findReusableUntitledTab(tabsRef.current);
-    const id = reusable ? reusable.id : newTabId();
-
-    const entry: TabState = {
-      id, filePath: null, fileName: name,
-      content: tutorialMarkdown, originalContent: tutorialMarkdown,
-      fileSize: bytes, knownMtime: 0,
-    };
-    commitTabs(
-      reusable
-        ? tabsRef.current.map((t) => (t.id === id ? entry : t))
-        : [...tabsRef.current, entry]
-    );
-    setActiveTab(id);
-    setProposedDoc(null);
-    setFilePath(null);
-    setFileName(name);
-    setContent(tutorialMarkdown);
-    setOriginalContent(tutorialMarkdown);
-    setFileSize(bytes);
-    knownMtimeRef.current = 0;
-    setLastFile(null);
-    setMode("split");
-  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
+  const handleOpenTutorial = useCallback(() => openTutorial(tutorialMarkdown), [openTutorial]);
 
   // "Replay the welcome tour" from Settings → About. The tour spotlights
   // editor chrome, so make sure a buffer exists before showing it.
@@ -1206,80 +583,6 @@ function AppContent() {
     window.addEventListener("paperling:replay-tour", h);
     return () => window.removeEventListener("paperling:replay-tour", h);
   }, [hasFile, handleNewFile]);
-
-  // Open file dialog
-  const handleOpenFile = useCallback(async () => {
-    try {
-      // Allow selecting several files at once — each opens in its own tab. TABS-11.
-      // Plain-text files open too (rendered as markdown, which degrades fine). TXT-01.
-      const selected = await open({
-        multiple: true,
-        filters: [
-          {
-            name: "Markdown & text",
-            extensions: ["md", "markdown", "txt", "text"],
-          },
-        ],
-      });
-
-      if (typeof selected === "string") {
-        await loadFile(selected);
-      } else if (Array.isArray(selected)) {
-        for (const p of selected) await loadFile(p);
-      }
-    } catch (err) {
-      console.error("Failed to open file dialog:", err);
-    }
-  }, [loadFile]);
-
-  // Save As — always prompts for a new path, even if a path is already set.
-  const handleSaveAs = useCallback(async () => {
-    const selected = await save({
-      filters: [{ name: "Markdown", extensions: ["md"] }],
-      defaultPath: fileName ?? undefined,
-    });
-    if (!selected) return;
-    try {
-      knownMtimeRef.current = await invoke<number>("save_file", { path: selected, content });
-      setFilePath(selected);
-      const name = selected.replace(/\\/g, "/").split("/").pop() || "Untitled";
-      setFileName(name);
-      setOriginalContent(content);
-      addRecentFile(selected, name);
-      setLastFile(selected);
-      // Keep the active tab's entry in step with the new path/name so reopening
-      // the just-saved file switches to this tab instead of duplicating it. TABS-01.
-      const activeId = activeTabIdRef.current;
-      if (activeId) {
-        commitTabs(tabsRef.current.map((t) => (t.id === activeId ? {
-          ...t, filePath: selected, fileName: name, content, originalContent: content,
-          knownMtime: knownMtimeRef.current,
-        } : t)));
-      }
-      showToast("File saved", "success");
-    } catch (err) {
-      console.error("Failed to save file:", err);
-      const msg = errMessage(err);
-      showToast(msg || "Failed to save file", "error");
-    }
-  }, [content, fileName, showToast, commitTabs]);
-
-  // Save file (Save As if no path yet)
-  const handleSaveFile = useCallback(async () => {
-    if (!filePath) {
-      await handleSaveAs();
-      return;
-    }
-    try {
-      knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
-      setOriginalContent(content);
-      showToast("File saved", "success");
-    } catch (err) {
-      console.error("Failed to save file:", err);
-      const msg = errMessage(err);
-      showToast(msg || "Failed to save file", "error");
-    }
-  }, [filePath, content, showToast, handleSaveAs]);
 
   // Runtime file-open forwards. Cold-start CLI files are handled by the pull
   // in the boot effect above; this event now arrives only from the
@@ -1431,7 +734,7 @@ function AppContent() {
     // handles find in code/split mode, where the editor has focus). FIND-01.
     openPreviewFind: () => setPreviewFindOpen(true),
     openSearch: () => setShowSearch(true),
-    closeActiveTab: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
+    closeActiveTab: () => { if (activeTabId) closeTab(activeTabId); },
     prevTab: () => cycleTab(-1),
     nextTab: () => cycleTab(1),
     reopenClosedTab,
@@ -1549,7 +852,7 @@ function AppContent() {
         section: "File",
         icon: "tab_close",
         keywords: "close current tab",
-        run: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
+        run: () => { if (activeTabId) closeTab(activeTabId); },
       });
     }
 
@@ -1837,44 +1140,6 @@ function AppContent() {
     }));
   }, [tabs, activeTabId, fileName, filePath, isDirty]);
 
-  // Drag-reorder: move a tab to a new index. TABS-10.
-  const handleReorderTab = useCallback((fromIndex: number, toIndex: number) => {
-    commitTabs(moveTab(tabsRef.current, fromIndex, toIndex));
-  }, [commitTabs]);
-
-  // Close a set of tabs, but only the CLEAN ones — dirty tabs are kept open
-  // (never silently discarded) and reported. Used by the context-menu
-  // "Close others / Close to the right" actions. TABS-12.
-  const closeManyClean = useCallback((ids: string[]) => {
-    let keptDirty = 0;
-    for (const id of ids) {
-      const t = tabsRef.current.find((x) => x.id === id);
-      if (!t) continue;
-      const dirty = id === activeTabIdRef.current
-        ? liveRef.current.content !== liveRef.current.originalContent
-        : t.content !== t.originalContent;
-      if (dirty) { keptDirty++; continue; }
-      finalizeCloseTab(id);
-    }
-    if (keptDirty > 0) {
-      showToast(`Kept ${keptDirty} unsaved tab${keptDirty > 1 ? "s" : ""} open`, "info");
-    }
-  }, [finalizeCloseTab, showToast]);
-
-  const handleTabMenuAction = useCallback((action: "closeOthers" | "closeRight", id: string) => {
-    const list = tabsRef.current;
-    if (action === "closeOthers") {
-      closeManyClean(list.filter((t) => t.id !== id).map((t) => t.id));
-    } else {
-      const idx = list.findIndex((t) => t.id === id);
-      if (idx >= 0) closeManyClean(list.slice(idx + 1).map((t) => t.id));
-    }
-    // Keep the anchor tab focused if it survived.
-    if (tabsRef.current.some((t) => t.id === id) && id !== activeTabIdRef.current) {
-      activateTab(id);
-    }
-  }, [closeManyClean, activateTab]);
-
   // Right-click menu on a tab: {id, x, y} while open. TABS-12.
   const [tabMenu, setTabMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const handleTabContextMenu = useCallback((id: string, x: number, y: number) => {
@@ -2122,7 +1387,7 @@ function AppContent() {
         <Suspense fallback={null}>
           <UnsavedChangesDialog
             isOpen={!!closeTabPrompt}
-            onClose={() => setCloseTabPrompt(null)}
+            onClose={cancelCloseTab}
             onDiscard={handleDiscardCloseTab}
             onSave={handleSaveCloseTab}
             dirtyNames={[closeTabPrompt.fileName]}
