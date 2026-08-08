@@ -43,6 +43,9 @@ const FileExplorer = lazy(() =>
 const TableOfContents = lazy(() =>
     import("./components/TableOfContents").then((m) => ({ default: m.TableOfContents }))
 );
+const BacklinksPanel = lazy(() =>
+    import("./components/BacklinksPanel").then((m) => ({ default: m.BacklinksPanel }))
+);
 const SettingsModal = lazy(() =>
     import("./components/SettingsModal").then((m) => ({ default: m.SettingsModal }))
 );
@@ -165,6 +168,7 @@ function AppContent() {
   // Sidebar panel state
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
+  const [showBacklinks, setShowBacklinks] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(false);
   // Live during a drag; the panel writes the settled value to storage itself.
   const [aiPanelWidth, setAiPanelWidth] = useState(getAIPanelWidth);
@@ -624,12 +628,21 @@ function AppContent() {
   const handleToggleFileExplorer = useCallback(() => {
     setShowFileExplorer((prev) => !prev);
     setShowTOC(false);
+    setShowBacklinks(false);
   }, []);
 
   // Toggle table of contents (mutually exclusive with file explorer)
   const handleToggleTOC = useCallback(() => {
     setShowTOC((prev) => !prev);
     setShowFileExplorer(false);
+    setShowBacklinks(false);
+  }, []);
+
+  // Toggle backlinks (mutually exclusive with the other left drawers)
+  const handleToggleBacklinks = useCallback(() => {
+    setShowBacklinks((prev) => !prev);
+    setShowFileExplorer(false);
+    setShowTOC(false);
   }, []);
 
   // Toggle the right-side AI assistant panel.
@@ -652,6 +665,7 @@ function AppContent() {
   const closeAllPanels = useCallback(() => {
     setShowFileExplorer(false);
     setShowTOC(false);
+    setShowBacklinks(false);
   }, []);
 
   // Handle file drop
@@ -924,6 +938,14 @@ function AppContent() {
         icon: "format_list_bulleted",
         run: handleToggleTOC,
       });
+      items.push({
+        id: "view.backlinks",
+        label: "Show backlinks",
+        section: "View",
+        icon: "link",
+        keywords: "links references notes pointing here",
+        run: handleToggleBacklinks,
+      });
     }
 
     // Fullscreen works anywhere (including the welcome screen), so unlike the
@@ -1048,7 +1070,7 @@ function AppContent() {
     // (post-debounce) for no reason. Headings are computed below in a
     // separate hook that's gated on the palette actually being open.
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs, handleOpenTutorial,
-    handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, toggleFullscreen,
+    handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, handleToggleBacklinks, toggleFullscreen,
     loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
     theme, setTheme, openFind, openReplace,
@@ -1218,7 +1240,7 @@ function AppContent() {
             // at left-0, so reserve padding-left when one is open so they reflow the
             // editor beside them instead of overlaying it.
             style={{
-                paddingLeft: (showFileExplorer || showTOC) ? `${SIDEBAR_WIDTH}px` : 0,
+                paddingLeft: (showFileExplorer || showTOC || showBacklinks) ? `${SIDEBAR_WIDTH}px` : 0,
                 paddingRight: showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
                 transition: "padding 0.15s ease",
             }}
@@ -1329,6 +1351,17 @@ function AppContent() {
               />
             </Suspense>
           )}
+          {showBacklinks && currentDirectory && filePath && (
+            <Suspense fallback={null}>
+              <BacklinksPanel
+                isOpen={showBacklinks}
+                directory={currentDirectory}
+                currentFilePath={filePath}
+                onFileSelect={handleOpenSearchResult}
+                onClose={closeAllPanels}
+              />
+            </Suspense>
+          )}
 
           {/* Right-side AI assistant panel. Reads the live document + current
               selection; chat is read-only for now (edit/agent flow is next). */}
@@ -1355,8 +1388,10 @@ function AppContent() {
             mode={mode}
             showFileExplorer={showFileExplorer}
             showTOC={showTOC}
+            showBacklinks={showBacklinks}
             onToggleFileExplorer={handleToggleFileExplorer}
             onToggleTOC={handleToggleTOC}
+            onToggleBacklinks={handleToggleBacklinks}
             wordCount={wordCount}
             charCount={charCount}
             readingTimeMin={readingTimeMin}

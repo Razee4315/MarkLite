@@ -399,6 +399,38 @@ pub async fn search_files(
         .map_err(|e| CommandError::ReadError(e.to_string()))?
 }
 
+/// Find markdown files under `directory` that link to `target_file` using
+/// either Paperling wikilinks (`[[Note]]`) or relative markdown links
+/// (`[label](Note.md)`). Both paths are canonicalized before the scan so the
+/// command cannot be used to inspect files outside the open document folder.
+#[tauri::command]
+pub async fn find_backlinks(
+    directory: String,
+    target_file: String,
+) -> Result<Vec<FileSearchResult>, CommandError> {
+    let root = tokio::fs::canonicalize(&directory)
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?;
+    if !root.is_dir() {
+        return Err(CommandError::ReadError(
+            "Backlink search root is not a directory".to_string(),
+        ));
+    }
+
+    let target = tokio::fs::canonicalize(&target_file)
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?;
+    if !target.is_file() || !target.starts_with(&root) {
+        return Err(CommandError::ReadError(
+            "Backlink target must be inside the search folder".to_string(),
+        ));
+    }
+
+    tokio::task::spawn_blocking(move || Ok(find_backlinks_in_tree(root, target)))
+        .await
+        .map_err(|e| CommandError::ReadError(e.to_string()))?
+}
+
 /// Synchronous, bounded recursive search used by `search_files`. Pulled out so
 /// it can be unit-tested without a Tauri/async harness. `query` is assumed
 /// non-empty and already trimmed.
@@ -502,6 +534,210 @@ fn search_markdown_tree(root: PathBuf, query: &str, case_sensitive: bool) -> Vec
 
     results.sort_by_key(|r| r.name.to_lowercase());
     results
+}
+
+/// Bounded recursive backlink scan. This deliberately shares the same caps and
+/// ignored-directory rules as global search so opening the panel cannot turn a
+/// large workspace into an unbounded read.
+fn find_backlinks_in_tree(root: PathBuf, target: PathBuf) -> Vec<FileSearchResult> {
+    let target_name = target
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let target_stem = target
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let target_parent = target.parent().map(PathBuf::from);
+
+    let mut results = Vec::new();
+    let mut files_scanned = 0usize;
+    let mut stack = vec![root];
+
+    while let Some(dir) = stack.pop() {
+        if results.len() >= SEARCH_MAX_RESULTS || files_scanned >= SEARCH_MAX_FILES {
+            break;
+        }
+        let read_dir = match std::fs::read_dir(&dir) {
+            Ok(read_dir) => read_dir,
+            Err(_) => continue,
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with('.') || name == "node_modules" || name == "target" {
+                        continue;
+                    }
+                }
+                stack.push(path);
+                continue;
+            }
+            let is_markdown = path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| {
+                    extension.eq_ignore_ascii_case("md")
+                        || extension.eq_ignore_ascii_case("markdown")
+                })
+                .unwrap_or(false);
+            if !is_markdown || path == target {
+                continue;
+            }
+
+            files_scanned += 1;
+            if files_scanned > SEARCH_MAX_FILES {
+                break;
+            }
+            if entry
+                .metadata()
+                .map(|metadata| metadata.len() > SEARCH_MAX_FILE_BYTES)
+                .unwrap_or(true)
+            {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&path) {
+                Ok(content) => content,
+                Err(_) => continue,
+            };
+
+            let mut matches = Vec::new();
+            for (index, line) in content.lines().enumerate() {
+                if line_links_to_target(
+                    line,
+                    &path,
+                    &target,
+                    target_parent.as_deref(),
+                    &target_name,
+                    &target_stem,
+                ) {
+                    let trimmed = line.trim();
+                    let text = if trimmed.chars().count() > SEARCH_SNIPPET_CHARS {
+                        let mut snippet: String =
+                            trimmed.chars().take(SEARCH_SNIPPET_CHARS).collect();
+                        snippet.push('…');
+                        snippet
+                    } else {
+                        trimmed.to_string()
+                    };
+                    matches.push(SearchMatch {
+                        line: (index + 1) as u32,
+                        text,
+                    });
+                    if matches.len() >= SEARCH_MAX_MATCHES_PER_FILE {
+                        break;
+                    }
+                }
+            }
+            if !matches.is_empty() {
+                results.push(FileSearchResult {
+                    name: path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    matches,
+                });
+                if results.len() >= SEARCH_MAX_RESULTS {
+                    break;
+                }
+            }
+        }
+    }
+
+    results.sort_by_key(|result| result.name.to_ascii_lowercase());
+    results
+}
+
+fn line_links_to_target(
+    line: &str,
+    source: &std::path::Path,
+    target: &std::path::Path,
+    target_parent: Option<&std::path::Path>,
+    target_name: &str,
+    target_stem: &str,
+) -> bool {
+    // Wikilinks resolve beside their source file in Paperling. Support aliases
+    // and heading fragments while avoiding prefix matches such as [[Notebook]].
+    let mut wikilink_rest = line;
+    while let Some(start) = wikilink_rest.find("[[") {
+        wikilink_rest = &wikilink_rest[start + 2..];
+        let Some(end) = wikilink_rest.find("]]") else {
+            break;
+        };
+        let raw_target = wikilink_rest[..end]
+            .split('|')
+            .next()
+            .unwrap_or_default()
+            .split('#')
+            .next()
+            .unwrap_or_default()
+            .trim();
+        let normalized = raw_target.to_ascii_lowercase();
+        if !raw_target.contains('/')
+            && !raw_target.contains('\\')
+            && source.parent() == target_parent
+            && (normalized == target_name || normalized == target_stem)
+        {
+            return true;
+        }
+        wikilink_rest = &wikilink_rest[end + 2..];
+    }
+
+    // Markdown links may point through subdirectories or `..`, so resolve each
+    // candidate from the source file and compare canonical paths. Images are
+    // excluded (`![alt](...)`) because they are embeds, not note backlinks.
+    let mut markdown_rest = line;
+    while let Some(start) = markdown_rest.find("](") {
+        let prefix = &markdown_rest[..start];
+        let is_image = prefix
+            .rfind('[')
+            .is_some_and(|open| open > 0 && prefix.as_bytes()[open - 1] == b'!');
+        markdown_rest = &markdown_rest[start + 2..];
+        let Some(end) = markdown_rest.find(')') else {
+            break;
+        };
+        if !is_image {
+            let raw_destination = markdown_rest[..end].trim();
+            let wrapped_destination = raw_destination
+                .strip_prefix('<')
+                .and_then(|value| value.strip_suffix('>'));
+            let destination = wrapped_destination.unwrap_or_else(|| {
+                raw_destination
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+            });
+            let destination = destination.split(['#', '?']).next().unwrap_or_default();
+            let is_markdown = std::path::Path::new(destination)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| {
+                    extension.eq_ignore_ascii_case("md")
+                        || extension.eq_ignore_ascii_case("markdown")
+                })
+                .unwrap_or(false);
+            if is_markdown && !destination.contains("://") {
+                if let Some(parent) = source.parent() {
+                    if let Ok(resolved) = std::fs::canonicalize(parent.join(destination)) {
+                        if resolved == target {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        markdown_rest = &markdown_rest[end + 1..];
+    }
+
+    false
 }
 
 /// Strip any path components from a filename so it can't traverse outside the
@@ -721,8 +957,8 @@ pub fn set_ai_key(key: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_eol, read_file, sanitize_image_name, save_file, search_markdown_tree,
-        validate_rel_path, Eol,
+        apply_eol, find_backlinks_in_tree, read_file, sanitize_image_name, save_file,
+        search_markdown_tree, validate_rel_path, Eol,
     };
 
     #[test]
@@ -767,6 +1003,45 @@ mod tests {
         let results = search_markdown_tree(dir.clone(), "needle", false);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "keep.md");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn backlinks_match_exact_wikilinks_and_relative_markdown_links() {
+        let dir = std::env::temp_dir().join(format!("paperling-backlinks-{}", std::process::id()));
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let target = dir.join("Target Note.md");
+        std::fs::write(&target, "# Target\n[[Target Note]]").unwrap();
+        std::fs::write(
+            dir.join("wiki.md"),
+            "[[Target Note|alias]]\n[[Target Note#Heading]]\n[[Target Notebook]]",
+        )
+        .unwrap();
+        std::fs::write(
+            sub.join("relative.md"),
+            "[target](<../Target Note.md#section>)\n![image](<../Target Note.md>)",
+        )
+        .unwrap();
+        std::fs::write(sub.join("not-sibling.md"), "[[Target Note]]").unwrap();
+
+        let results = find_backlinks_in_tree(
+            std::fs::canonicalize(&dir).unwrap(),
+            std::fs::canonicalize(&target).unwrap(),
+        );
+
+        assert_eq!(results.len(), 2);
+        let wiki = results
+            .iter()
+            .find(|result| result.name == "wiki.md")
+            .unwrap();
+        assert_eq!(wiki.matches.len(), 2);
+        let relative = results
+            .iter()
+            .find(|result| result.name == "relative.md")
+            .unwrap();
+        assert_eq!(relative.matches.len(), 1);
 
         std::fs::remove_dir_all(&dir).ok();
     }

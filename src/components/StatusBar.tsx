@@ -7,8 +7,10 @@ interface StatusBarProps {
     mode?: "preview" | "code" | "split";
     showFileExplorer?: boolean;
     showTOC?: boolean;
+    showBacklinks?: boolean;
     onToggleFileExplorer?: () => void;
     onToggleTOC?: () => void;
+    onToggleBacklinks?: () => void;
     wordCount?: number;
     charCount?: number;
     readingTimeMin?: number;
@@ -34,8 +36,10 @@ function StatusBarImpl({
     mode = "preview",
     showFileExplorer = false,
     showTOC = false,
+    showBacklinks = false,
     onToggleFileExplorer,
     onToggleTOC,
+    onToggleBacklinks,
     wordCount,
     charCount,
     readingTimeMin,
@@ -81,6 +85,20 @@ function StatusBarImpl({
                     <span className="material-symbols-outlined text-[14px]">
                         format_list_bulleted
                     </span>
+                </button>
+
+                {/* Backlinks Toggle */}
+                <button
+                    onClick={onToggleBacklinks}
+                    title="Backlinks"
+                    aria-label={showBacklinks ? "Close backlinks" : "Open backlinks"}
+                    aria-pressed={showBacklinks}
+                    className={`btn-press flex items-center justify-center w-8 h-6 rounded transition-colors ${showBacklinks
+                        ? "bg-[var(--accent)] text-[var(--accent-text)]"
+                        : "hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                        }`}
+                >
+                    <span className="material-symbols-outlined text-[14px]">link</span>
                 </button>
             </div>
             <div className="flex items-center gap-4">
