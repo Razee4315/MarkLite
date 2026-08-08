@@ -94,7 +94,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const dialogRef = useRef<HTMLDivElement>(null);
     const [section, setSection] = useState<Section>("appearance");
     const [filter, setFilter] = useState("");
-    const { theme, setTheme, font, setFont, fontSize, setFontSize } = useTheme();
+    const { theme, setTheme, font, setFont, customFont, setCustomFont, fontSize, setFontSize } = useTheme();
 
     const [typewriter, setTypewriterLocal] = useState(getTypewriterMode);
     const [toolbar, setToolbarLocal] = useState(getToolbarEnabled);
@@ -299,6 +299,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                                     </button>
                                                 );
                                             })}
+                                            <div className={`col-span-2 flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] border transition-all ${font === "custom"
+                                                ? "border-[var(--accent)] bg-[var(--bg-hover)] ring-1 ring-[var(--accent)]"
+                                                : "border-[var(--border)]"
+                                                }`}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFont("custom")}
+                                                    aria-pressed={font === "custom"}
+                                                    className="shrink-0 text-left"
+                                                >
+                                                    <span className="block text-[15px] leading-tight text-[var(--text-primary)]">Custom</span>
+                                                    <span className="block text-[10px] text-[var(--text-muted)] mt-0.5">System font</span>
+                                                </button>
+                                                <input
+                                                    type="text"
+                                                    value={customFont}
+                                                    maxLength={100}
+                                                    onFocus={() => setFont("custom")}
+                                                    onChange={(e) => setCustomFont(e.target.value)}
+                                                    onBlur={() => setCustomFont(customFont.trim())}
+                                                    placeholder="e.g. Atkinson Hyperlegible"
+                                                    aria-label="Custom system font family"
+                                                    className="min-w-0 flex-1 px-2.5 py-1.5 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                                                    style={{ fontFamily: customFont ? `"${customFont}", 'Inter'` : "'Inter'" }}
+                                                />
+                                                {font === "custom" && <span className="material-symbols-outlined text-[18px] text-[var(--accent)] shrink-0">check</span>}
+                                            </div>
                                         </div>
                                     </section>
                                 )}

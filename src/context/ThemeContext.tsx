@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ensureFontLoaded } from '../fonts';
+import { getFontStack, sanitizeCustomFontFamily } from '../utils/fontFamily';
 
 export type Theme = 'dark' | 'light' | 'paper' | 'dracula';
-export type FontFamily = 'inter' | 'merriweather' | 'lora' | 'source-serif' | 'fira-sans';
+export type FontFamily = 'inter' | 'merriweather' | 'lora' | 'source-serif' | 'fira-sans' | 'custom';
 export type FontSize = 'small' | 'medium' | 'large';
 
 interface ThemeContextType {
@@ -10,6 +11,8 @@ interface ThemeContextType {
     setTheme: (theme: Theme) => void;
     font: FontFamily;
     setFont: (font: FontFamily) => void;
+    customFont: string;
+    setCustomFont: (font: string) => void;
     fontSize: FontSize;
     setFontSize: (size: FontSize) => void;
 }
@@ -18,11 +21,12 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = 'paperling-theme';
 const FONT_STORAGE_KEY = 'paperling-font';
+const CUSTOM_FONT_STORAGE_KEY = 'paperling-custom-font';
 const FONT_SIZE_STORAGE_KEY = 'paperling-font-size';
 
 // Valid values for validation against corrupted localStorage
 const VALID_THEMES: Theme[] = ['dark', 'light', 'paper', 'dracula'];
-const VALID_FONTS: FontFamily[] = ['inter', 'merriweather', 'lora', 'source-serif', 'fira-sans'];
+const VALID_FONTS: FontFamily[] = ['inter', 'merriweather', 'lora', 'source-serif', 'fira-sans', 'custom'];
 const VALID_FONT_SIZES: FontSize[] = ['small', 'medium', 'large'];
 
 function getValidated<T extends string>(key: string, validValues: T[], fallback: T): T {
@@ -59,6 +63,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         getValidated(FONT_STORAGE_KEY, VALID_FONTS, 'inter')
     );
 
+    const [customFont, setCustomFontState] = useState(() =>
+        sanitizeCustomFontFamily(localStorage.getItem(CUSTOM_FONT_STORAGE_KEY) ?? '')
+    );
+
     const [fontSize, setFontSizeState] = useState<FontSize>(() =>
         getValidated(FONT_SIZE_STORAGE_KEY, VALID_FONT_SIZES, 'medium')
     );
@@ -71,6 +79,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const setFont = (newFont: FontFamily) => {
         setFontState(newFont);
         localStorage.setItem(FONT_STORAGE_KEY, newFont);
+    };
+
+    const setCustomFont = (newFont: string) => {
+        const safeFont = sanitizeCustomFontFamily(newFont);
+        setCustomFontState(safeFont);
+        localStorage.setItem(CUSTOM_FONT_STORAGE_KEY, safeFont);
     };
 
     const setFontSize = (newSize: FontSize) => {
@@ -87,7 +101,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         el.setAttribute('data-theme', theme);
         el.setAttribute('data-font', font);
         el.setAttribute('data-font-size', fontSize);
-    }, [theme, font, fontSize]);
+        el.style.setProperty('--font-custom', getFontStack('custom', customFont));
+    }, [theme, font, fontSize, customFont]);
 
     // Track the OS theme until the user picks one explicitly. The handler
     // re-checks storage each time so flipping the OS appearance never overrides
@@ -105,7 +120,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }, []);
 
     return (
-        <ThemeContext.Provider value={{ theme, setTheme, font, setFont, fontSize, setFontSize }}>
+        <ThemeContext.Provider value={{ theme, setTheme, font, setFont, customFont, setCustomFont, fontSize, setFontSize }}>
             {children}
         </ThemeContext.Provider>
     );

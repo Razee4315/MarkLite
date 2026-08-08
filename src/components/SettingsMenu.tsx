@@ -25,7 +25,7 @@ const fontSizes: { id: FontSize; name: string; size: string }[] = [
 
 export function SettingsMenu() {
     const [isOpen, setIsOpen] = useState(false);
-    const { theme, setTheme, font, setFont, fontSize, setFontSize } = useTheme();
+    const { theme, setTheme, font, setFont, customFont, setCustomFont, fontSize, setFontSize } = useTheme();
     const menuRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const onMenuKeyDown = useDropdownKeyboard(isOpen, panelRef, () => setIsOpen(false));
@@ -126,6 +126,27 @@ export function SettingsMenu() {
                                     {f.name}
                                 </button>
                             ))}
+                            <button
+                                type="button"
+                                onClick={() => setFont('custom')}
+                                className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${font === 'custom'
+                                    ? 'bg-[var(--accent)] text-[var(--accent-text)] font-medium'
+                                    : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                                    }`}
+                            >
+                                Custom system font
+                            </button>
+                            <input
+                                type="text"
+                                value={customFont}
+                                maxLength={100}
+                                onFocus={() => setFont('custom')}
+                                onChange={(e) => setCustomFont(e.target.value)}
+                                onBlur={() => setCustomFont(customFont.trim())}
+                                placeholder="e.g. Atkinson Hyperlegible"
+                                aria-label="Custom system font family"
+                                className="w-full mt-1 px-3 py-2 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                            />
                         </div>
                     </div>
 

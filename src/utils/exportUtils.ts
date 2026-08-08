@@ -2,6 +2,7 @@ import { Theme, FontFamily, FontSize } from '../context/ThemeContext';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
+import { getFontName, getFontStack } from './fontFamily';
 
 // Theme color definitions for export
 const themeColors: Record<Theme, Record<string, string>> = {
@@ -75,15 +76,6 @@ const themeColors: Record<Theme, Record<string, string>> = {
     },
 };
 
-// Font family definitions
-const fontFamilies: Record<FontFamily, string> = {
-    'inter': "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    'merriweather': "'Merriweather', Georgia, 'Times New Roman', serif",
-    'lora': "'Lora', Georgia, 'Times New Roman', serif",
-    'source-serif': "'Source Serif 4', Georgia, 'Times New Roman', serif",
-    'fira-sans': "'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-};
-
 // Font size definitions
 const fontSizes: Record<FontSize, { base: string; h1: string; h2: string; h3: string; lineHeight: string }> = {
     small: { base: '14px', h1: '1.875em', h2: '1.5em', h3: '1.125em', lineHeight: '1.6' },
@@ -92,9 +84,9 @@ const fontSizes: Record<FontSize, { base: string; h1: string; h2: string; h3: st
 };
 
 // Generate CSS for export
-function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize): string {
+function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize, customFont = ''): string {
     const colors = themeColors[theme];
-    const fontFamily = fontFamilies[font];
+    const fontFamily = getFontStack(font, customFont);
     const sizes = fontSizes[fontSize];
 
     // No Google Fonts @import here — exporting must succeed offline, and the
@@ -424,9 +416,10 @@ export function generateHTML(
     theme: Theme,
     font: FontFamily,
     fontSize: FontSize,
-    includeFooter: boolean = true
+    includeFooter: boolean = true,
+    customFont: string = ''
 ): string {
-    const css = generateExportCSS(theme, font, fontSize);
+    const css = generateExportCSS(theme, font, fontSize, customFont);
     const safeTitle = escapeHtml(title);
     const date = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
@@ -465,11 +458,12 @@ export async function exportToHTML(
     fileName: string,
     theme: Theme,
     font: FontFamily,
-    fontSize: FontSize
+    fontSize: FontSize,
+    customFont: string = ''
 ): Promise<boolean> {
     const title = fileName.replace(/\.(md|markdown)$/i, '');
     const cleaned = await prepareExportHtml(htmlContent);
-    const fullHTML = generateHTML(cleaned, title, theme, font, fontSize);
+    const fullHTML = generateHTML(cleaned, title, theme, font, fontSize, true, customFont);
 
     // Use Tauri save dialog
     const filePath = await save({
@@ -526,8 +520,9 @@ export async function exportToDocx(
     htmlContent: string,
     fileName: string,
     _theme: Theme,
-    _font: FontFamily,
-    _fontSize: FontSize
+    font: FontFamily,
+    _fontSize: FontSize,
+    customFont: string = ''
 ): Promise<boolean> {
     if (!htmlContent || htmlContent.trim() === '') {
         console.error('No HTML content to export!');
@@ -559,7 +554,7 @@ export async function exportToDocx(
         creator: 'Paperling',
         footer: false,
         pageNumber: false,
-        font: 'Calibri',
+        font: getFontName(font, customFont),
         // Word measures run size in half-points; 22 == 11pt body text.
         fontSize: 22,
         table: { row: { cantSplit: true } },
@@ -732,7 +727,8 @@ export async function exportToPDF(
     fileName: string,
     _theme: Theme,
     font: FontFamily,
-    fontSize: FontSize
+    fontSize: FontSize,
+    customFont: string = ''
 ): Promise<PdfExportResult> {
     if (!htmlContent || htmlContent.trim() === '') {
         console.error('No HTML content to export!');
@@ -744,7 +740,7 @@ export async function exportToPDF(
     // Same cleanup as HTML export — strips UI chrome (copy buttons, heading
     // anchor icons) and inlines blob: images as data: URIs.
     const cleaned = await prepareExportHtml(htmlContent);
-    const fullHTML = generateHTML(cleaned, title, 'light', font, fontSize, true);
+    const fullHTML = generateHTML(cleaned, title, 'light', font, fontSize, true, customFont);
 
     const canSaveSilently =
         typeof navigator !== 'undefined' &&

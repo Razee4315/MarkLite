@@ -28,7 +28,7 @@ type ExportFormat = 'html' | 'pdf' | 'docx';
 export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: ExportMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
-    const { theme, font, fontSize } = useTheme();
+    const { theme, font, customFont, fontSize } = useTheme();
     const menuRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const onMenuKeyDown = useDropdownKeyboard(isOpen, panelRef, () => setIsOpen(false));
@@ -71,16 +71,16 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
             const mod = await loadExportModule();
             if (format === 'html') {
                 // exportToHTML returns false when the save dialog is cancelled.
-                if (await mod.exportToHTML(htmlContent, fileName, theme, font, fontSize)) {
+                if (await mod.exportToHTML(htmlContent, fileName, theme, font, fontSize, customFont)) {
                     onSuccess?.('HTML');
                 }
             } else if (format === 'docx') {
                 // exportToDocx returns false on a cancelled save dialog.
-                if (await mod.exportToDocx(htmlContent, fileName, theme, font, fontSize)) {
+                if (await mod.exportToDocx(htmlContent, fileName, theme, font, fontSize, customFont)) {
                     onSuccess?.('DOCX');
                 }
             } else {
-                const result = await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize);
+                const result = await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize, customFont);
                 // Only the native save path (Windows/macOS) can confirm a
                 // written file. The Linux print-dialog fallback ('printing') is
                 // its own visible feedback, so we don't claim success there.
