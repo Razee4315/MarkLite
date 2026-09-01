@@ -92,6 +92,7 @@ function TabBarImpl({ tabs, activeId, onSelect, onClose, onNewTab, onReorder, on
                         aria-selected={isActive}
                         tabIndex={isActive ? 0 : -1}
                         title={tab.name}
+                        aria-label={tab.dirty ? `${tab.name} (unsaved changes)` : tab.name}
                         draggable={!!onReorder}
                         onKeyDown={(e) => onKeyDown(e, index)}
                         onDragStart={(e) => {
@@ -132,7 +133,11 @@ function TabBarImpl({ tabs, activeId, onSelect, onClose, onNewTab, onReorder, on
                         {/* Active-tab top accent */}
                         {isActive && <span className="absolute left-0 top-0 h-[2px] w-full bg-[var(--accent)]" aria-hidden="true" />}
                         <span className="material-symbols-outlined text-[14px] shrink-0 opacity-70">description</span>
-                        <span className="truncate text-xs">{tab.label}</span>
+                        {/* Leading bullet mirrors the window title's unsaved
+                            marker (• filename), so every dirty tab — active or
+                            background — is identifiable at a glance and stays
+                            indicated while hovered, unlike the trailing dot. */}
+                        <span className="truncate text-xs">{tab.dirty ? `• ${tab.label}` : tab.label}</span>
                         {/* Trailing control. On hover it's always a close (×)
                             button. When the tab has unsaved edits and isn't
                             hovered, it shows a small "unsaved" dot instead —
