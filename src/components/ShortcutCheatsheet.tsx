@@ -163,7 +163,7 @@ export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps)
 
             <div
                 ref={dialogRef}
-                className="relative z-10 w-[640px] max-h-[80vh] flex flex-col bg-[var(--bg-primary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl overflow-hidden animate-fade-in"
+                className="cheatsheet-shell relative z-10 w-[min(640px,calc(100vw-1.5rem))] max-h-[80vh] flex flex-col bg-[var(--bg-primary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl overflow-hidden animate-fade-in"
             >
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border)]">
                     <img src={iconKeyboard} alt="" aria-hidden="true" draggable={false} className="w-8 h-8 object-contain select-none" />

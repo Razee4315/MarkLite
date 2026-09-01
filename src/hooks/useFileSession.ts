@@ -39,14 +39,21 @@ interface FileData {
 type ShowToast = (message: string, type?: ToastType) => void;
 
 export interface UseFileSessionOptions {
-  currentLine: number;
-  autoSaveEnabled: boolean;
-  isReviewActive: boolean;
-  clearReview: () => void;
-  setMode: Dispatch<SetStateAction<ViewMode>>;
-  showToast: ShowToast;
-  /** Tests can disable launch restoration without changing production behavior. */
-  restoreOnMount?: boolean;
+    currentLine: number;
+    autoSaveEnabled: boolean;
+    isReviewActive: boolean;
+    clearReview: () => void;
+    setMode: Dispatch<SetStateAction<ViewMode>>;
+    showToast: ShowToast;
+    /**
+     * Where an untitled buffer should be saved. The desktop default opens the
+     * OS save panel; mobile injects the in-app name prompt (SAF URIs from the
+     * OS panel are unreadable by the Rust file commands). Resolves null on
+     * cancel.
+     */
+    promptSavePath?: (defaultName: string | null) => Promise<string | null>;
+    /** Tests can disable launch restoration without changing production behavior. */
+    restoreOnMount?: boolean;
 }
 
 // The launch-file resolution must run exactly once per webview load. React
@@ -57,13 +64,14 @@ export interface UseFileSessionOptions {
 let bootResolved = false;
 
 export function useFileSession({
-  currentLine,
-  autoSaveEnabled,
-  isReviewActive,
-  clearReview,
-  setMode,
-  showToast,
-  restoreOnMount = true,
+    currentLine,
+    autoSaveEnabled,
+    isReviewActive,
+    clearReview,
+    setMode,
+    showToast,
+    promptSavePath,
+    restoreOnMount = true,
 }: UseFileSessionOptions) {
   // File state
   const [filePath, setFilePath] = useState<string | null>(null);
@@ -398,6 +406,19 @@ export function useFileSession({
     };
   }, []);
 
+  // Ask where an untitled buffer should live: the injected strategy when the
+  // shell provides one (mobile name prompt), otherwise the OS save panel.
+  const promptForPath = useCallback(
+    (defaultName: string | null): Promise<string | null> => {
+      if (promptSavePath) return promptSavePath(defaultName);
+      return save({
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+        defaultPath: defaultName ?? undefined,
+      }).then((selected) => (typeof selected === "string" ? selected : null));
+    },
+    [promptSavePath],
+  );
+
   // "Save" in the close-tab dialog: persist the tab (prompting a location for an
   // untitled buffer), then close it. Cancel/failure keeps the tab open. TABS-05.
   const handleSaveCloseTab = useCallback(async () => {
@@ -410,10 +431,7 @@ export function useFileSession({
     }
     let path = data.filePath;
     if (!path) {
-      const selected = await save({
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-        defaultPath: data.fileName,
-      });
+      const selected = await promptForPath(data.fileName);
       if (!selected) return;
       path = selected;
     }
@@ -425,7 +443,7 @@ export function useFileSession({
     }
     setCloseTabPrompt(null);
     finalizeCloseTab(prompt.id);
-  }, [closeTabPrompt, finalizeCloseTab, getTabSaveData, showToast]);
+  }, [closeTabPrompt, finalizeCloseTab, getTabSaveData, promptForPath, showToast]);
 
   const handleDiscardCloseTab = useCallback(() => {
     const prompt = closeTabPrompt;
@@ -524,10 +542,7 @@ export function useFileSession({
 
   // Save As — always prompts for a new path, even if a path is already set.
   const handleSaveAs = useCallback(async () => {
-    const selected = await save({
-      filters: [{ name: "Markdown", extensions: ["md"] }],
-      defaultPath: fileName ?? undefined,
-    });
+    const selected = await promptForPath(fileName ?? null);
     if (!selected) return;
     try {
       knownMtimeRef.current = await invoke<number>("save_file", { path: selected, content });
@@ -561,7 +576,7 @@ export function useFileSession({
       console.error("Failed to save file:", error);
       showToast(errMessage(error) || "Failed to save file", "error");
     }
-  }, [commitTabs, content, fileName, showToast]);
+  }, [commitTabs, content, fileName, promptForPath, showToast]);
 
   // Save file (Save As if no path yet).
   const handleSaveFile = useCallback(async () => {

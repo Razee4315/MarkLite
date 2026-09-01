@@ -8,6 +8,9 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import { ThemeProvider, useTheme, type Theme } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
+import { MobileTopBar, MobileMenu } from "./components/MobileTopBar";
+import { MobileBottomNav } from "./components/MobileBottomNav";
+import { SaveAsNameModal } from "./components/SaveAsNameModal";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -23,6 +26,9 @@ import { usePersistedState } from "./hooks/usePersistedState";
 import { useFullscreen } from "./hooks/useFullscreen";
 import { useScrollSync } from "./hooks/useScrollSync";
 import { useFileSession } from "./hooks/useFileSession";
+import { useKeyboardInset } from "./hooks/useKeyboardInset";
+import { IS_MOBILE } from "./utils/platform";
+import { joinNotesPath } from "./utils/mobileFiles";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -137,6 +143,11 @@ const THEME_CHOICES: { id: Theme; label: string }[] = [
 function AppContent() {
   const { theme, setTheme } = useTheme();
 
+  // Publishes --keyboard-inset (the on-screen keyboard's height) and keeps
+  // focused fields visible. Desktop-safe: without a visualViewport the hook
+  // is a no-op.
+  useKeyboardInset();
+
   // UI state
   const [mode, setMode] = usePersistedState<ViewMode>(getSavedViewMode, setSavedViewMode);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
@@ -181,6 +192,104 @@ function AppContent() {
   // Toast notifications (state + show/hide helpers live in a hook).
   const { toasts, showToast, dismissToast } = useToast();
 
+  // ===== Mobile shell state =====
+  // The app-private notes root (Android scoped storage: OS-picked files are
+  // SAF URIs the Rust file commands can't read, so the phone works inside this
+  // one folder). Resolved once at boot; the FileExplorer falls back to it and
+  // mobile Save-As writes into it.
+  const [notesDir, setNotesDir] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Pending mobile save-as: the modal fills the name, then resolves the
+  // waiting promptForSavePath caller with a full notes-dir path (or null).
+  const [saveAsRequest, setSaveAsRequest] = useState<{
+    defaultName: string | null;
+    resolve: (path: string | null) => void;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!IS_MOBILE) return;
+    let cancelled = false;
+    invoke<{ path: string }>("get_notes_dir")
+      .then((dir) => {
+        if (!cancelled) setNotesDir(dir.path);
+      })
+      .catch((err) => {
+        console.error("Could not resolve the notes folder:", err);
+        showToast(errMessage(err) || "Could not open the notes folder", "error");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only: the notes root never changes for the life of the app.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Split view is a desktop luxury: two panes cannot share a 360px screen.
+  // A persisted "split" (e.g. from a ?mobile=1 session) collapses to code.
+  useEffect(() => {
+    if (IS_MOBILE && mode === "split") setMode("code");
+  }, [mode, setMode]);
+
+  // Mobile Save-As: name → notes path (with an overwrite confirm). The modal
+  // below drives the resolver; see useFileSession's promptSavePath option.
+  const mobilePromptSavePath = useCallback(
+    (defaultName: string | null): Promise<string | null> =>
+      new Promise((resolve) => setSaveAsRequest({ defaultName, resolve })),
+    [],
+  );
+
+  const handleSaveAsConfirm = useCallback(
+    async (name: string | null) => {
+      const req = saveAsRequest;
+      setSaveAsRequest(null);
+      if (!req) return;
+      if (!name || !notesDir) {
+        req.resolve(null);
+        return;
+      }
+      const path = joinNotesPath(notesDir, name);
+      if (!path) {
+        req.resolve(null);
+        return;
+      }
+      // get_file_info throws when the target is free; only an existing note
+      // needs the replace confirmation.
+      try {
+        await invoke("get_file_info", { path });
+        const ok = await ask(`"${name}" already exists. Replace it?`, {
+          title: "Replace note",
+          kind: "warning",
+        });
+        if (!ok) {
+          req.resolve(null);
+          return;
+        }
+      } catch {
+        /* doesn't exist — nothing to confirm */
+      }
+      req.resolve(path);
+    },
+    [saveAsRequest, notesDir],
+  );
+
+  // One save-location strategy for every path that needs one (manual Save As,
+  // close-tab save, close-window save): OS panel on desktop, name prompt on
+  // mobile. Same contract: resolve a full path, or null to cancel.
+  const promptForSavePath = useCallback(
+    (defaultName: string | null): Promise<string | null> => {
+      if (IS_MOBILE) return mobilePromptSavePath(defaultName);
+      return save({
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+        defaultPath: defaultName ?? undefined,
+      }).then((selected) => (typeof selected === "string" ? selected : null));
+    },
+    [mobilePromptSavePath],
+  );
+
+  // On the phone there is no OS open panel (and its SAF result would be
+  // unreadable anyway) — "open" means the in-app files browser. That action
+  // lives right after useFileSession below (it needs the hook's handleOpenFile).
+
   // File state and the complete open/save/new/tab lifecycle live behind one
   // typed boundary. UI-only state remains in App; switching documents clears
   // any review because a proposal belongs to the file it was created for.
@@ -223,7 +332,21 @@ function AppContent() {
     clearReview,
     setMode,
     showToast,
+    promptSavePath: promptForSavePath,
   });
+
+  // On the phone there is no OS open panel (and its SAF result would be
+  // unreadable anyway) — "open" means the in-app files browser, rooted at the
+  // notes folder or the current file's directory.
+  const handleOpenFileAction = useCallback(() => {
+    if (IS_MOBILE) {
+      setShowFileExplorer(true);
+      setShowTOC(false);
+      setShowBacklinks(false);
+      return;
+    }
+    handleOpenFile();
+  }, [handleOpenFile]);
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
@@ -262,9 +385,11 @@ function AppContent() {
 
   // First-run welcome tour: auto-start the first time a buffer is on screen.
   // The tour anchors to elements (mode toggle, editor panes) that only exist
-  // once a file is open, so it can't run over the WelcomeScreen.
+  // once a file is open, so it can't run over the WelcomeScreen. Mobile skips
+  // it entirely — it spotlights desktop chrome (title bar buttons, F11) that
+  // doesn't exist on the phone shell.
   useEffect(() => {
-    if (hasFile && !booting && !getTourDone()) setShowTour(true);
+    if (hasFile && !booting && !getTourDone() && !IS_MOBILE) setShowTour(true);
   }, [hasFile, booting]);
 
   const handleCloseTour = useCallback(() => {
@@ -426,10 +551,7 @@ function AppContent() {
     for (const t of collectDirtyTabs()) {
       let path = t.filePath;
       if (!path) {
-        const selected = await save({
-          filters: [{ name: "Markdown", extensions: ["md"] }],
-          defaultPath: t.fileName,
-        });
+        const selected = await promptForSavePath(t.fileName);
         if (!selected) return; // cancelled a save-as → keep the app open
         path = selected;
       }
@@ -442,7 +564,7 @@ function AppContent() {
       }
     }
     forceCloseWindow();
-  }, [collectDirtyTabs, forceCloseWindow, showToast]);
+  }, [collectDirtyTabs, forceCloseWindow, promptForSavePath, showToast]);
 
   const handleDiscardAndCloseWindow = useCallback(() => {
     setShowUnsavedBeforeClose(false);
@@ -797,11 +919,11 @@ function AppContent() {
     });
     items.push({
       id: "file.open",
-      label: "Open file…",
+      label: IS_MOBILE ? "Browse notes…" : "Open file…",
       hint: formatShortcut("openFile"),
       section: "File",
       icon: "folder_open",
-      run: handleOpenFile,
+      run: handleOpenFileAction,
     });
     // Save / Save As only make sense when a buffer is open
     if (hasFile) {
@@ -823,19 +945,22 @@ function AppContent() {
       });
     }
     if (filePath) {
-      items.push({
-        id: "file.reveal",
-        label: "Reveal in folder",
-        section: "File",
-        icon: "folder_open",
-        keywords: "show finder explorer locate",
-        run: () => {
-          revealItemInDir(filePath).catch((err) => {
-            console.error("Reveal failed:", err);
-            showToast("Could not reveal file", "error");
-          });
-        },
-      });
+      // "Reveal in folder" opens the OS file manager — a desktop concept.
+      if (!IS_MOBILE) {
+        items.push({
+          id: "file.reveal",
+          label: "Reveal in folder",
+          section: "File",
+          icon: "folder_open",
+          keywords: "show finder explorer locate",
+          run: () => {
+            revealItemInDir(filePath).catch((err) => {
+              console.error("Reveal failed:", err);
+              showToast("Could not reveal file", "error");
+            });
+          },
+        });
+      }
       items.push({
         id: "file.copypath",
         label: "Copy file path",
@@ -949,16 +1074,19 @@ function AppContent() {
     }
 
     // Fullscreen works anywhere (including the welcome screen), so unlike the
-    // other View entries it isn't gated on a file being open.
-    items.push({
-      id: "view.fullscreen",
-      label: "Toggle fullscreen",
-      hint: "F11",
-      section: "View",
-      icon: "fullscreen",
-      keywords: "full screen distraction free f11 immersive",
-      run: toggleFullscreen,
-    });
+    // other View entries it isn't gated on a file being open. Mobile has no
+    // fullscreen toggle — the app is always immersive.
+    if (!IS_MOBILE) {
+      items.push({
+        id: "view.fullscreen",
+        label: "Toggle fullscreen",
+        hint: "F11",
+        section: "View",
+        icon: "fullscreen",
+        keywords: "full screen distraction free f11 immersive",
+        run: toggleFullscreen,
+      });
+    }
 
     // === AI === only when a buffer exists and AI is enabled in Settings.
     // The command palette is the always-reachable entry point for AI assist
@@ -1026,18 +1154,20 @@ function AppContent() {
       icon: "keyboard",
       run: () => setShowCheatsheet(true),
     });
-    items.push({
-      id: "help.tour",
-      label: "Replay the welcome tour",
-      section: "Help",
-      icon: "tour",
-      keywords: "onboarding intro guide help walkthrough",
-      run: () => {
-        // The tour spotlights editor chrome, so make sure a buffer exists first.
-        if (!hasFile) handleNewFile();
-        setShowTour(true);
-      },
-    });
+    if (!IS_MOBILE) {
+      items.push({
+        id: "help.tour",
+        label: "Replay the welcome tour",
+        section: "Help",
+        icon: "tour",
+        keywords: "onboarding intro guide help walkthrough",
+        run: () => {
+          // The tour spotlights editor chrome, so make sure a buffer exists first.
+          if (!hasFile) handleNewFile();
+          setShowTour(true);
+        },
+      });
+    }
     items.push({
       id: "help.guide",
       label: "Open the interactive guide",
@@ -1069,7 +1199,7 @@ function AppContent() {
     // letting `content` flow into this useMemo would rebuild every keystroke
     // (post-debounce) for no reason. Headings are computed below in a
     // separate hook that's gated on the palette actually being open.
-    handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs, handleOpenTutorial,
+    handleNewFile, handleOpenFileAction, handleSaveFile, handleSaveAs, handleOpenTutorial,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, handleToggleBacklinks, toggleFullscreen,
     loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
@@ -1169,24 +1299,63 @@ function AppContent() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
-      <TitleBar
-        fileName={fileName ?? undefined}
-        isDirty={isDirty}
-        filePath={filePath ?? undefined}
-        onOpenFile={handleOpenFile}
-        onNewFile={handleNewFile}
-        getExportHtml={getExportHtml}
-        onExportSuccess={handleExportSuccess}
-        onExportError={handleExportError}
-        onToggleAI={aiEnabled ? handleToggleAI : undefined}
-        aiActive={showAIPanel}
-        isFullscreen={isFullscreen}
-        onToggleFullscreen={toggleFullscreen}
-        onFind={openFind}
-        onReplace={openReplace}
-        onFindInFiles={() => setShowSearch(true)}
-      />
+    <div className="app-shell h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
+      {IS_MOBILE ? (
+        <MobileTopBar
+          fileName={fileName}
+          isDirty={isDirty}
+          onOpenMenu={() => setMenuOpen(true)}
+          onOpenPalette={() => setShowPalette(true)}
+        />
+      ) : (
+        <TitleBar
+          fileName={fileName ?? undefined}
+          isDirty={isDirty}
+          filePath={filePath ?? undefined}
+          onOpenFile={handleOpenFile}
+          onNewFile={handleNewFile}
+          getExportHtml={getExportHtml}
+          onExportSuccess={handleExportSuccess}
+          onExportError={handleExportError}
+          onToggleAI={aiEnabled ? handleToggleAI : undefined}
+          aiActive={showAIPanel}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
+          onFind={openFind}
+          onReplace={openReplace}
+          onFindInFiles={() => setShowSearch(true)}
+        />
+      )}
+
+      {IS_MOBILE && (
+        <MobileMenu
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          items={[
+            { id: "new", label: "New note", icon: "note_add", onSelect: handleNewFile },
+            { id: "browse", label: "Browse notes", icon: "folder_open", onSelect: handleOpenFileAction },
+            ...(hasFile
+              ? [
+                  { id: "save", label: "Save", icon: "save", onSelect: handleSaveFile },
+                  { id: "saveas", label: "Save as…", icon: "save_as", onSelect: handleSaveAs },
+                  { id: "find", label: "Find", icon: "search", onSelect: openFind },
+                  { id: "replace", label: "Find and replace", icon: "find_replace", onSelect: openReplace },
+                  { id: "stats", label: "Document statistics", icon: "analytics", onSelect: () => setShowStats(true) },
+                ]
+              : []),
+            ...(filePath
+              ? [{ id: "search-files", label: "Search in files…", icon: "manage_search", onSelect: () => setShowSearch(true) }]
+              : []),
+            {
+              id: "settings",
+              label: "Settings",
+              icon: "settings",
+              dividerBefore: true,
+              onSelect: () => setShowSettings(true),
+            },
+          ]}
+        />
+      )}
 
       {/* Tab bar — always shown once a file is open (even with one tab), with a
           + button, so it's clear more files can be opened in tabs. TABS-01. */}
@@ -1202,10 +1371,15 @@ function AppContent() {
         />
       )}
 
-      {/* Startup update check; invisible unless an update is actually available. */}
-      <Suspense fallback={null}>
-        <UpdateDialog />
-      </Suspense>
+      {/* Startup update check; invisible unless an update is actually available.
+          Skipped on mobile: the updater plugin isn't compiled there, so its
+          invoke would be rejected outright. Phone updates ride the store/sideload
+          instead. */}
+      {!IS_MOBILE && (
+        <Suspense fallback={null}>
+          <UpdateDialog />
+        </Suspense>
+      )}
 
       {!hasFile ? (
         booting ? (
@@ -1216,7 +1390,7 @@ function AppContent() {
           </div>
         ) : (
           <WelcomeScreen
-            onOpenFile={handleOpenFile}
+            onOpenFile={handleOpenFileAction}
             onNewFile={handleNewFile}
             onOpenSettings={() => setShowSettings(true)}
             onFileDrop={handleFileDrop}
@@ -1239,9 +1413,11 @@ function AppContent() {
             // The left drawers (FileExplorer / TableOfContents) are likewise fixed
             // at left-0, so reserve padding-left when one is open so they reflow the
             // editor beside them instead of overlaying it.
+            // On mobile there is no reflow: the panels are full-screen sheets
+            // (see index.css [data-panel]) and the content keeps the full width.
             style={{
-                paddingLeft: (showFileExplorer || showTOC || showBacklinks) ? `${SIDEBAR_WIDTH}px` : 0,
-                paddingRight: showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
+                paddingLeft: !IS_MOBILE && (showFileExplorer || showTOC || showBacklinks) ? `${SIDEBAR_WIDTH}px` : 0,
+                paddingRight: !IS_MOBILE && showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
                 transition: "padding 0.15s ease",
             }}
           >
@@ -1327,7 +1503,11 @@ function AppContent() {
             </div>
           </div>
 
-          <ModeToggle mode={mode} onSetMode={setMode} aiPanelOpen={showAIPanel} aiPanelWidth={aiPanelWidth} />
+          {/* The floating mode pill is a desktop affordance; the phone's bottom
+              nav carries the Read/Edit toggle. */}
+          {!IS_MOBILE && (
+            <ModeToggle mode={mode} onSetMode={setMode} aiPanelOpen={showAIPanel} aiPanelWidth={aiPanelWidth} />
+          )}
 
           {/* Sidebar Panels — only mount when actually open so they don't
               load their module until first use. */}
@@ -1336,6 +1516,7 @@ function AppContent() {
               <FileExplorer
                 isOpen={showFileExplorer}
                 currentFilePath={filePath}
+                fallbackDirectory={notesDir}
                 onFileSelect={loadFile}
                 onClose={closeAllPanels}
               />
@@ -1381,23 +1562,46 @@ function AppContent() {
             </Suspense>
           )}
 
-<StatusBar
-            isSaved={!isDirty}
-            lineNumber={mode === "preview" ? previewLine : cursorPosition.line}
-            columnNumber={cursorPosition.col}
-            mode={mode}
-            showFileExplorer={showFileExplorer}
-            showTOC={showTOC}
-            showBacklinks={showBacklinks}
-            onToggleFileExplorer={handleToggleFileExplorer}
-            onToggleTOC={handleToggleTOC}
-            onToggleBacklinks={handleToggleBacklinks}
-            wordCount={wordCount}
-            charCount={charCount}
-            readingTimeMin={readingTimeMin}
-            selectionLength={mode !== "preview" ? selectionLength : 0}
-            selectionWordCount={selectionWordCount}
-          />
+          {/* Bottom navigation — the phone's status bar replacement. Hidden on
+              the welcome screen (its own buttons cover Files/New) and while the
+              keyboard is open (html.kb-open). */}
+          {IS_MOBILE && hasFile && (
+            <MobileBottomNav
+              hasFile={hasFile}
+              mode={mode}
+              onSetMode={setMode}
+              toolbarVisible={toolbarVisible}
+              onToggleToolbar={() => setToolbarVisible((v) => !v)}
+              onOpenFiles={handleOpenFileAction}
+              onNewFile={handleNewFile}
+              aiEnabled={aiEnabled}
+              aiPanelOpen={showAIPanel}
+              onToggleAI={handleToggleAI}
+            />
+          )}
+
+          {/* Desktop status bar. The phone's bottom nav + top bar dirty dot
+              carry the same information (saved state, mode); word count lives
+              in the menu's statistics entry. */}
+          {!IS_MOBILE && (
+            <StatusBar
+              isSaved={!isDirty}
+              lineNumber={mode === "preview" ? previewLine : cursorPosition.line}
+              columnNumber={cursorPosition.col}
+              mode={mode}
+              showFileExplorer={showFileExplorer}
+              showTOC={showTOC}
+              showBacklinks={showBacklinks}
+              onToggleFileExplorer={handleToggleFileExplorer}
+              onToggleTOC={handleToggleTOC}
+              onToggleBacklinks={handleToggleBacklinks}
+              wordCount={wordCount}
+              charCount={charCount}
+              readingTimeMin={readingTimeMin}
+              selectionLength={mode !== "preview" ? selectionLength : 0}
+              selectionWordCount={selectionWordCount}
+            />
+          )}
         </>
       )}
 
@@ -1477,7 +1681,7 @@ function AppContent() {
         <Suspense fallback={null}>
           <GlobalSearch
             isOpen={showSearch}
-            directory={currentDirectory}
+            directory={currentDirectory ?? (IS_MOBILE ? notesDir : null)}
             onClose={() => setShowSearch(false)}
             onOpenResult={handleOpenSearchResult}
           />
@@ -1515,6 +1719,14 @@ function AppContent() {
             y={tabMenu.y}
             onClose={() => setTabMenu(null)}
             actions={[
+              // Touch reorder: HTML5 drag never fires on a phone, so the
+              // long-press menu carries explicit move actions instead.
+              ...(IS_MOBILE
+                ? [
+                    { label: "Move left", icon: "arrow_back", disabled: idx <= 0, onClick: () => handleReorderTab(idx, idx - 1) },
+                    { label: "Move right", icon: "arrow_forward", disabled: !hasRight, onClick: () => handleReorderTab(idx, idx + 1) },
+                  ]
+                : []),
               { label: "Close", icon: "close", onClick: () => closeTab(tabMenu.id) },
               { label: "Close others", icon: "close_fullscreen", disabled: !others, onClick: () => handleTabMenuAction("closeOthers", tabMenu.id) },
               { label: "Close to the right", icon: "keyboard_tab", disabled: !hasRight, onClick: () => handleTabMenuAction("closeRight", tabMenu.id) },
@@ -1522,14 +1734,29 @@ function AppContent() {
                 label: "Copy path", icon: "content_copy", dividerBefore: true, disabled: !menuPath,
                 onClick: () => { if (menuPath) navigator.clipboard.writeText(menuPath).then(() => showToast("File path copied", "success"), () => showToast("Could not copy path", "error")); },
               },
-              {
-                label: "Reveal in folder", icon: "folder_open", disabled: !menuPath,
-                onClick: () => { if (menuPath) revealItemInDir(menuPath).catch(() => showToast("Could not reveal file", "error")); },
-              },
+              // "Reveal in folder" opens the OS file manager — desktop only.
+              ...(!IS_MOBILE
+                ? [
+                    {
+                      label: "Reveal in folder", icon: "folder_open", disabled: !menuPath,
+                      onClick: () => { if (menuPath) revealItemInDir(menuPath).catch(() => showToast("Could not reveal file", "error")); },
+                    },
+                  ]
+                : []),
             ]}
           />
         );
       })()}
+
+      {/* Mobile Save-As name prompt. Mounted while a save location is pending;
+          resolves with a notes-dir path (see promptForSavePath). */}
+      {IS_MOBILE && saveAsRequest && (
+        <SaveAsNameModal
+          isOpen
+          defaultName={saveAsRequest.defaultName}
+          onConfirm={handleSaveAsConfirm}
+        />
+      )}
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

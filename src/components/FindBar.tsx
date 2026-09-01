@@ -168,7 +168,7 @@ export function FindBar({ isOpen, initialMode = "find", controller, revision, on
         <div
             role="dialog"
             aria-label={controller.supportsReplace ? "Find and replace" : "Find in document"}
-            className="absolute top-2 right-4 z-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl px-2 py-2 flex flex-col gap-2 animate-fade-in-down"
+            className="find-bar absolute top-2 right-4 z-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl px-2 py-2 flex flex-col gap-2 animate-fade-in-down"
             style={{ minWidth: controller.supportsReplace ? 360 : 300 }}
             onKeyDown={handleKey}
         >

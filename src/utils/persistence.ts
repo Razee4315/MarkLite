@@ -4,6 +4,10 @@
  */
 
 import { sanitizeSessions, pruneSessions, type ChatSession } from "./chatSessions";
+// Boot-time shell decision — used only to pick sensible DEFAULTS for
+// touch-first users (e.g. the formatting toolbar ships on, because a phone
+// has no Ctrl+B). Explicit stored choices always win over these defaults.
+import { IS_MOBILE } from "./platform";
 
 // One-time migration from the app's pre-rename key prefix. The bundle
 // identifier (and therefore the WebView2 storage location) is unchanged, so
@@ -122,7 +126,9 @@ const KEY_WORD_WRAP = "paperling:wordWrap";
 const KEY_SPELL_CHECK = "paperling:spellCheck";
 export const getTypewriterMode = (): boolean => safeGet<boolean>(KEY_TYPEWRITER_MODE, false);
 export const setTypewriterMode = (v: boolean): void => safeSet(KEY_TYPEWRITER_MODE, v);
-export const getToolbarEnabled = (): boolean => safeGet<boolean>(KEY_TOOLBAR, false);
+// Default ON on mobile: the toolbar is the only formatting entry point a
+// touch user has (no Ctrl+B/I/K). Desktop keeps its opt-in default.
+export const getToolbarEnabled = (): boolean => safeGet<boolean>(KEY_TOOLBAR, IS_MOBILE);
 export const setToolbarEnabled = (v: boolean): void => safeSet(KEY_TOOLBAR, v);
 export const getWordWrap = (): boolean => safeGet<boolean>(KEY_WORD_WRAP, true);
 export const setWordWrap = (v: boolean): void => safeSet(KEY_WORD_WRAP, v);

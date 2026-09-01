@@ -13,6 +13,8 @@ interface FileEntry {
 interface FileExplorerProps {
     isOpen: boolean;
     currentFilePath: string | null;
+    /** Directory to browse when no file is open (the mobile notes root). */
+    fallbackDirectory?: string | null;
     onFileSelect: (path: string) => void;
     onClose: () => void;
 }
@@ -20,6 +22,7 @@ interface FileExplorerProps {
 export function FileExplorer({
     isOpen,
     currentFilePath,
+    fallbackDirectory,
     onFileSelect,
     onClose,
 }: FileExplorerProps) {
@@ -39,14 +42,16 @@ export function FileExplorer({
 
     // Initialize the view directory when opening the panel
     useEffect(() => {
-        if (isOpen && currentFilePath) {
-            // Keep the current view if the user already navigated somewhere
-            setCurrentViewDir((prev) => prev ?? getDirectory(currentFilePath));
-        } else if (!isOpen) {
+        if (isOpen) {
+            // Keep the current view if the user already navigated somewhere.
+            // Falls back to the provided root (e.g. the mobile notes folder)
+            // when there is no open file to derive a directory from.
+            setCurrentViewDir((prev) => prev ?? getDirectory(currentFilePath) ?? fallbackDirectory ?? null);
+        } else {
             // Reset view when closed so it snaps back to the active file next time
             setCurrentViewDir(null);
         }
-    }, [isOpen, currentFilePath]);
+    }, [isOpen, currentFilePath, fallbackDirectory]);
 
     // Load files whenever the currentViewDir changes
     useEffect(() => {
@@ -129,6 +134,7 @@ export function FileExplorer({
             role="navigation"
             aria-label="File explorer"
             tabIndex={-1}
+            data-panel="left"
             className={`fixed left-0 top-12 bottom-7 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200 ease-out ${
                 isOpen ? "translate-x-0" : "-translate-x-full"
             }`}

@@ -11,6 +11,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from "../utils/frontmatter";
+import { IS_MOBILE } from "../utils/platform";
 import type { Scroller } from "../utils/scrollSync";
 import { MermaidBlock, isMermaidLanguage } from "./MermaidBlock";
 
@@ -421,7 +422,10 @@ function CodeBlock({ children, ...rest }: React.HTMLAttributes<HTMLPreElement>) 
                 type="button"
                 onClick={handleCopy}
                 aria-label="Copy code"
-                className="absolute top-2 right-2 z-10 px-2 py-1 text-[11px] rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-opacity"
+                className={`absolute top-2 right-2 z-10 px-2 py-1 text-[11px] rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-opacity ${
+                    // Hover-only = unreachable on touch; keep it visible there.
+                    IS_MOBILE ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                }`}
             >
                 {copied ? "Copied!" : "Copy"}
             </button>
@@ -612,7 +616,9 @@ function HeadingWithAnchor(
                 onClick={handleClick}
                 aria-label={`Copy link to "${text}"`}
                 title={copied ? "Link copied" : "Copy link to this section"}
-                className="opacity-0 group-hover/heading:opacity-60 hover:!opacity-100 text-[var(--text-muted)] hover:text-[var(--accent)] transition-opacity"
+                className={`text-[var(--text-muted)] hover:text-[var(--accent)] transition-opacity ${
+                    IS_MOBILE ? "opacity-100" : "opacity-0 group-hover/heading:opacity-60 hover:!opacity-100"
+                }`}
                 tabIndex={-1}
             >
                 <span className="material-symbols-outlined" style={{ fontSize: "0.7em", verticalAlign: "middle" }}>{copied ? "check" : "link"}</span>
@@ -1054,7 +1060,7 @@ function MarkdownPreviewImpl({
                 ref={mainRef}
                 className="flex-1 overflow-y-auto bg-[var(--bg-primary)] transition-colors"
             >
-                <div className="max-w-[800px] mx-auto px-8 py-12">
+                <div className="preview-column max-w-[800px] mx-auto px-8 py-12">
                     {hasFrontmatter && (
                         <FrontmatterCard
                             data={frontmatter}

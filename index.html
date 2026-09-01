@@ -6,7 +6,12 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the app draw behind status/gesture insets;
+         env(safe-area-inset-*) padding is applied in index.css. No
+         user-scalable=no: blocking zoom is an accessibility failure, and the
+         input-focus auto-zoom it usually works around is prevented instead by
+         keeping every field >= 16px under html.mobile. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Paperling</title>
     <!-- Render-blocking: paint the correct theme background BEFORE first paint.
          The window is created hidden and revealed once React mounts, but this

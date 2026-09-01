@@ -123,6 +123,7 @@ export function TableOfContents({
             role="navigation"
             aria-label="Table of contents"
             tabIndex={-1}
+            data-panel="left"
             className={`fixed left-0 top-12 bottom-7 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200 ease-out ${isOpen ? "translate-x-0" : "-translate-x-full"
                 }`}
         >

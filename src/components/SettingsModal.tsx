@@ -205,11 +205,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             <div
                 ref={dialogRef}
-                className="relative z-10 w-[820px] max-w-[95vw] h-[600px] max-h-[90vh] flex bg-[var(--bg-primary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl overflow-hidden animate-fade-in"
+                className="settings-shell relative z-10 w-[min(820px,95vw)] h-[min(600px,90dvh)] flex bg-[var(--bg-primary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl overflow-hidden animate-fade-in"
             >
                 {/* Sidebar — narrower below `sm` so the content pane keeps a
-                    usable width when the 95vw modal shrinks on small screens. */}
-                <aside className="w-36 sm:w-48 shrink-0 bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col">
+                    usable width when the 95vw modal shrinks on small screens.
+                    On mobile the shell CSS turns this into a horizontal icon
+                    rail (full-screen sheet layout). */}
+                <aside className="settings-nav w-36 sm:w-48 shrink-0 bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col">
                     <div className="px-4 py-3 border-b border-[var(--border)]">
                         <input
                             type="text"
