@@ -118,6 +118,7 @@ Dark, Light, Paper, and Dracula.
 - **Restore last opened file** on launch
 - **File Explorer** with folder navigation
 - **Outline pane** that follows the cursor
+- **Backlinks panel** showing which notes in the current folder link to the open file
 
 ### <img src="images/art/icon-theme-swatches.png" width="26" alt=""> Customization
 
