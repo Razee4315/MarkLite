@@ -122,7 +122,7 @@ Dark, Light, Paper, and Dracula.
 ### <img src="images/art/icon-theme-swatches.png" width="26" alt=""> Customization
 
 - **Four themes** — Dark, Light, Paper, Dracula
-- **Five fonts** — Inter, Merriweather, Lora, Source Serif, Fira Sans
+- **Five bundled fonts plus custom system fonts** — Inter, Merriweather, Lora, Source Serif, Fira Sans, or a locally installed family
 - **Three font sizes**
 - **WCAG-friendly** — visible focus rings, `prefers-reduced-motion` respected
 

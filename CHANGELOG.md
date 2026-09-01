@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Custom system fonts.** Enter an installed font family in Appearance to use
+  it across the interface, Markdown preview and exports, with Inter as a safe
+  fallback. (#113)
 - **Paperling remembers your window.** Size, position and whether it was
   maximized are restored the next time you launch, instead of always reopening
   at the default 1000x700 in the middle of the screen. Thanks to

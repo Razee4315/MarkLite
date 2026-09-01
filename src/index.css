@@ -243,6 +243,10 @@
   --font-body: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+[data-font="custom"] {
+  --font-body: var(--font-custom, 'Inter');
+}
+
 /* ===== Font Size Variables ===== */
 /* Default font size - must come BEFORE attribute selectors */
 :root {

@@ -42,6 +42,15 @@ describe("generateHTML", () => {
         expect(out).toContain("18px"); // large base size
     });
 
+    it("applies a sanitized custom font with Inter as its final fallback", () => {
+        const out = generateHTML(
+            "<p>x</p>", "t", "dark", "custom", "medium", true,
+            'Atkinson Hyperlegible"; color: red'
+        );
+        expect(out).toContain('font-family: "Atkinson Hyperlegible color red", \'Inter\'');
+        expect(out).not.toContain("color: red");
+    });
+
     // ==highlight== and definition lists render in the preview DOM that exports
     // capture, so the export stylesheet must ship matching rules (SYNTAX-01).
     it("ships mark and definition-list styling in the export CSS", () => {
