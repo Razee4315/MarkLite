@@ -1,0 +1,29 @@
+{
+  "$schema": "./mobile-schema.json",
+  "identifier": "mobile-capability",
+  "description": "Mobile (Android/iOS) permissions for the main window. Desktop-only plugins (updater, process, window-state, mcp-bridge) are NOT compiled on mobile, so their permissions must not appear here or capability validation fails the build. Window controls are OS chrome on mobile, so no drag/maximize/close grants. Markdown reads and image reads go through validated Rust commands, mirroring the desktop capability's write-only fs stance.",
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-title",
+    "opener:default",
+    "opener:allow-open-url",
+    "fs:default",
+    "fs:allow-write-text-file",
+    "fs:allow-write-file",
+    "dialog:default",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }]
+    }
+  ]
+}
