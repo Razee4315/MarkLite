@@ -94,14 +94,17 @@ pub fn run() {
     }
 
     builder
-        .setup(|app| {
+        .setup(|_app| {
             // Updater (GitHub latest.json) + process (relaunch after install)
             // are desktop-only plugins, hence registered here behind cfg
-            // instead of in the unconditional plugin chain above.
+            // instead of in the unconditional plugin chain above. The closure
+            // param carries the conventional underscore prefix: on mobile both
+            // cfg blocks below vanish and the param would otherwise be flagged
+            // as unused there.
             #[cfg(desktop)]
             {
-                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
-                app.handle().plugin(tauri_plugin_process::init())?;
+                _app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+                _app.handle().plugin(tauri_plugin_process::init())?;
             }
             // UI-automation bridge for the Tauri MCP server. Desktop debug
             // builds only; bound to localhost so nothing on the network can
@@ -110,7 +113,7 @@ pub fn run() {
             // clean without pulling a WebSocket stack onto the phone.)
             #[cfg(all(debug_assertions, desktop))]
             {
-                app.handle().plugin(
+                _app.handle().plugin(
                     tauri_plugin_mcp_bridge::Builder::new()
                         .bind_address("127.0.0.1")
                         .build(),
