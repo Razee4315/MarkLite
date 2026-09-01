@@ -6,6 +6,7 @@ import type { ViewMode } from "../components/ModeToggle";
 import type { ToastType } from "./useToast";
 import { useAutosave } from "./useAutosave";
 import { useExternalChangeWatcher } from "./useExternalChangeWatcher";
+import { IS_MOBILE } from "../utils/platform";
 import { errMessage } from "../utils/errors";
 import {
   addRecentFile,
@@ -747,6 +748,18 @@ export function useFileSession({
       } catch {
         // Browser development mode or an older backend: restore only.
       }
+      // Android "Open with": the Kotlin side copies the picked file into the
+      // app cache and leaves a marker; pull it once. On the phone it wins the
+      // same priority the double-clicked file has on desktop (there is no CLI
+      // there), beating the last-session restore.
+      let incoming: { path: string; name: string } | null = null;
+      if (IS_MOBILE) {
+        try {
+          incoming = await invoke<{ path: string; name: string } | null>("get_incoming_file");
+        } catch {
+          // No pending file / older backend.
+        }
+      }
       // Prefer the full saved session (TABS-07); fall back to lastFile for
       // sessions saved before multi-tab restore existed.
       const session = getSession();
@@ -764,17 +777,20 @@ export function useFileSession({
           activePath = lastFile;
         }
       }
-      // A CLI / double-clicked file is always the active tab, appended if new.
-      if (cliFile) {
-        if (!paths.includes(cliFile)) paths.push(cliFile);
-        activePath = cliFile;
+      // A CLI / double-clicked file (desktop) or an intent-opened file
+      // (Android) is always the active tab, appended if new.
+      const forcedFile = cliFile ?? incoming?.path ?? null;
+      if (forcedFile) {
+        if (!paths.includes(forcedFile)) paths.push(forcedFile);
+        activePath = forcedFile;
       }
       if (paths.length === 0) {
         setBooting(false);
         return;
       }
-      // Read each file, skipping stale entries. Always surface a CLI file's
-      // failure because the user explicitly requested it.
+      // Read each file, skipping stale entries. Always surface a forced-open
+      // file's failure (CLI arg or Android intent) — the user explicitly
+      // requested it from outside the app.
       const loaded: TabState[] = [];
       let activeId: string | null = null;
       for (const path of paths) {
@@ -794,7 +810,7 @@ export function useFileSession({
           if (path === activePath) activeId = id;
         } catch (error) {
           const message = errMessage(error);
-          if (cliFile && path === cliFile) showToast(`Could not open file: ${message || path}`, "error");
+          if (forcedFile && path === forcedFile) showToast(`Could not open file: ${message || path}`, "error");
           else if (/too large/i.test(message)) showToast(`Could not restore "${path}": ${message}`, "error");
         }
       }

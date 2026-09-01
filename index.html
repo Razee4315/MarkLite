@@ -45,6 +45,22 @@
         }
       })();
     </script>
+    <!-- Android "Open with Paperling" bridge. The patched MainActivity copies
+         the picked file into app-private storage and calls this with the real
+         path (std::fs cannot read content:// URIs). Defined inline so it
+         exists the moment the webview is up — the native side retries until
+         it sees it, then fires once. If React isn't mounted yet the payload
+         waits in __paperlingPendingOpen and App picks it up on mount. -->
+    <script>
+      window.__paperlingOpenFile = function (path, name) {
+        var payload = { path: path, name: name };
+        if (window.__paperlingOnOpenFile) {
+          try { window.__paperlingOnOpenFile(payload); } catch (e) { /* app not ready to open */ }
+        } else {
+          window.__paperlingPendingOpen = payload;
+        }
+      };
+    </script>
     <!-- Fonts and Material Symbols are bundled locally via src/fonts.ts so the
          app renders identically with or without an internet connection. -->
   </head>

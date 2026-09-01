@@ -152,7 +152,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                     let summary: string;
                     if (res.applied > 0) {
                         onProposeEdit?.(res.proposedDoc);
-                        summary = `${res.explanation ? res.explanation + "\n\n" : ""}**Proposed ${res.applied} change${res.applied !== 1 ? "s" : ""}.** Review and Accept/Reject them in the editor.${res.failed ? `\n\n⚠️ ${res.failed} change${res.failed !== 1 ? "s" : ""} couldn't be applied — the text may have shifted. Try again.` : ""}`;
+                        summary = `${res.explanation ? res.explanation + "\n\n" : ""}**Proposed ${res.applied} change${res.applied !== 1 ? "s" : ""}.** Review and Accept/Reject them in the editor.${res.failed ? `\n\n⚠️ ${res.failed} change${res.failed !== 1 ? "s" : ""} couldn't be applied, the text may have shifted. Try again.` : ""}`;
                     } else {
                         summary = "I drafted changes but none matched the current document (it may have changed since). Please try again.";
                     }
@@ -407,7 +407,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                         <p className="text-xs text-[var(--text-muted)] leading-relaxed">
                             {mode === "agent"
                                 ? "I'll propose edits you can review and accept."
-                                : "Summaries, questions, suggestions — anything."}
+                                : "Summaries, questions, suggestions, anything."}
                         </p>
                     </div>
                 ) : (

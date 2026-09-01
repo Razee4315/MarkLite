@@ -154,18 +154,18 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                 <div className="flex gap-2 items-center">
                     <button
                         onClick={onOpenFile}
-                        className="btn-press flex items-center gap-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
+                        className="btn-press whitespace-nowrap flex items-center gap-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
                     >
                         <span className="material-symbols-outlined text-[20px]">folder_open</span>
-                        <span>{IS_MOBILE ? "Browse notes" : "Open File"}</span>
+                        <span>{IS_MOBILE ? "Open" : "Open File"}</span>
                     </button>
                     {onNewFile && (
                         <button
                             onClick={onNewFile}
-                            className="btn-press flex items-center gap-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
+                            className="btn-press whitespace-nowrap flex items-center gap-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
                         >
                             <span className="material-symbols-outlined text-[20px]">edit_note</span>
-                            <span>{IS_MOBILE ? "New note" : "New File"}</span>
+                            <span>{IS_MOBILE ? "New" : "New File"}</span>
                         </button>
                     )}
                     {onOpenSettings && (
@@ -183,7 +183,7 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                 <p className="text-xs text-[var(--text-muted)]">
                     {IS_MOBILE ? (
                         <>
-                            Your notes live <strong>on this device</strong> — use <code className="bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded text-[var(--text-secondary)] border border-[var(--border)]">Browse notes</code> or tap a recent file below
+                            Notes are stored <strong>on this device</strong>. Tap a recent file below, or use <span className="font-medium">Open</span> to browse.
                         </>
                     ) : (
                         <>

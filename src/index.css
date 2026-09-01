@@ -565,8 +565,9 @@ html.mobile .preview-column button {
 }
 
 /* Settings: the fixed 820×600 two-pane modal becomes a full-screen sheet —
-   stacked column, section nav as a horizontal scrollable rail under the
-   search box. */
+   stacked column, section nav as a horizontal scrollable pill row under the
+   search box. Padding-top keeps the search box clear of the status bar
+   (feedback round 1: it was half-covered). */
 html.mobile .settings-shell {
   flex-direction: column;
   width: 100vw !important;
@@ -575,6 +576,7 @@ html.mobile .settings-shell {
   max-height: 100dvh !important;
   border-radius: 0;
   border: none;
+  padding-top: var(--safe-area-top);
 }
 
 html.mobile .settings-nav {
@@ -587,11 +589,28 @@ html.mobile .settings-nav nav {
   display: flex;
   flex-direction: row;
   overflow-x: auto;
+  gap: 4px;
+  scrollbar-width: none;
 }
 
+html.mobile .settings-nav nav::-webkit-scrollbar {
+  display: none;
+}
+
+/* Compact pills so every section (Appearance / Editor / AI / About) is
+   visible or one swipe away — the desktop full-width rows stacked three of
+   them off-screen. */
 html.mobile .settings-nav nav button {
+  width: auto;
   flex: 0 0 auto;
-  min-height: 44px;
+  white-space: nowrap;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+}
+
+html.mobile .settings-nav nav button[data-active="true"] {
+  border-color: var(--accent);
 }
 
 /* Wide fixed-width dialogs clamp to the viewport. */
@@ -602,6 +621,7 @@ html.mobile .cheatsheet-shell {
   height: 100dvh;
   border-radius: 0;
   border: none;
+  padding-top: var(--safe-area-top);
 }
 
 /* The status bar is replaced by the bottom nav on mobile, and the floating

@@ -306,7 +306,7 @@ function CodeEditorImpl({
         const view = viewRef.current;
         if (!view) return;
         if (!aiConfigRef.current?.endpoint) {
-            onNoticeRef.current?.("AI isn't set up yet — add an endpoint in Settings → AI to enable AI assist.");
+            onNoticeRef.current?.("AI isn't set up yet: add an endpoint in Settings, AI section, to enable AI assist.");
             return;
         }
         const sel = view.state.selection.main;

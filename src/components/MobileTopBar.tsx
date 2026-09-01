@@ -29,7 +29,11 @@ export function MobileTopBar({ fileName, isDirty, onOpenMenu, onOpenPalette }: M
     return (
         <header
             className="shrink-0 flex items-center gap-1 bg-[var(--bg-titlebar)] border-b border-[var(--border)] px-1 no-select z-[60]"
-            style={{ height: "var(--mobile-topbar-h)" }}
+            // Height includes the status-bar inset, and that inset is applied as
+            // TOP PADDING (border-box), so the buttons sit centered in the lower
+            // 48dp strip — directly below the status bar with real breathing
+            // room, never inside/beside it (the "controls too high" report).
+            style={{ height: "var(--mobile-topbar-h)", paddingTop: "var(--safe-area-top)" }}
         >
             <button
                 onClick={onOpenMenu}

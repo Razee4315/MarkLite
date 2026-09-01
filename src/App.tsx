@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } fro
 import { invoke } from "@tauri-apps/api/core";
 import { save, ask } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
-import { Window } from "@tauri-apps/api/window";
 
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
@@ -27,7 +26,7 @@ import { useFullscreen } from "./hooks/useFullscreen";
 import { useScrollSync } from "./hooks/useScrollSync";
 import { useFileSession } from "./hooks/useFileSession";
 import { useKeyboardInset } from "./hooks/useKeyboardInset";
-import { IS_MOBILE } from "./utils/platform";
+import { IS_MOBILE, isTauri } from "./utils/platform";
 import { joinNotesPath } from "./utils/mobileFiles";
 
 // === Lazy-loaded screens / dialogs ===
@@ -103,7 +102,7 @@ import {
 import { getAutoSave } from "./utils/persistence";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
 import { errMessage } from "./utils/errors";
-import { revealMainWindow } from "./utils/appWindow";
+import { revealMainWindow, desktopWindow } from "./utils/appWindow";
 import { TabBar, type TabBarItem } from "./components/TabBar";
 import { TabContextMenu } from "./components/TabContextMenu";
 import {
@@ -207,7 +206,10 @@ function AppContent() {
   } | null>(null);
 
   useEffect(() => {
-    if (!IS_MOBILE) return;
+    // Only meaningful inside Tauri (the command doesn't exist in a plain
+    // browser, and its failure toast would just be noise on the ?mobile=1
+    // testing path).
+    if (!IS_MOBILE || !isTauri()) return;
     let cancelled = false;
     invoke<{ path: string }>("get_notes_dir")
       .then((dir) => {
@@ -348,6 +350,29 @@ function AppContent() {
     handleOpenFile();
   }, [handleOpenFile]);
 
+  // Android "Open with Paperling": the patched MainActivity copies the picked
+  // file into app-private storage and calls window.__paperlingOpenFile(path,
+  // name) (defined inline in index.html). This effect is the app half of that
+  // bridge: register the real opener and pick up anything that arrived before
+  // mount. Re-runs are harmless — the native side fires once per intent, and
+  // loadFile dedupes by tab path.
+  useEffect(() => {
+    if (!IS_MOBILE || !isTauri()) return;
+    const bridge = window as unknown as {
+      __paperlingPendingOpen?: { path: string; name?: string };
+      __paperlingOnOpenFile?: (p: { path: string; name?: string }) => void;
+    };
+    bridge.__paperlingOnOpenFile = (p) => {
+      if (!p?.path) return;
+      void loadFile(p.path);
+    };
+    const pending = bridge.__paperlingPendingOpen;
+    if (pending?.path) {
+      bridge.__paperlingPendingOpen = undefined;
+      void loadFile(pending.path);
+    }
+  }, [loadFile]);
+
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
   // Reader-mode adapter for the shared FindBar. Stable identity (reads previewRef
@@ -379,8 +404,11 @@ function AppContent() {
   // a leading bullet flags unsaved work. Keyed on the dirty BOOLEAN (not raw
   // content) so it doesn't fire an IPC call on every keystroke. TITLE-01.
   useEffect(() => {
-    const title = fileName ? `${isDirty ? "• " : ""}${fileName} — Paperling` : "Paperling";
-    Window.getCurrent().setTitle(title).catch(() => {/* browser dev mode */});
+    const title = fileName ? `${isDirty ? "• " : ""}${fileName} - Paperling` : "Paperling";
+    // desktopWindow() (not Window.getCurrent()) — the latter reads
+    // __TAURI_INTERNALS__ eagerly and throws in a plain browser, which would
+    // crash the whole app at boot in browser dev mode.
+    desktopWindow()?.setTitle(title).catch(() => {/* browser dev mode */});
   }, [fileName, isDirty]);
 
   // First-run welcome tour: auto-start the first time a buffer is on screen.
@@ -514,8 +542,9 @@ function AppContent() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let mounted = true;
-    try {
-      Window.getCurrent()
+    const win = desktopWindow();
+    if (win) {
+      win
         .onCloseRequested((event) => {
           // Guard ALL tabs, not just the active one — a dirty background tab used
           // to be discarded silently on Alt+F4 / taskbar close. TABS-04.
@@ -529,7 +558,7 @@ function AppContent() {
           else fn();
         })
         .catch(() => {/* browser dev mode — no Tauri window */});
-    } catch {/* browser dev mode */}
+    }
     return () => {
       mounted = false;
       unlisten?.();
@@ -541,7 +570,7 @@ function AppContent() {
   // Close-dialog handlers. destroy() skips the close-requested event, so we
   // don't loop back into the dialog we just answered.
   const forceCloseWindow = useCallback(() => {
-    Window.getCurrent().destroy().catch(() => {/* browser dev mode */});
+    desktopWindow()?.destroy().catch(() => {/* browser dev mode */});
   }, []);
 
   // Save EVERY dirty tab, then close. An untitled tab prompts for a location;
@@ -1114,13 +1143,17 @@ function AppContent() {
       keywords: "scroll caret center",
       run: () => setTypewriterModeEnabled((v) => !v),
     });
-    items.push({
-      id: "toggle.toolbar",
-      label: toolbarVisible ? "Hide formatting toolbar" : "Show formatting toolbar",
-      section: "Toggles",
-      icon: "format_paint",
-      run: () => setToolbarVisible((v) => !v),
-    });
+    // Not offered on mobile: the toolbar is the phone's only formatting
+    // surface and is permanently on.
+    if (!IS_MOBILE) {
+      items.push({
+        id: "toggle.toolbar",
+        label: toolbarVisible ? "Hide formatting toolbar" : "Show formatting toolbar",
+        section: "Toggles",
+        icon: "format_paint",
+        run: () => setToolbarVisible((v) => !v),
+      });
+    }
 
     // === Theme === switch directly from the palette. The welcome tour tells
     // users themes live here, and it makes the four themes discoverable without
@@ -1333,7 +1366,7 @@ function AppContent() {
           onClose={() => setMenuOpen(false)}
           items={[
             { id: "new", label: "New note", icon: "note_add", onSelect: handleNewFile },
-            { id: "browse", label: "Browse notes", icon: "folder_open", onSelect: handleOpenFileAction },
+            { id: "browse", label: "Open notes", icon: "folder_open", onSelect: handleOpenFileAction },
             ...(hasFile
               ? [
                   { id: "save", label: "Save", icon: "save", onSelect: handleSaveFile },
@@ -1341,6 +1374,11 @@ function AppContent() {
                   { id: "find", label: "Find", icon: "search", onSelect: openFind },
                   { id: "replace", label: "Find and replace", icon: "find_replace", onSelect: openReplace },
                   { id: "stats", label: "Document statistics", icon: "analytics", onSelect: () => setShowStats(true) },
+                  // The AI panel's touch entry point (there is no nav button
+                  // for it; the master switch lives in Settings → AI).
+                  ...(aiEnabled
+                    ? [{ id: "ai", label: showAIPanel ? "Hide AI assistant" : "AI assistant", icon: "auto_awesome", onSelect: handleToggleAI }]
+                    : []),
                 ]
               : []),
             ...(filePath
@@ -1445,7 +1483,9 @@ function AppContent() {
                 onScrollFraction={onCodeScrollFraction}
                 registerScroller={registerCodeScroller}
                 typewriterMode={typewriterModeEnabled}
-                showToolbar={toolbarVisible}
+                // On mobile the toolbar is the ONLY formatting surface (no
+                // Ctrl+B, no menu row) so it is always on and cannot be hidden.
+                showToolbar={IS_MOBILE || toolbarVisible}
                 wordWrap={wordWrapEnabled}
                 spellCheck={spellCheckEnabled}
                 aiConfig={aiConfig}
@@ -1511,17 +1551,6 @@ function AppContent() {
 
           {/* Sidebar Panels — only mount when actually open so they don't
               load their module until first use. */}
-          {showFileExplorer && (
-            <Suspense fallback={null}>
-              <FileExplorer
-                isOpen={showFileExplorer}
-                currentFilePath={filePath}
-                fallbackDirectory={notesDir}
-                onFileSelect={loadFile}
-                onClose={closeAllPanels}
-              />
-            </Suspense>
-          )}
           {showTOC && (
             <Suspense fallback={null}>
               <TableOfContents
@@ -1570,13 +1599,8 @@ function AppContent() {
               hasFile={hasFile}
               mode={mode}
               onSetMode={setMode}
-              toolbarVisible={toolbarVisible}
-              onToggleToolbar={() => setToolbarVisible((v) => !v)}
               onOpenFiles={handleOpenFileAction}
               onNewFile={handleNewFile}
-              aiEnabled={aiEnabled}
-              aiPanelOpen={showAIPanel}
-              onToggleAI={handleToggleAI}
             />
           )}
 
@@ -1603,6 +1627,21 @@ function AppContent() {
             />
           )}
         </>
+      )}
+
+      {/* The file browser mounts OUTSIDE the hasFile conditional: on mobile it
+          is the "Open" affordance (Browse notes) and must be reachable from
+          the welcome screen, before any file exists. */}
+      {showFileExplorer && (
+        <Suspense fallback={null}>
+          <FileExplorer
+            isOpen={showFileExplorer}
+            currentFilePath={filePath}
+            fallbackDirectory={notesDir}
+            onFileSelect={loadFile}
+            onClose={closeAllPanels}
+          />
+        </Suspense>
       )}
 
       {/* Unsaved-changes dialog for window close — fed by the Tauri

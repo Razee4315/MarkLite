@@ -4,13 +4,8 @@ interface MobileBottomNavProps {
     hasFile: boolean;
     mode: ViewMode;
     onSetMode: (mode: ViewMode) => void;
-    toolbarVisible: boolean;
-    onToggleToolbar: () => void;
     onOpenFiles: () => void;
     onNewFile: () => void;
-    aiEnabled: boolean;
-    aiPanelOpen: boolean;
-    onToggleAI: () => void;
 }
 
 interface NavButton {
@@ -22,55 +17,27 @@ interface NavButton {
 }
 
 /**
- * The phone's bottom navigation bar — the touch route to everything the
- * desktop shell reaches with the status bar, the mode pill and hover chrome:
- * Files (browser sheet), New note, Format (toolbar toggle), Read/Edit, AI.
+ * The phone's bottom navigation bar: Files (notes browser), New note, and the
+ * Read/Edit toggle. Deliberately minimal (feedback round 1): the formatting
+ * toolbar is always visible above the editor, and the AI assistant lives in
+ * the ☰ menu, so neither needs a nav slot.
  *
- * ≥48dp targets, safe-area padded, and hidden while the on-screen keyboard is
- * open (html.kb-open, set by useKeyboardInset) so it never sits behind the IME
- * eating space from the composer.
+ * ≥48dp targets, safe-area padded, in-flow at the bottom of the shell (like
+ * the desktop StatusBar it replaces), and hidden while the on-screen keyboard
+ * is open (html.kb-open) so it never sits behind the IME.
  */
-export function MobileBottomNav({
-    hasFile,
-    mode,
-    onSetMode,
-    toolbarVisible,
-    onToggleToolbar,
-    onOpenFiles,
-    onNewFile,
-    aiEnabled,
-    aiPanelOpen,
-    onToggleAI,
-}: MobileBottomNavProps) {
+export function MobileBottomNav({ hasFile, mode, onSetMode, onOpenFiles, onNewFile }: MobileBottomNavProps) {
     const buttons: NavButton[] = [
         { id: "files", icon: "folder_open", label: "Files", onSelect: onOpenFiles },
         { id: "new", icon: "note_add", label: "New", onSelect: onNewFile },
         ...(hasFile
             ? [
                   {
-                      id: "format",
-                      icon: "format_bold",
-                      label: "Format",
-                      active: toolbarVisible,
-                      onSelect: onToggleToolbar,
-                  },
-                  {
                       id: "mode",
                       icon: mode === "preview" ? "edit" : "visibility",
                       label: mode === "preview" ? "Edit" : "Read",
                       active: mode === "preview",
                       onSelect: () => onSetMode(mode === "preview" ? "code" : "preview"),
-                  },
-              ]
-            : []),
-        ...(hasFile && aiEnabled
-            ? [
-                  {
-                      id: "ai",
-                      icon: "auto_awesome",
-                      label: "AI",
-                      active: aiPanelOpen,
-                      onSelect: onToggleAI,
                   },
               ]
             : []),

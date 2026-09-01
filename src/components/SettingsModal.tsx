@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme, type Theme, type FontFamily, type FontSize } from "../context/ThemeContext";
+import { IS_MOBILE } from "../utils/platform";
 import {
     getTypewriterMode, setTypewriterMode,
     getToolbarEnabled, setToolbarEnabled,
@@ -226,6 +227,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {sections.map((s) => (
                             <button
                                 key={s.id}
+                                data-active={section === s.id}
                                 onClick={() => setSection(s.id)}
                                 className={`w-full flex items-center gap-2 px-4 py-2 text-sm text-left transition-colors ${section === s.id
                                     ? "bg-[var(--bg-hover)] text-[var(--text-primary)] font-medium"
@@ -364,7 +366,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     <ToggleRow label="Typewriter mode" description="Keep caret vertically centered" checked={typewriter}
                                         onChange={(v) => { setTypewriterLocal(v); setTypewriterMode(v); fire("paperling:typewriter-toggle", v); }} />
                                 )}
-                                {matches("toolbar") && (
+                                {/* Not offered on mobile: the toolbar is the
+                                    phone's only formatting surface, always on. */}
+                                {matches("toolbar") && !IS_MOBILE && (
                                     <ToggleRow label="Show formatting toolbar" description="Toolbar above the editor" checked={toolbar}
                                         onChange={(v) => { setToolbarLocal(v); setToolbarEnabled(v); fire("paperling:toolbar-toggle", v); }} />
                                 )}
