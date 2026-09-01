@@ -64,6 +64,17 @@ jobs:
           # checkout (the project is generated in CI), and setup-java's cache
           # fails outright when nothing matches.
 
+      - name: Cache the Android debug keystore (stable test signature)
+        # Ephemeral runners generate a fresh debug key per run, and an APK
+        # signed with a different key can never install over an old one —
+        # every test build would demand an uninstall first. Caching the
+        # keystore keeps the signature stable across runs (best effort: if the
+        # cache entry is evicted, one uninstall is needed again).
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: paperling-android-debug-keystore
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -125,6 +136,12 @@ jobs:
 
       - name: Patch release signing (debug-key fallback for test builds)
         run: node scripts/patch-android-release-signing.mjs src-tauri/gen/android/app/build.gradle.kts
+
+      - name: Patch "Open with Paperling" file handling
+        # Intent-filter + MainActivity glue so tapping a .md in a file manager
+        # opens it (the file is copied into app-private storage first, because
+        # std::fs cannot read Android content:// URIs).
+        run: node scripts/patch-android-file-open.mjs src-tauri/gen/android
 
       - name: Build APK (release, aarch64)
         # Release, not --debug: a debug build keeps the Rust library's debug
