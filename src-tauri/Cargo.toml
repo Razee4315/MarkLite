@@ -25,7 +25,11 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["fs", "time", "sync"] }
+# `macros` (ai.rs's tokio::select!) and `rt` (spawn_blocking) are declared
+# explicitly: desktop builds used to receive them transitively from the
+# desktop-only crates, and the Android build — which compiles none of those —
+# broke on the very first CI run because of that hidden dependency.
+tokio = { version = "1", features = ["fs", "time", "sync", "macros", "rt"] }
 # Native HTTP for AI requests (AI-01): the webview's fetch is cross-origin
 # from https://tauri.localhost, so most OpenAI-compatible servers fail the
 # CORS preflight, and plain-http LAN endpoints are blocked by CSP. reqwest
