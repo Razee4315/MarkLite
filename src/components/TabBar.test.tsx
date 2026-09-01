@@ -1,6 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { TabBar } from "./TabBar";
+
+// jsdom doesn't implement scrollIntoView; TabBar's active-tab effect calls it.
+beforeAll(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+});
 
 function renderTabs(dirtyStates: { name: string; dirty: boolean }[]) {
     return render(
