@@ -918,7 +918,12 @@ pub async fn read_image_file(base_dir: String, rel_path: String) -> Result<Respo
 
 // ===== AI API key — OS keychain (SECURITY-01) =====
 //
-// Stored in the platform credential store instead of plaintext localStorage.
+// Desktop: stored in the platform credential store instead of plaintext
+// localStorage. Mobile (Android/iOS): keyring has no backend there, so the key
+// lives in an app-private data file with an atomic temp+rename write — inside
+// the app sandbox this is the same threat class as the localStorage the app
+// already uses for every non-secret setting.
+//
 // The front end keeps endpoint + model in localStorage (non-secret) and routes
 // only the key through these commands, with a localStorage fallback on the JS
 // side when no keychain is available (e.g. a headless Linux box).
@@ -926,9 +931,12 @@ pub async fn read_image_file(base_dir: String, rel_path: String) -> Result<Respo
 // NOTE: the service name stays "marklite" (the app's pre-rename name) on
 // purpose — changing it would orphan every existing user's stored API key.
 // Same reasoning as the bundle identifier in tauri.conf.json.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const AI_KEY_SERVICE: &str = "marklite";
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const AI_KEY_ACCOUNT: &str = "ai-api-key";
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub fn get_ai_key() -> Result<String, String> {
     let entry = keyring::Entry::new(AI_KEY_SERVICE, AI_KEY_ACCOUNT).map_err(|e| e.to_string())?;
@@ -939,6 +947,7 @@ pub fn get_ai_key() -> Result<String, String> {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub fn set_ai_key(key: String) -> Result<(), String> {
     let entry = keyring::Entry::new(AI_KEY_SERVICE, AI_KEY_ACCOUNT).map_err(|e| e.to_string())?;
@@ -952,6 +961,123 @@ pub fn set_ai_key(key: String) -> Result<(), String> {
     } else {
         entry.set_password(&key).map_err(|e| e.to_string())
     }
+}
+
+// --- Mobile variants: app-private file, no keyring. Same JS contract. ---
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn mobile_key_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Could not resolve app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("ai-key"))
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+pub fn get_ai_key(app: tauri::AppHandle) -> Result<String, String> {
+    let path = mobile_key_path(&app)?;
+    match std::fs::read_to_string(&path) {
+        Ok(key) => Ok(key.trim().to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+pub fn set_ai_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    let path = mobile_key_path(&app)?;
+    if key.is_empty() {
+        // Empty key == "clear it". A missing file is already the desired state.
+        return match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        };
+    }
+    // Atomic write (SAVE-02 discipline): a kill mid-write must never leave a
+    // truncated secret file — temp + rename keeps the previous key readable.
+    let tmp = path.with_extension("paperling-tmp");
+    std::fs::write(&tmp, &key).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+// ===== Mobile notes root =====
+//
+// Android scoped storage makes OS-picked files untrustworthy for std::fs
+// (SAF hands back URI-form identifiers), so the mobile shell works inside one
+// app-private folder. This command resolves and creates it, seeding a first
+// note so a brand-new install has something to tap. Desktop ignores it.
+
+/// The notes root returned by `get_notes_dir`.
+#[derive(Debug, Serialize)]
+pub struct NotesDir {
+    pub path: String,
+    /// True when the folder had to be created (first launch).
+    pub created: bool,
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+const NOTES_WELCOME_MD: &str = r#"# Welcome to Paperling 📝
+
+This is your notes folder. Everything here lives **on this device**, in the
+app's private storage — no account, no sync, works offline.
+
+## Try it
+- Tap the **pencil** icon (bottom right) to edit this note
+- Open **Files** in the bottom bar to browse, or **+** to create a note
+- Switch to **Read** for a clean rendered view of any note
+- Add an AI endpoint in **Settings** to chat about your notes
+
+## Markdown in 30 seconds
+**bold**, *italic*, `inline code`, and [links](https://github.com/Razee4315/Paperling)
+
+- bullet lists
+- [x] and task lists
+
+```rust
+fn main() {
+    println!("code blocks render too");
+}
+```
+
+> Quotes, tables, math like $x^2$, and mermaid diagrams all render in Read mode.
+
+Delete or rewrite this note whenever you like — it is yours.
+"#;
+
+#[tauri::command]
+pub async fn get_notes_dir(app: tauri::AppHandle) -> Result<NotesDir, String> {
+    use tauri::Manager;
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Could not resolve app data dir: {e}"))?;
+    let dir = base.join("notes");
+    let created = !dir.exists();
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("Could not create notes folder: {e}"))?;
+
+    // Seed a first note only on a genuinely fresh folder, mobile only — the
+    // command exists cross-platform, but desktop sessions never call it.
+    if created && cfg!(any(target_os = "android", target_os = "ios")) {
+        let welcome = dir.join("Welcome.md");
+        if !welcome.exists() {
+            tokio::fs::write(&welcome, NOTES_WELCOME_MD)
+                .await
+                .map_err(|e| format!("Could not write the welcome note: {e}"))?;
+        }
+    }
+
+    Ok(NotesDir {
+        path: dir.to_string_lossy().into_owned(),
+        created,
+    })
 }
 
 #[cfg(test)]
