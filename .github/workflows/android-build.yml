@@ -23,6 +23,7 @@ on:
       - "package.json"
       - "bun.lock"
       - "scripts/patch-android-release-signing.mjs"
+      - "scripts/patch-android-open-with.mjs"
       - ".github/workflows/android-build.yml"
 
 # A cross-compile of the full Rust dependency tree takes a while; a stale run
@@ -137,11 +138,12 @@ jobs:
       - name: Patch release signing (debug-key fallback for test builds)
         run: node scripts/patch-android-release-signing.mjs src-tauri/gen/android/app/build.gradle.kts
 
-      - name: Patch "Open with Paperling" file handling
+      - name: Patch "Open with Paperling" file handling + system-bar insets
         # Intent-filter + MainActivity glue so tapping a .md in a file manager
         # opens it (the file is copied into app-private storage first, because
-        # std::fs cannot read Android content:// URIs).
-        run: node scripts/patch-android-file-open.mjs src-tauri/gen/android
+        # std::fs cannot read Android content:// URIs), plus real status/nav
+        # insets applied as padding (the WebView reports env() insets as 0).
+        run: node scripts/patch-android-open-with.mjs src-tauri/gen/android
 
       - name: Build APK (release, aarch64)
         # Release, not --debug: a debug build keeps the Rust library's debug

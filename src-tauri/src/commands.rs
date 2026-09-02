@@ -1006,6 +1006,43 @@ pub fn set_ai_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+// ===== "Open with" handoff (Android intent → frontend) =====
+//
+// The Kotlin side (CI patch: scripts/patch-android-open-with.mjs) copies a
+// file opened from another app into the app cache and writes incoming.json
+// there. The frontend pulls it once through this command — the marker is
+// deleted on read, mirroring get_cli_file's take semantics so a webview
+// reload doesn't re-open the same file.
+
+/// The pending intent-opened file handed over by the Android side.
+#[derive(Debug, Serialize)]
+pub struct IncomingFile {
+    pub path: String,
+    pub name: String,
+}
+
+#[tauri::command]
+pub async fn get_incoming_file(app: tauri::AppHandle) -> Result<Option<IncomingFile>, String> {
+    use tauri::Manager;
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("Could not resolve the cache dir: {e}"))?;
+    let marker = cache.join("incoming.json");
+    if !marker.exists() {
+        return Ok(None);
+    }
+    let raw = tokio::fs::read_to_string(&marker)
+        .await
+        .map_err(|e| format!("Could not read the handoff marker: {e}"))?;
+    // Take semantics: delete the marker before parsing so a malformed file
+    // can't wedge every future launch into the same error.
+    let _ = tokio::fs::remove_file(&marker).await;
+    let parsed: IncomingFile = serde_json::from_str(&raw)
+        .map_err(|e| format!("Corrupted handoff marker: {e}"))?;
+    Ok(Some(parsed))
+}
+
 // ===== Mobile notes root =====
 //
 // Android scoped storage makes OS-picked files untrustworthy for std::fs
@@ -1022,15 +1059,15 @@ pub struct NotesDir {
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
-const NOTES_WELCOME_MD: &str = r#"# Welcome to Paperling 📝
+const NOTES_WELCOME_MD: &str = r#"# Welcome to Paperling
 
 This is your notes folder. Everything here lives **on this device**, in the
-app's private storage — no account, no sync, works offline.
+app's private storage. No account, no sync, works offline.
 
 ## Try it
-- Tap the **pencil** icon (bottom right) to edit this note
-- Open **Files** in the bottom bar to browse, or **+** to create a note
-- Switch to **Read** for a clean rendered view of any note
+- Tap **Edit** in the bottom bar to write, **Read** to preview
+- Open **Files** in the bottom bar to browse, or **New** to create a note
+- Use the **menu (top left)** for save, find, export and more
 - Add an AI endpoint in **Settings** to chat about your notes
 
 ## Markdown in 30 seconds
@@ -1047,7 +1084,7 @@ fn main() {
 
 > Quotes, tables, math like $x^2$, and mermaid diagrams all render in Read mode.
 
-Delete or rewrite this note whenever you like — it is yours.
+Delete or rewrite this note whenever you like. It is yours.
 "#;
 
 #[tauri::command]
