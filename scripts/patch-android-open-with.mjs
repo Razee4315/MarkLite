@@ -37,7 +37,7 @@
  * Usage: node patch-android-open-with.mjs <gen/android>
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const MANIFEST_MARKER = "PAPERLING-OPEN-WITH";
@@ -144,28 +144,36 @@ const ACTIVITY_BODY = `\
     return null
   }
 
-  // ==== System document picker (SAF) ====
+  // ==== Web <-> native bridge ====
   //
-  // The in-app browser only reaches folders the Rust file commands can read —
-  // on Android that's the app-private notes area, so "go up" dead-ends in app
-  // data. Opening a note from anywhere on the phone needs ACTION_OPEN_DOCUMENT:
-  // JS calls PaperlingAndroid.openDocument(), the picked content:// file is
-  // copied into the app cache (std::fs cannot read content:// URIs), and the
-  // real cache path goes to the webview through window.__paperlingOpenFile —
-  // the same bridge the "Open with" intent flow uses.
+  // One JavascriptInterface ("PaperlingAndroid") exposes two native actions to
+  // the web app: openDocument() (system SAF picker -> copied to app cache ->
+  // delivered via __paperlingOpenFile) and saveToDownloads(name, content)
+  // (MediaStore write to the user-visible Downloads folder, mirrored into the
+  // app cache so the app can reopen and autosave the note).
+  //
+  // addJavascriptInterface only reaches pages that load AFTER the call, and
+  // Tauri creates the webview (and starts loading) asynchronously well after
+  // onCreate — so the attach retries until the webview exists and then reloads
+  // the still-initializing page once. That reload happens before first paint
+  // and is invisible; without it the interface never exists in the running
+  // page and the picker reports "not available".
   private var documentBridgeAttached = false
+  private var documentBridgeGaveUp = false
+  private var documentBridgeReloaded = false
   private var documentBridgeRetries = 0
   private val requestOpenDocument = 4201
 
   private fun attachDocumentBridge() {
-    if (documentBridgeAttached) return
+    if (documentBridgeAttached || documentBridgeGaveUp) return
     val web = findWebView(window.decorView)
     if (web == null) {
-      // Tauri creates the webview asynchronously; retry for ~30s, then give
-      // up quietly (the picker just won't exist in that pathological case).
       documentBridgeRetries += 1
-      if (documentBridgeRetries > 60) return
-      android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ attachDocumentBridge() }, 500)
+      if (documentBridgeRetries > 200) {
+        documentBridgeGaveUp = true
+        return
+      }
+      android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ attachDocumentBridge() }, 150)
       return
     }
     documentBridgeAttached = true
@@ -174,7 +182,49 @@ const ACTIVITY_BODY = `\
       fun openDocument() {
         runOnUiThread { launchDocumentPicker() }
       }
+
+      @android.webkit.JavascriptInterface
+      fun saveToDownloads(name: String, content: String) {
+        // Runs on the JS bridge thread — do the IO here, report on the UI one.
+        performSaveToDownloads(name, content)
+      }
     }, "PaperlingAndroid")
+    // Only pages loaded after addJavascriptInterface see it. If the app page
+    // already started loading, one early reload puts the bridge in place.
+    val url = web.url
+    if (!documentBridgeReloaded && url != null && url != "about:blank") {
+      documentBridgeReloaded = true
+      web.evaluateJavascript("location.reload()", null)
+    }
+  }
+
+  // True when the page is loaded far enough for evaluateJavascript to reach
+  // the app's window (the __paperlingOpenFile stub is inline in <head>, so any
+  // committed page has it).
+  private fun pageReady(): Boolean {
+    val web = findWebView(window.decorView) ?: return false
+    val url = web.url ?: return false
+    if (url == "about:blank") return false
+    return web.progress >= 100
+  }
+
+  // Deliver an opened file to the web app over the JS bridge, waiting (up to
+  // ~60s) for the bridge attach/reload and the first page load to settle. The
+  // incoming.json marker written by handleOpenIntent stays as the boot-time
+  // fallback; the app dedupes the two deliveries by tab path.
+  private fun deliverToWebview(path: String, name: String, attempt: Int = 0) {
+    if (attempt > 200) return
+    val attached = documentBridgeAttached || documentBridgeGaveUp
+    if (!attached || !pageReady()) {
+      android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+        { deliverToWebview(path, name, attempt + 1) },
+        300,
+      )
+      return
+    }
+    val js = "window.__paperlingOpenFile && window.__paperlingOpenFile(" +
+      JSONObject.quote(path) + ", " + JSONObject.quote(name) + ")"
+    webviewEval(js)
   }
 
   private fun launchDocumentPicker() {
@@ -186,6 +236,40 @@ const ACTIVITY_BODY = `\
       type = "*/*"
     }
     startActivityForResult(intent, requestOpenDocument)
+  }
+
+  // "Save to Downloads": write into the shared Downloads collection via
+  // MediaStore (no storage permission needed for the app's own inserts on
+  // API 29+), then mirror the bytes into the app cache so the note has a real
+  // path the Rust file commands can read (reopen, recents, autosave).
+  private fun performSaveToDownloads(rawName: String, content: String) {
+    try {
+      if (android.os.Build.VERSION.SDK_INT < 29) throw IllegalStateException("Needs Android 10+")
+      val safe = rawName.replace(Regex("[/\\\\\\\\:*?\\"<>|]"), "_")
+      val values = android.content.ContentValues().apply {
+        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, safe)
+        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/markdown")
+        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+      }
+      val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        ?: throw IllegalStateException("Could not create the Downloads entry")
+      contentResolver.openOutputStream(uri)?.use { out ->
+        out.write(content.toByteArray(Charsets.UTF_8))
+      } ?: throw IllegalStateException("Could not open the Downloads entry for writing")
+      val actualName = queryDisplayName(uri) ?: safe
+      val dir = File(cacheDir, "open")
+      dir.mkdirs()
+      val cache = File(dir, actualName)
+      cache.writeText(content, Charsets.UTF_8)
+      val js = "window.__paperlingOnSaveResult && window.__paperlingOnSaveResult(true, " +
+        JSONObject.quote(cache.absolutePath) + ", " + JSONObject.quote(actualName) + ")"
+      runOnUiThread { findWebView(window.decorView)?.evaluateJavascript(js, null) }
+    } catch (e: Exception) {
+      android.util.Log.e("Paperling", "Save to Downloads failed", e)
+      val js = "window.__paperlingOnSaveResult && window.__paperlingOnSaveResult(false, " +
+        JSONObject.quote(e.message ?: "Save failed") + ", null)"
+      runOnUiThread { findWebView(window.decorView)?.evaluateJavascript(js, null) }
+    }
   }
 
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -222,9 +306,12 @@ const ACTIVITY_BODY = `\
   }
 
   // A file manager "Open with Paperling" hands us a content:// URI the Rust
-  // file commands cannot read. Copy it into the app-private cache and leave
-  // incoming.json as the handoff marker; the frontend pulls it via the
-  // get_incoming_file command (take-once, like the desktop CLI-arg flow).
+  // file commands cannot read. Copy it into the app-private cache, then
+  // deliver it to the web app twice over, on purpose:
+  //   - incoming.json as the boot-time fallback (get_incoming_file, take-once)
+  //   - the JS bridge (__paperlingOpenFile) as the live path, which also
+  //     covers warm starts where the boot pull already ran.
+  // The app dedupes the two deliveries by tab path.
   private fun handleOpenIntent(intent: Intent?) {
     if (intent?.action != Intent.ACTION_VIEW) return
     val uri = intent.data ?: return
@@ -241,6 +328,7 @@ const ACTIVITY_BODY = `\
       payload.put("path", outFile.absolutePath)
       payload.put("name", safe)
       File(cacheDir, "incoming.json").writeText(payload.toString())
+      deliverToWebview(outFile.absolutePath, safe)
     } catch (e: Exception) {
       android.util.Log.e("Paperling", "Failed to import the opened file", e)
     }
@@ -370,51 +458,81 @@ console.log("  + system document picker bridge (PaperlingAndroid.openDocument)")
 // `tauri icon` generates the adaptive-icon foreground at the full 108dp
 // canvas with the logo edge-to-edge; launchers mask that to a ~72dp circle or
 // squircle, so the logo's outer strokes were visibly clipped on the phone
-// (reproduced locally by simulating the mask). Routing the foreground through
-// an inset drawable scales it to 60% of the canvas — exactly the 66dp
-// guaranteed-visible safe zone — for both the square and round variants.
-const ICON_MARKER = "PAPERLING-ICON-INSET";
+// (reproduced locally by simulating the mask).
+//
+// The padding is baked straight into the mipmap foreground PNGs (scale the
+// artwork to 60% of the canvas — the 66dp guaranteed-visible safe zone — on a
+// transparent square). It deliberately does NOT go through a wrapper drawable:
+// the template ships res/drawable-v24/ic_launcher_foreground.xml (the Tauri
+// logo vector) and a v24 qualifier beats plain drawable/ at resource
+// resolution — the first inset attempt pointed the adaptive icon at
+// @drawable/ic_launcher_foreground and phones rendered the template's logo
+// instead of ours.
 const resDir = join(genDir, "app", "src", "main", "res");
+const iconMarkerFile = join(genDir, ".paperling-icons-padded");
 
-const foregroundSource = ["xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi"]
-    .map((d) => join(resDir, `mipmap-${d}`, "ic_launcher_foreground.png"))
-    .find((p) => existsSync(p));
-if (!foregroundSource) {
-    fail("No mipmap-*/ic_launcher_foreground.png found — run `tauri icon` / the icon copy step before this patch.", "", resDir);
-}
-if (!existsSync(join(resDir, "values", "ic_launcher_background.xml"))) {
-    fail("values/ic_launcher_background.xml missing — the adaptive background color must exist for the inset XML to compile.", "", resDir);
-}
+if (existsSync(iconMarkerFile)) {
+    console.log("Launcher icon foregrounds already padded (marker file present)");
+} else {
+    const foregrounds = ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"]
+        .map((d) => join(resDir, `mipmap-${d}`, "ic_launcher_foreground.png"))
+        .filter(existsSync);
+    if (foregrounds.length === 0) {
+        fail("No mipmap-*/ic_launcher_foreground.png found — run `tauri icon` / the icon copy step before this patch.", "", resDir);
+    }
+    if (!existsSync(join(resDir, "values", "ic_launcher_background.xml"))) {
+        fail("values/ic_launcher_background.xml missing — the adaptive background color must exist for the adaptive icon XML to compile.", "", resDir);
+    }
 
-const INSET_DRAWABLE_XML = `\
+    const sharp = (await import("sharp")).default;
+    const SAFE_ZONE_FRACTION = 0.6;
+    for (const p of foregrounds) {
+        const meta = await sharp(p).metadata();
+        if (!meta.width || !meta.height) fail(`Cannot read dimensions of ${p}.`, "", p);
+        const inner = Math.round(Math.min(meta.width, meta.height) * SAFE_ZONE_FRACTION);
+        const content = await sharp(p)
+            .resize(inner, inner, { fit: "inside" })
+            .png()
+            .toBuffer();
+        const padded = await sharp({
+            create: {
+                width: meta.width,
+                height: meta.height,
+                channels: 4,
+                background: { r: 0, g: 0, b: 0, alpha: 0 },
+            },
+        })
+            .composite([
+                {
+                    input: content,
+                    left: Math.round((meta.width - inner) / 2),
+                    top: Math.round((meta.height - inner) / 2),
+                },
+            ])
+            .png()
+            .toBuffer();
+        writeFileSync(p, padded);
+    }
+
+    // The adaptive icons point straight at the padded mipmap bitmaps — no
+    // drawable indirection (see the v24 note above).
+    mkdirSync(join(resDir, "mipmap-anydpi-v26"), { recursive: true });
+    const ADAPTIVE_ICON_XML = `\
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ${ICON_MARKER}: the generated foreground fills the whole 108dp adaptive
-     icon canvas, so launcher masks (~72dp circle/squircle) clipped the logo.
-     The inset scales it into the guaranteed-visible safe zone. -->
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:drawable="@mipmap/ic_launcher_foreground"
-    android:insetLeft="20%"
-    android:insetTop="20%"
-    android:insetRight="20%"
-    android:insetBottom="20%" />
-`;
-
-const ADAPTIVE_ICON_XML = `\
-<?xml version="1.0" encoding="utf-8"?>
-<!-- ${ICON_MARKER}: foreground goes through the inset drawable so the logo
-     stays inside the launcher mask's safe zone. -->
+<!-- ${MANIFEST_MARKER}: foreground baked with safe-zone padding by the CI patch. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
     <background android:drawable="@color/ic_launcher_background" />
 </adaptive-icon>
 `;
+    writeFileSync(join(resDir, "mipmap-anydpi-v26", "ic_launcher.xml"), ADAPTIVE_ICON_XML);
+    writeFileSync(join(resDir, "mipmap-anydpi-v26", "ic_launcher_round.xml"), ADAPTIVE_ICON_XML);
 
-const drawableDir = join(resDir, "drawable");
-mkdirSync(drawableDir, { recursive: true });
-writeFileSync(join(drawableDir, "ic_launcher_foreground.xml"), INSET_DRAWABLE_XML);
+    // Self-heal: a previous version of this patch routed the foreground
+    // through drawable/ic_launcher_foreground.xml; remove it so the template's
+    // v24 vector can never shadow the real logo again.
+    rmSync(join(resDir, "drawable", "ic_launcher_foreground.xml"), { force: true });
 
-const anydpiDir = join(resDir, "mipmap-anydpi-v26");
-mkdirSync(anydpiDir, { recursive: true });
-writeFileSync(join(anydpiDir, "ic_launcher.xml"), ADAPTIVE_ICON_XML);
-writeFileSync(join(anydpiDir, "ic_launcher_round.xml"), ADAPTIVE_ICON_XML);
-console.log(`Patched ${resDir}: adaptive-icon foreground inset into the launcher safe zone`);
+    writeFileSync(iconMarkerFile, new Date().toISOString() + "\n");
+    console.log(`Padded ${foregrounds.length} launcher foreground PNGs into the launcher safe zone`);
+}
