@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { attachFocusTrap } from "../utils/focusTrap";
+import { IS_MOBILE } from "../utils/platform";
+import { openSystemFilePicker } from "../utils/nativePicker";
 import mascotCarry from "../assets/mascot/mascot-carry.png";
 import mascotShrug from "../assets/mascot/mascot-shrug.png";
 
@@ -124,6 +126,16 @@ export function FileExplorer({
         if (parentDir) setCurrentViewDir(parentDir);
     };
 
+    // System document picker (mobile): the in-app browser is rooted where the
+    // Rust file commands can read — on Android that's the app-private notes
+    // area — so "go up" dead-ends in app data. Opening a note from anywhere
+    // else on the phone goes through the SAF bridge (see nativePicker.ts).
+    const handleOpenFromDevice = () => {
+        if (!openSystemFilePicker()) {
+            setError("System file picker isn't available in this build");
+        }
+    };
+
     const directoryName = currentViewDir
         ? currentViewDir.replace(/\\/g, "/").split("/").pop()
         : "Files";
@@ -159,6 +171,18 @@ export function FileExplorer({
                     <span className="truncate max-w-[140px]" title={directoryName}>{directoryName}</span>
                 </div>
                 <div className="flex items-center gap-1">
+                    {IS_MOBILE && (
+                        <button
+                            onClick={handleOpenFromDevice}
+                            aria-label="Open a file from anywhere on this device"
+                            title="Open from device"
+                            className="btn-press flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-[18px]">
+                                drive_file_move
+                            </span>
+                        </button>
+                    )}
                     <button
                         onClick={() => currentViewDir && loadFiles(currentViewDir)}
                         aria-label="Refresh file list"

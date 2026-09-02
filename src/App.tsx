@@ -28,6 +28,7 @@ import { useFileSession } from "./hooks/useFileSession";
 import { useKeyboardInset } from "./hooks/useKeyboardInset";
 import { IS_MOBILE, isTauri } from "./utils/platform";
 import { joinNotesPath } from "./utils/mobileFiles";
+import { openSystemFilePicker } from "./utils/nativePicker";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -205,6 +206,21 @@ function AppContent() {
     resolve: (path: string | null) => void;
   } | null>(null);
 
+  // Close all panels. Defined early: the Android open-file bridge (below)
+  // puts the sheets away when a note arrives from outside the app.
+  const closeAllPanels = useCallback(() => {
+    setShowFileExplorer(false);
+    setShowTOC(false);
+    setShowBacklinks(false);
+  }, []);
+
+  // Settings close shared by the modal's own onClose and the back handler —
+  // both must pick up AI endpoint/key edits made while it was open.
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+    setAiConfigState(getAIConfig());
+  }, []);
+
   useEffect(() => {
     // Only meaningful inside Tauri (the command doesn't exist in a plain
     // browser, and its failure toast would just be noise on the ?mobile=1
@@ -365,13 +381,17 @@ function AppContent() {
     bridge.__paperlingOnOpenFile = (p) => {
       if (!p?.path) return;
       void loadFile(p.path);
+      // Both native open paths (Open-with intents and the system document
+      // picker) fire while the files sheet may be covering the screen; the
+      // freshly opened note must be visible, so put the sheets away.
+      closeAllPanels();
     };
     const pending = bridge.__paperlingPendingOpen;
     if (pending?.path) {
       bridge.__paperlingPendingOpen = undefined;
       void loadFile(pending.path);
     }
-  }, [loadFile]);
+  }, [loadFile, closeAllPanels]);
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
@@ -820,20 +840,6 @@ function AppContent() {
   const handleReviewResolve = useCallback((finalDoc: string | null) => {
     if (finalDoc != null) setContent(finalDoc);
     setProposedDoc(null);
-  }, []);
-
-  // Close all panels
-  const closeAllPanels = useCallback(() => {
-    setShowFileExplorer(false);
-    setShowTOC(false);
-    setShowBacklinks(false);
-  }, []);
-
-  // Settings close shared by the modal's own onClose and the back handler —
-  // both must pick up AI endpoint/key edits made while it was open.
-  const closeSettings = useCallback(() => {
-    setShowSettings(false);
-    setAiConfigState(getAIConfig());
   }, []);
 
   // ===== Android system back (gesture / button) =====
@@ -1433,6 +1439,13 @@ function AppContent() {
           items={[
             { id: "new", label: "New note", icon: "note_add", onSelect: handleNewFile },
             { id: "browse", label: "Open notes", icon: "folder_open", onSelect: handleOpenFileAction },
+            { id: "open-device", label: "Open from device…", icon: "drive_file_move", onSelect: () => {
+                // SAF picker for any .md on the phone (Downloads, Drive…),
+                // not just the notes folder the in-app browser can see.
+                if (!openSystemFilePicker()) {
+                  showToast("System file picker isn't available in this build", "error");
+                }
+              } },
             ...(hasFile
               ? [
                   { id: "save", label: "Save", icon: "save", onSelect: handleSaveFile },

@@ -26,13 +26,18 @@
  *    topmost surface (menu, palette, settings, find bar, panels...) and reports
  *    `true`; only `false` (nothing left to close) finishes the activity.
  *
+ * 4. Launcher icon safe zone. `tauri icon` ships a foreground that fills the
+ *    whole 108dp adaptive-icon canvas, so launcher masks (a ~72dp circle or
+ *    squircle) clipped the logo's outer strokes. The patch routes the
+ *    foreground through an inset drawable that scales it into the safe zone.
+ *
  * Idempotent via markers; fails loudly (dumping the target file) if the
  * template anchors moved — same contract as patch-android-release-signing.mjs.
  *
  * Usage: node patch-android-open-with.mjs <gen/android>
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const MANIFEST_MARKER = "PAPERLING-OPEN-WITH";
@@ -64,13 +69,14 @@ import org.json.JSONObject
 `;
 
 const ACTIVITY_BODY = `\
-  // ${ACTIVITY_MARKER}: system-bar insets, "open with" handling and the
-  // app-style back handler (CI patch).
+  // ${ACTIVITY_MARKER}: system-bar insets, "open with" handling, the app-style
+  // back handler and the system document picker (CI patch).
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     applySystemBarInsets()
     setupBackHandler()
+    attachDocumentBridge()
     handleOpenIntent(intent)
   }
 
@@ -136,6 +142,83 @@ const ACTIVITY_BODY = `\
       }
     }
     return null
+  }
+
+  // ==== System document picker (SAF) ====
+  //
+  // The in-app browser only reaches folders the Rust file commands can read —
+  // on Android that's the app-private notes area, so "go up" dead-ends in app
+  // data. Opening a note from anywhere on the phone needs ACTION_OPEN_DOCUMENT:
+  // JS calls PaperlingAndroid.openDocument(), the picked content:// file is
+  // copied into the app cache (std::fs cannot read content:// URIs), and the
+  // real cache path goes to the webview through window.__paperlingOpenFile —
+  // the same bridge the "Open with" intent flow uses.
+  private var documentBridgeAttached = false
+  private var documentBridgeRetries = 0
+  private val requestOpenDocument = 4201
+
+  private fun attachDocumentBridge() {
+    if (documentBridgeAttached) return
+    val web = findWebView(window.decorView)
+    if (web == null) {
+      // Tauri creates the webview asynchronously; retry for ~30s, then give
+      // up quietly (the picker just won't exist in that pathological case).
+      documentBridgeRetries += 1
+      if (documentBridgeRetries > 60) return
+      android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ attachDocumentBridge() }, 500)
+      return
+    }
+    documentBridgeAttached = true
+    web.addJavascriptInterface(object {
+      @android.webkit.JavascriptInterface
+      fun openDocument() {
+        runOnUiThread { launchDocumentPicker() }
+      }
+    }, "PaperlingAndroid")
+  }
+
+  private fun launchDocumentPicker() {
+    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      // "*/*", unfiltered: .md files are registered with every MIME under the
+      // sun (octet-stream, text/plain, vendor types) — filtering would hide
+      // exactly the files the user is looking for.
+      type = "*/*"
+    }
+    startActivityForResult(intent, requestOpenDocument)
+  }
+
+  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode != requestOpenDocument) return
+    val uri = if (resultCode == RESULT_OK) data?.data else null
+    if (uri == null) {
+      webviewEval("window.__paperlingPickDone && window.__paperlingPickDone(false)")
+      return
+    }
+    try {
+      val name = queryDisplayName(uri) ?: "picked.md"
+      val safe = name.replace(Regex("[/\\\\\\\\:*?\\"<>|]"), "_")
+      val dir = File(cacheDir, "open")
+      dir.mkdirs()
+      val outFile = File(dir, safe)
+      contentResolver.openInputStream(uri)?.use { input ->
+        outFile.outputStream().use { output -> input.copyTo(output) }
+      } ?: run {
+        webviewEval("window.__paperlingPickDone && window.__paperlingPickDone(false)")
+        return
+      }
+      val js = "window.__paperlingOpenFile && window.__paperlingOpenFile(" +
+        JSONObject.quote(outFile.absolutePath) + ", " + JSONObject.quote(safe) + ")"
+      webviewEval(js)
+    } catch (e: Exception) {
+      android.util.Log.e("Paperling", "Failed to import the picked file", e)
+      webviewEval("window.__paperlingPickDone && window.__paperlingPickDone(false)")
+    }
+  }
+
+  private fun webviewEval(js: String) {
+    findWebView(window.decorView)?.evaluateJavascript(js, null)
   }
 
   // A file manager "Open with Paperling" hands us a content:// URI the Rust
@@ -279,3 +362,59 @@ writeFileSync(activityFile, activity);
 console.log(`Patched ${activityFile}:`);
 console.log("  + system-bar inset padding (status/cutout/nav)");
 console.log("  + ACTION_VIEW capture (content:// copied to cache, incoming.json marker)");
+console.log("  + app-style back handler (IME -> web app -> finish)");
+console.log("  + system document picker bridge (PaperlingAndroid.openDocument)");
+
+// ---- 3. Launcher icon safe zone ----
+//
+// `tauri icon` generates the adaptive-icon foreground at the full 108dp
+// canvas with the logo edge-to-edge; launchers mask that to a ~72dp circle or
+// squircle, so the logo's outer strokes were visibly clipped on the phone
+// (reproduced locally by simulating the mask). Routing the foreground through
+// an inset drawable scales it to 60% of the canvas — exactly the 66dp
+// guaranteed-visible safe zone — for both the square and round variants.
+const ICON_MARKER = "PAPERLING-ICON-INSET";
+const resDir = join(genDir, "app", "src", "main", "res");
+
+const foregroundSource = ["xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi"]
+    .map((d) => join(resDir, `mipmap-${d}`, "ic_launcher_foreground.png"))
+    .find((p) => existsSync(p));
+if (!foregroundSource) {
+    fail("No mipmap-*/ic_launcher_foreground.png found — run `tauri icon` / the icon copy step before this patch.", "", resDir);
+}
+if (!existsSync(join(resDir, "values", "ic_launcher_background.xml"))) {
+    fail("values/ic_launcher_background.xml missing — the adaptive background color must exist for the inset XML to compile.", "", resDir);
+}
+
+const INSET_DRAWABLE_XML = `\
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ${ICON_MARKER}: the generated foreground fills the whole 108dp adaptive
+     icon canvas, so launcher masks (~72dp circle/squircle) clipped the logo.
+     The inset scales it into the guaranteed-visible safe zone. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher_foreground"
+    android:insetLeft="20%"
+    android:insetTop="20%"
+    android:insetRight="20%"
+    android:insetBottom="20%" />
+`;
+
+const ADAPTIVE_ICON_XML = `\
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ${ICON_MARKER}: foreground goes through the inset drawable so the logo
+     stays inside the launcher mask's safe zone. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/ic_launcher_background" />
+</adaptive-icon>
+`;
+
+const drawableDir = join(resDir, "drawable");
+mkdirSync(drawableDir, { recursive: true });
+writeFileSync(join(drawableDir, "ic_launcher_foreground.xml"), INSET_DRAWABLE_XML);
+
+const anydpiDir = join(resDir, "mipmap-anydpi-v26");
+mkdirSync(anydpiDir, { recursive: true });
+writeFileSync(join(anydpiDir, "ic_launcher.xml"), ADAPTIVE_ICON_XML);
+writeFileSync(join(anydpiDir, "ic_launcher_round.xml"), ADAPTIVE_ICON_XML);
+console.log(`Patched ${resDir}: adaptive-icon foreground inset into the launcher safe zone`);
