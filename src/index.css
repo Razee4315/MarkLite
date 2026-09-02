@@ -469,6 +469,16 @@ html.mobile .app-shell {
   padding-bottom: var(--keyboard-inset);
 }
 
+/* Safety net for "controls off the edge of the screen": every surface is
+   sized to fit its viewport individually (find-bar rows, tour card, toolbar
+   strip…), but one stray wide element must never turn the whole app into a
+   sideways-pannable page. `clip` kills horizontal panning without creating a
+   scroll container; `hidden` is the fallback for older WebViews. */
+html.mobile body {
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
 /* Below 16px, focusing a form field makes the Android WebView zoom the page —
    a jarring viewport jump on every tap into a text box. 16px is the threshold
    Chrome respects. (CodeMirror content is not a form field and keeps the

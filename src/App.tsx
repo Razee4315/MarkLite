@@ -1234,14 +1234,17 @@ function AppContent() {
     });
 
     // === Help ===
-    items.push({
-      id: "help.cheatsheet",
-      label: "Show keyboard shortcuts",
-      hint: "?",
-      section: "Help",
-      icon: "keyboard",
-      run: () => setShowCheatsheet(true),
-    });
+    // A keyboard-shortcut sheet is meaningless on a touch shell.
+    if (!IS_MOBILE) {
+      items.push({
+        id: "help.cheatsheet",
+        label: "Show keyboard shortcuts",
+        hint: "?",
+        section: "Help",
+        icon: "keyboard",
+        run: () => setShowCheatsheet(true),
+      });
+    }
     if (!IS_MOBILE) {
       items.push({
         id: "help.tour",
