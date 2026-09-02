@@ -227,6 +227,7 @@ export function FindBar({ isOpen, initialMode = "find", controller, revision, on
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Find in document"
+                    enterKeyHint="search"
                     className="flex-1 min-w-0 px-2 py-1 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                     aria-label="Find text"
                 />
@@ -254,6 +255,7 @@ export function FindBar({ isOpen, initialMode = "find", controller, revision, on
                         value={replacement}
                         onChange={(e) => setReplacement(e.target.value)}
                         placeholder="Replace"
+                        enterKeyHint="done"
                         className="flex-1 min-w-0 px-2 py-1 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                         aria-label="Replace with"
                     />
