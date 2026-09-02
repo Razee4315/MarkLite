@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Patch the Tauri-generated Android project for two things the template lacks:
+ * Patch the Tauri-generated Android project for three things the template lacks:
  *
  * 1. "Open with" / "Always" for .md files. Android delivers these as ACTION_VIEW
  *    intents carrying a content:// URI — there is no command line on Android, so
@@ -18,6 +18,13 @@
  *    PADDING on the window's content view, so the webview viewport starts below
  *    the status bar and above the gesture bar on every Android version
  *    (including 15+/16 where edge-to-edge cannot be opted out of).
+ *
+ * 3. System back (gesture / button) that behaves like an app. The template's
+ *    default finishes the activity outright, so back with Settings open killed
+ *    the whole editor. The patch routes back presses to the web app: the IME
+ *    hides first, then the frontend's window.__paperlingBack() closes its
+ *    topmost surface (menu, palette, settings, find bar, panels...) and reports
+ *    `true`; only `false` (nothing left to close) finishes the activity.
  *
  * Idempotent via markers; fails loudly (dumping the target file) if the
  * template anchors moved — same contract as patch-android-release-signing.mjs.
@@ -47,18 +54,23 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.view.View
+import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import java.io.File
 import org.json.JSONObject
 `;
 
 const ACTIVITY_BODY = `\
-  // ${ACTIVITY_MARKER}: system-bar insets + "open with" handling (CI patch).
+  // ${ACTIVITY_MARKER}: system-bar insets, "open with" handling and the
+  // app-style back handler (CI patch).
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     applySystemBarInsets()
+    setupBackHandler()
     handleOpenIntent(intent)
   }
 
@@ -82,6 +94,48 @@ const ACTIVITY_BODY = `\
       v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
       WindowInsetsCompat.CONSUMED
     }
+  }
+
+  // System back, app-style. The default (finish the activity) made back with
+  // Settings open close the whole editor. Order of precedence, matching how
+  // Android apps behave:
+  //   1. keyboard up  -> hide the IME (standard behaviour, never the app)
+  //   2. web app says it closed its topmost surface (__paperlingBack() === true)
+  //   3. otherwise the default: finish the activity (leave the app)
+  private fun setupBackHandler() {
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        val decor = window.decorView
+        val insets = ViewCompat.getRootWindowInsets(decor)
+        if (insets != null && insets.isVisible(WindowInsetsCompat.Type.ime())) {
+          WindowCompat.getInsetsController(window, decor).hide(WindowInsetsCompat.Type.ime())
+          return
+        }
+        val web = findWebView(decor)
+        if (web == null) {
+          finish()
+          return
+        }
+        web.evaluateJavascript(
+          "(function(){try{if(window.__paperlingBack&&window.__paperlingBack()===true){return '1'}}catch(e){}return '0'})()"
+        ) { result ->
+          if (result?.trim('"') != "1") {
+            finish()
+          }
+        }
+      }
+    })
+  }
+
+  // The Tauri webview is buried in the view hierarchy; walk it depth-first.
+  private fun findWebView(v: View?): WebView? {
+    if (v is WebView) return v
+    if (v is android.view.ViewGroup) {
+      for (i in 0 until v.childCount) {
+        findWebView(v.getChildAt(i))?.let { return it }
+      }
+    }
+    return null
   }
 
   // A file manager "Open with Paperling" hands us a content:// URI the Rust

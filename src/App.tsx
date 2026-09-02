@@ -415,7 +415,7 @@ function AppContent() {
   // The tour anchors to elements (mode toggle, editor panes) that only exist
   // once a file is open, so it can't run over the WelcomeScreen. Mobile skips
   // it entirely — it spotlights desktop chrome (title bar buttons, F11) that
-  // doesn't exist on the phone shell.
+  // doesn't exist on the phone shell, and its card overflowed narrow screens.
   useEffect(() => {
     if (hasFile && !booting && !getTourDone() && !IS_MOBILE) setShowTour(true);
   }, [hasFile, booting]);
@@ -729,9 +729,11 @@ function AppContent() {
   const handleOpenTutorial = useCallback(() => openTutorial(tutorialMarkdown), [openTutorial]);
 
   // "Replay the welcome tour" from Settings → About. The tour spotlights
-  // editor chrome, so make sure a buffer exists before showing it.
+  // editor chrome, so make sure a buffer exists before showing it. Never on
+  // mobile: every spotlight target is desktop-only chrome.
   useEffect(() => {
     const h = () => {
+      if (IS_MOBILE) return;
       if (!hasFile) handleNewFile();
       setShowTour(true);
     };
@@ -817,6 +819,59 @@ function AppContent() {
     setShowFileExplorer(false);
     setShowTOC(false);
     setShowBacklinks(false);
+  }, []);
+
+  // Settings close shared by the modal's own onClose and the back handler —
+  // both must pick up AI endpoint/key edits made while it was open.
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+    setAiConfigState(getAIConfig());
+  }, []);
+
+  // ===== Android system back (gesture / button) =====
+  // The native side (patched MainActivity) asks __paperlingBack() to close the
+  // topmost in-app surface; `true` = consumed, `false` = "nothing left, exit
+  // like a normal app". Order mirrors z-order: transient menus and dialogs
+  // first, then full modals, then docked panels, then the find bars, and —
+  // only when nothing is open — an unsaved-changes guard before exiting.
+  const backRef = useRef<() => boolean>(() => false);
+  backRef.current = (): boolean => {
+    if (tabMenu) { setTabMenu(null); return true; }
+    if (saveAsRequest) {
+      const req = saveAsRequest;
+      setSaveAsRequest(null);
+      req.resolve(null);
+      return true;
+    }
+    if (closeTabPrompt) { cancelCloseTab(); return true; }
+    if (showUnsavedBeforeClose) { setShowUnsavedBeforeClose(false); return true; }
+    if (showTour) { handleCloseTour(); return true; }
+    if (menuOpen) { setMenuOpen(false); return true; }
+    if (showPalette) { setShowPalette(false); return true; }
+    if (showSearch) { setShowSearch(false); return true; }
+    if (showSettings) { closeSettings(); return true; }
+    if (showStats) { setShowStats(false); return true; }
+    if (showCheatsheet) { setShowCheatsheet(false); return true; }
+    if (showFileExplorer || showTOC || showBacklinks) { closeAllPanels(); return true; }
+    if (showAIPanel) { setShowAIPanel(false); return true; }
+    if (previewFindOpen) { setPreviewFindOpen(false); return true; }
+    if ((window as { __paperlingEditorFindOpen?: boolean }).__paperlingEditorFindOpen) {
+      window.dispatchEvent(new CustomEvent("paperling:close-find"));
+      return true;
+    }
+    // Nothing open: surface unsaved work before the activity goes away.
+    if (collectDirtyTabs().length > 0) {
+      setShowUnsavedBeforeClose(true);
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!IS_MOBILE) return;
+    const bridge = window as unknown as { __paperlingBack?: () => boolean };
+    bridge.__paperlingBack = () => backRef.current();
+    return () => { delete bridge.__paperlingBack; };
   }, []);
 
   // Handle file drop
@@ -1601,6 +1656,8 @@ function AppContent() {
               onSetMode={setMode}
               onOpenFiles={handleOpenFileAction}
               onNewFile={handleNewFile}
+              outlineOpen={showTOC}
+              onToggleOutline={handleToggleTOC}
             />
           )}
 
@@ -1730,10 +1787,7 @@ function AppContent() {
         <Suspense fallback={null}>
           <SettingsModal
             isOpen={showSettings}
-            onClose={() => {
-              setShowSettings(false);
-              setAiConfigState(getAIConfig()); // pick up endpoint/key edits immediately
-            }}
+            onClose={closeSettings}
           />
         </Suspense>
       )}
