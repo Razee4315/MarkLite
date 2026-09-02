@@ -41,6 +41,10 @@ fn get_cli_file(state: tauri::State<CliFile>) -> Option<String> {
 pub fn run() {
     let cli_file = md_arg(&std::env::args().collect::<Vec<_>>());
 
+    // Desktop reassigns `builder` twice below (single-instance, window-state);
+    // both blocks are compiled out on mobile, where the plain chain needs no
+    // mut — hence the target-conditional lint allowance.
+    #[cfg_attr(not(desktop), allow(unused_mut))]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())

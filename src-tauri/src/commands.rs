@@ -1015,7 +1015,8 @@ pub fn set_ai_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
 // reload doesn't re-open the same file.
 
 /// The pending intent-opened file handed over by the Android side.
-#[derive(Debug, Serialize)]
+/// Deserialize: the command also parses the incoming.json marker into it.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IncomingFile {
     pub path: String,
     pub name: String,
