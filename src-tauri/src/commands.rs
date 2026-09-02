@@ -1117,6 +1117,22 @@ pub async fn get_notes_dir(app: tauri::AppHandle) -> Result<NotesDir, String> {
     })
 }
 
+// ===== Leave the app (mobile close flow) =====
+//
+// The unsaved-changes dialog's "discard / save and close" outcomes have no
+// window to destroy on a phone: window controls are OS chrome there and the
+// window capability is intentionally absent from mobile.json, so the frontend
+// needs one guaranteed way out once the user has made an explicit choice
+// (buffers were either saved or consciously abandoned). Desktop destroys the
+// window instead and never calls this; the command is defined (and
+// registered) cross-platform because the handler list is shared.
+
+/// Terminate the process. Only the mobile shell invokes it.
+#[tauri::command]
+pub fn exit_app() {
+    std::process::exit(0);
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

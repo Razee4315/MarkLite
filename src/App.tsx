@@ -568,8 +568,16 @@ function AppContent() {
   }, []);
 
   // Close-dialog handlers. destroy() skips the close-requested event, so we
-  // don't loop back into the dialog we just answered.
+  // don't loop back into the dialog we just answered. Mobile has no window to
+  // destroy — window controls are OS chrome there and the capability is
+  // intentionally absent — so the explicit save/discard outcome exits through
+  // the exit_app command instead. Without it a back-press with unsaved work
+  // could trap the user in the dialog forever.
   const forceCloseWindow = useCallback(() => {
+    if (IS_MOBILE) {
+      invoke("exit_app").catch(() => {/* nothing left to fall back to */});
+      return;
+    }
     desktopWindow()?.destroy().catch(() => {/* browser dev mode */});
   }, []);
 
