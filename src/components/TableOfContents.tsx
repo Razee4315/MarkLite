@@ -1,5 +1,6 @@
 import { useMemo, useEffect, useRef, useState } from "react";
 import { attachFocusTrap } from "../utils/focusTrap";
+import { IS_MOBILE } from "../utils/platform";
 import mascotReading from "../assets/mascot/mascot-reading.png";
 import mascotMagnify from "../assets/mascot/mascot-magnify.png";
 
@@ -102,8 +103,12 @@ export function TableOfContents({
     // works in code, preview, and split mode — and lands on the right heading
     // even when two sections share the same title (the old text-matching
     // approach always hit the first occurrence, and only in preview mode).
+    // On the phone the outline is a full-screen sheet: after navigating it
+    // must step aside, or the user stays staring at the list instead of the
+    // heading they just picked.
     const handleHeadingClick = (line: number) => {
         window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }));
+        if (IS_MOBILE) onClose();
     };
 
     const getIndent = (level: number): string => {
