@@ -171,18 +171,6 @@ export function FileExplorer({
                     <span className="truncate max-w-[140px]" title={directoryName}>{directoryName}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                    {IS_MOBILE && (
-                        <button
-                            onClick={handleOpenFromDevice}
-                            aria-label="Open a file from anywhere on this device"
-                            title="Open from device"
-                            className="btn-press flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                        >
-                            <span className="material-symbols-outlined text-[18px]">
-                                drive_file_move
-                            </span>
-                        </button>
-                    )}
                     <button
                         onClick={() => currentViewDir && loadFiles(currentViewDir)}
                         aria-label="Refresh file list"
@@ -207,6 +195,21 @@ export function FileExplorer({
 
             {/* Content */}
             <div className="flex-1 min-h-0 overflow-y-auto">
+                {/* System document picker (mobile). A labeled row, not a header
+                    icon — on-device testing showed an ambiguous icon got
+                    confused with the folder browser itself. The in-app list is
+                    rooted where the Rust file commands can read (the notes
+                    folder / the open file's directory); this reaches the rest
+                    of the device through the SAF bridge. */}
+                {IS_MOBILE && (
+                    <button
+                        onClick={handleOpenFromDevice}
+                        className="btn-press w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] border-b border-[var(--border-subtle)] transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">drive_file_move</span>
+                        Open from device…
+                    </button>
+                )}
                 {isLoading ? (
                     <div className="flex items-center justify-center h-32 text-[var(--text-secondary)] text-sm">
                         Loading...

@@ -9,7 +9,7 @@ import { ThemeProvider, useTheme, type Theme } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
 import { MobileTopBar, MobileMenu } from "./components/MobileTopBar";
 import { MobileBottomNav } from "./components/MobileBottomNav";
-import { SaveAsNameModal } from "./components/SaveAsNameModal";
+import { SaveAsNameModal, type SaveAsChoice } from "./components/SaveAsNameModal";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -28,7 +28,8 @@ import { useFileSession } from "./hooks/useFileSession";
 import { useKeyboardInset } from "./hooks/useKeyboardInset";
 import { IS_MOBILE, isTauri } from "./utils/platform";
 import { joinNotesPath } from "./utils/mobileFiles";
-import { openSystemFilePicker } from "./utils/nativePicker";
+import { openSystemFilePicker, saveToDownloads, DOWNLOADS_SENTINEL } from "./utils/nativePicker";
+import { normalizeMarkdownFileName } from "./utils/mobileFiles";
 
 // === Lazy-loaded screens / dialogs ===
 //
@@ -257,15 +258,24 @@ function AppContent() {
   );
 
   const handleSaveAsConfirm = useCallback(
-    async (name: string | null) => {
+    async (choice: SaveAsChoice | null) => {
       const req = saveAsRequest;
       setSaveAsRequest(null);
-      if (!req) return;
-      if (!name || !notesDir) {
+      if (!req || !choice) {
+        req?.resolve(null);
+        return;
+      }
+      if (choice.destination === "downloads") {
+        // useFileSession owns the note content and performs the native
+        // MediaStore write; the sentinel just reports the chosen destination.
+        req.resolve(DOWNLOADS_SENTINEL);
+        return;
+      }
+      if (!notesDir) {
         req.resolve(null);
         return;
       }
-      const path = joinNotesPath(notesDir, name);
+      const path = joinNotesPath(notesDir, choice.name);
       if (!path) {
         req.resolve(null);
         return;
@@ -274,7 +284,7 @@ function AppContent() {
       // needs the replace confirmation.
       try {
         await invoke("get_file_info", { path });
-        const ok = await ask(`"${name}" already exists. Replace it?`, {
+        const ok = await ask(`"${choice.name}" already exists. Replace it?`, {
           title: "Replace note",
           kind: "warning",
         });
@@ -611,6 +621,14 @@ function AppContent() {
         const selected = await promptForSavePath(t.fileName);
         if (!selected) return; // cancelled a save-as → keep the app open
         path = selected;
+      }
+      if (path === DOWNLOADS_SENTINEL) {
+        const cachePath = await saveToDownloads(normalizeMarkdownFileName(t.fileName), t.content);
+        if (!cachePath.ok || !cachePath.path) {
+          showToast(cachePath.error || `Could not save ${t.fileName} to Downloads`, "error");
+          return;
+        }
+        path = cachePath.path;
       }
       try {
         await invoke("save_file", { path, content: t.content });
@@ -1439,7 +1457,7 @@ function AppContent() {
           items={[
             { id: "new", label: "New note", icon: "note_add", onSelect: handleNewFile },
             { id: "browse", label: "Open notes", icon: "folder_open", onSelect: handleOpenFileAction },
-            { id: "open-device", label: "Open from device…", icon: "drive_file_move", onSelect: () => {
+            { id: "open-device", label: "Open from device…", icon: "drive_file_move", dividerBefore: true, onSelect: () => {
                 // SAF picker for any .md on the phone (Downloads, Drive…),
                 // not just the notes folder the in-app browser can see.
                 if (!openSystemFilePicker()) {
@@ -1866,11 +1884,12 @@ function AppContent() {
       })()}
 
       {/* Mobile Save-As name prompt. Mounted while a save location is pending;
-          resolves with a notes-dir path (see promptForSavePath). */}
+          resolves with a notes-dir path, the Downloads sentinel, or null. */}
       {IS_MOBILE && saveAsRequest && (
         <SaveAsNameModal
           isOpen
           defaultName={saveAsRequest.defaultName}
+          notesPath={notesDir}
           onConfirm={handleSaveAsConfirm}
         />
       )}

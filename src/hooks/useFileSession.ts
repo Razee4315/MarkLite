@@ -8,6 +8,8 @@ import { useAutosave } from "./useAutosave";
 import { useExternalChangeWatcher } from "./useExternalChangeWatcher";
 import { IS_MOBILE } from "../utils/platform";
 import { errMessage } from "../utils/errors";
+import { DOWNLOADS_SENTINEL, saveToDownloads } from "../utils/nativePicker";
+import { normalizeMarkdownFileName } from "../utils/mobileFiles";
 import {
   addRecentFile,
   getLastFile,
@@ -420,6 +422,23 @@ export function useFileSession({
     [promptSavePath],
   );
 
+  // The Save-As prompt resolves the Downloads sentinel when the user picked
+  // "Save to Downloads" in the mobile modal. This hook owns the buffer
+  // content, so the native MediaStore write happens here; the bridge mirrors
+  // the file into the app cache and returns that path, which then behaves
+  // like any other saved location (tabs, recents, autosave).
+  const saveViaDownloads = useCallback(
+    async (name: string, data: string): Promise<string | null> => {
+      const result = await saveToDownloads(normalizeMarkdownFileName(name), data);
+      if (!result.ok || !result.path) {
+        showToast(result.error || "Could not save to Downloads", "error");
+        return null;
+      }
+      return result.path;
+    },
+    [showToast],
+  );
+
   // "Save" in the close-tab dialog: persist the tab (prompting a location for an
   // untitled buffer), then close it. Cancel/failure keeps the tab open. TABS-05.
   const handleSaveCloseTab = useCallback(async () => {
@@ -434,7 +453,15 @@ export function useFileSession({
     if (!path) {
       const selected = await promptForPath(data.fileName);
       if (!selected) return;
-      path = selected;
+      if (selected === DOWNLOADS_SENTINEL) {
+        // The prompt can only hand back the sentinel; this hook owns the
+        // content, so the native MediaStore write happens here.
+        const cachePath = await saveViaDownloads(data.fileName, data.content);
+        if (!cachePath) return;
+        path = cachePath;
+      } else {
+        path = selected;
+      }
     }
     try {
       await invoke("save_file", { path, content: data.content });
@@ -444,7 +471,7 @@ export function useFileSession({
     }
     setCloseTabPrompt(null);
     finalizeCloseTab(prompt.id);
-  }, [closeTabPrompt, finalizeCloseTab, getTabSaveData, promptForPath, showToast]);
+  }, [closeTabPrompt, finalizeCloseTab, getTabSaveData, promptForPath, saveViaDownloads, showToast]);
 
   const handleDiscardCloseTab = useCallback(() => {
     const prompt = closeTabPrompt;
@@ -543,8 +570,15 @@ export function useFileSession({
 
   // Save As — always prompts for a new path, even if a path is already set.
   const handleSaveAs = useCallback(async () => {
-    const selected = await promptForPath(fileName ?? null);
+    let selected = await promptForPath(fileName ?? null);
     if (!selected) return;
+    let viaDownloads = false;
+    if (selected === DOWNLOADS_SENTINEL) {
+      const cachePath = await saveViaDownloads(fileName ?? "Untitled.md", content);
+      if (!cachePath) return;
+      selected = cachePath;
+      viaDownloads = true;
+    }
     try {
       knownMtimeRef.current = await invoke<number>("save_file", { path: selected, content });
       setFilePath(selected);
@@ -572,12 +606,17 @@ export function useFileSession({
           ),
         );
       }
-      showToast("File saved", "success");
+      showToast(
+        viaDownloads
+          ? `Saved to Downloads as "${name}" — a working copy lives in your notes folder`
+          : "File saved",
+        "success",
+      );
     } catch (error) {
       console.error("Failed to save file:", error);
       showToast(errMessage(error) || "Failed to save file", "error");
     }
-  }, [commitTabs, content, fileName, promptForPath, showToast]);
+  }, [commitTabs, content, fileName, promptForPath, saveViaDownloads, showToast]);
 
   // Save file (Save As if no path yet).
   const handleSaveFile = useCallback(async () => {

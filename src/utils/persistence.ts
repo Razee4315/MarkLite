@@ -147,9 +147,11 @@ export const getOpenInReader = (): boolean => safeGet<boolean>(KEY_OPEN_IN_READE
 export const setOpenInReader = (v: boolean): void => safeSet(KEY_OPEN_IN_READER, v);
 
 // Master switch for every AI surface (title-bar button, side panel, toolbar
-// sparkle, Alt+J, command palette entry). On by default; flipped in Settings.
+// sparkle, Alt+J, command palette entry). OFF by default — AI needs an
+// endpoint the user has to configure anyway, and an enabled-by-default
+// feature that can't work yet is just noise in the UI (owner request).
 const KEY_AI_ENABLED = "paperling:aiEnabled";
-export const getAIEnabled = (): boolean => safeGet<boolean>(KEY_AI_ENABLED, true);
+export const getAIEnabled = (): boolean => safeGet<boolean>(KEY_AI_ENABLED, false);
 export const setAIEnabled = (v: boolean): void => safeSet(KEY_AI_ENABLED, v);
 
 // How many previous chat turns (user + assistant pairs) accompany each AI

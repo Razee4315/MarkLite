@@ -15,6 +15,7 @@ import {
 } from "../utils/persistence";
 import { AI_PROVIDERS, matchProvider, type AIProvider } from "../utils/aiProviders";
 import { attachFocusTrap } from "../utils/focusTrap";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { isValidEndpoint, endpointLeaksKey, runAIAction } from "../utils/aiAssist";
 import mascotWave from "../assets/mascot/mascot-wave.png";
 
@@ -224,7 +225,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         />
                     </div>
                     <nav className="flex-1 py-2">
-                        {sections.map((s) => (
+                        {/* AI needs an endpoint configured on a keyboard and is
+                            switched off by default; on the phone it's just a
+                            dead section, so it isn't offered. */}
+                        {sections
+                            .filter((s) => !IS_MOBILE || s.id !== "ai")
+                            .map((s) => (
                             <button
                                 key={s.id}
                                 data-active={section === s.id}
@@ -362,7 +368,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         {section === "editor" && (
                             <div className="rounded-[var(--radius-lg)] border border-[var(--border)] divide-y divide-[var(--border-subtle)] overflow-hidden">
-                                {matches("typewriter") && (
+                                {/* Typewriter scrolling orbits a physical
+                                    keyboard's caret line; on touch it's a
+                                    solution without a problem. */}
+                                {matches("typewriter") && !IS_MOBILE && (
                                     <ToggleRow label="Typewriter mode" description="Keep caret vertically centered" checked={typewriter}
                                         onChange={(v) => { setTypewriterLocal(v); setTypewriterMode(v); fire("paperling:typewriter-toggle", v); }} />
                                 )}
@@ -393,7 +402,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             </div>
                         )}
 
-                        {section === "ai" && (
+                        {section === "ai" && !IS_MOBILE && (
                             <>
                                 <div className="rounded-[var(--radius-lg)] border border-[var(--border)] divide-y divide-[var(--border-subtle)] overflow-hidden">
                                     <ToggleRow label="Enable AI" description="Show the AI button and assistant in the editor" checked={aiEnabled}
@@ -561,6 +570,42 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     </div>
                                 </div>
                                 <p>Built with Tauri + React + TypeScript.</p>
+
+                                {/* The maker. Links open in the system browser
+                                    via the opener plugin (granted on desktop
+                                    and mobile); fall back to a plain anchor in
+                                    plain-browser dev mode. */}
+                                <div className="pt-3 border-t border-[var(--border-subtle)] text-xs space-y-2">
+                                    <div className="text-[var(--text-muted)] uppercase tracking-wider text-[10px] font-semibold">Created by</div>
+                                    <div className="text-sm font-medium text-[var(--text-primary)]">Saqlain Razee</div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                openUrl("https://github.com/Razee4315").catch(() => {
+                                                    window.open("https://github.com/Razee4315", "_blank");
+                                                });
+                                            }}
+                                            className="btn-press flex items-center gap-2 w-fit text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-[16px]">code</span>
+                                            <span>GitHub — Razee4315</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                openUrl("https://www.linkedin.com/in/saqlainrazee/").catch(() => {
+                                                    window.open("https://www.linkedin.com/in/saqlainrazee/", "_blank");
+                                                });
+                                            }}
+                                            className="btn-press flex items-center gap-2 w-fit text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-[16px]">work</span>
+                                            <span>LinkedIn — saqlainrazee</span>
+                                        </button>
+                                    </div>
+                                </div>
+
                                 {/* Keyboard tour steps don't exist on the touch shell. */}
                                 {!IS_MOBILE && (
                                     <p>Press <kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">?</kbd> to view all keyboard shortcuts.</p>

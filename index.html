@@ -29,19 +29,16 @@
             dracula: "#282a36",
           };
           var stored = localStorage.getItem("paperling-theme");
-          var theme = THEME_BG[stored]
-            ? stored
-            : window.matchMedia &&
-              window.matchMedia("(prefers-color-scheme: light)").matches
-            ? "light"
-            : "dark";
+          // Paper is the brand default for first runs; a saved choice always
+          // wins. (Must mirror ThemeContext's getInitialTheme.)
+          var theme = THEME_BG[stored] ? stored : "paper";
           var el = document.documentElement;
           // Set data-theme so index.css variables resolve correctly the instant
           // the stylesheet loads, and set the color inline for the pre-CSS frame.
           el.setAttribute("data-theme", theme);
           el.style.backgroundColor = THEME_BG[theme];
         } catch (e) {
-          /* localStorage blocked or corrupt: keep the dark inline default */
+          /* localStorage blocked or corrupt: keep the paper default */
         }
       })();
     </script>

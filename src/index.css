@@ -607,16 +607,17 @@ html.mobile .settings-nav nav::-webkit-scrollbar {
   display: none;
 }
 
-/* Compact pills so every section (Appearance / Editor / AI / About) is
+/* Compact section tabs so every section (Appearance / Editor / AI / About) is
    visible or one swipe away — the desktop full-width rows stacked three of
-   them off-screen. */
+   them off-screen. Gently rounded rectangles (full pills read as ambiguous
+   round chips in on-device feedback). */
 html.mobile .settings-nav nav button {
   width: auto;
   flex: 0 0 auto;
   white-space: nowrap;
   padding: 8px 14px;
   border: 1px solid var(--border);
-  border-radius: 9999px;
+  border-radius: 10px;
 }
 
 html.mobile .settings-nav nav button[data-active="true"] {
