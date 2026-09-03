@@ -8,6 +8,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import { ThemeProvider, useTheme, type Theme } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
+import { ZenTopBar } from "./components/ZenTopBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -154,6 +155,12 @@ function AppContent() {
   const [toolbarVisible, setToolbarVisible] = usePersistedState<boolean>(getToolbarEnabled, setToolbarEnabled);
   const [wordWrapEnabled, setWordWrapEnabled] = usePersistedState<boolean>(getWordWrap, setWordWrap);
   const [zenMode, setZenModeState] = usePersistedState<boolean>(getZenMode, setZenMode);
+  // Live mirrors for the mount-once Settings event listener below, so the
+  // Settings toggle routes through the same toggle (with view-mode
+  // park/restore) as F9 instead of flipping the bare flag. ZEN-01.
+  const zenModeRef = useRef(zenMode);
+  zenModeRef.current = zenMode;
+  const zenToggleRef = useRef<() => void>(() => {});
   const [spellCheckEnabled, setSpellCheckEnabled] = usePersistedState<boolean>(getSpellCheck, setSpellCheck);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   // Editor selection range. Collapsed (start === end) means no selection;
@@ -326,9 +333,12 @@ function AppContent() {
       ["paperling:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:wordwrap-toggle", (e) => setWordWrapEnabled(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
-      // Settings → Editor toggle for Zen mode. App owns the flag (persisted
-      // via usePersistedState); the modal only fires this event. ZEN-01.
-      ["paperling:zen-toggle", (e) => setZenModeState(!!(e as CustomEvent).detail?.enabled)],
+      // Settings → Editor toggle for Zen mode. Routed through the shared
+      // toggle (a no-op when already in the desired state) so entering via
+      // Settings parks/restores the view mode exactly like F9 does. ZEN-01.
+      ["paperling:zen-toggle", (e) => {
+        if (!!(e as CustomEvent).detail?.enabled !== zenModeRef.current) zenToggleRef.current();
+      }],
       ["paperling:autosave-toggle", (e) => setAutoSaveEnabled(!!(e as CustomEvent).detail?.enabled)],
       // Opened from the title-bar settings dropdown's "More settings…" entry.
       ["paperling:open-settings", () => setShowSettings(true)],
@@ -674,35 +684,32 @@ function AppContent() {
     setShowBacklinks(false);
   }, []);
 
-  // Zen mode: hide every toolbar and panel, leaving only the rendered reading
-  // canvas. Entering closes the drawers and the AI panel so exiting zen
-  // returns to a clean state. The flag persists, so read-mostly users stay in
-  // zen across restarts; rendering gates on `zenActive` below. ZEN-01.
+  // Zen mode: hide every toolbar and panel, leaving only the canvas. Entering
+  // closes the drawers and the AI panel and parks the view in Reader; the
+  // pre-zen view mode is restored on exit. Ctrl+E (and the palette view
+  // commands) keep working inside zen, so editing stays one keypress away —
+  // only the chrome stays hidden. ZEN-01.
+  const preZenModeRef = useRef<ViewMode | null>(null);
   const handleToggleZen = useCallback(() => {
     if (!zenMode) {
+      preZenModeRef.current = mode;
       closeAllPanels();
       setShowAIPanel(false);
       setPreviewFindOpen(false);
-      showToast("Zen mode — press F9 to exit", "info");
+      setMode("preview");
+      showToast(`Zen mode — ${formatShortcut("toggleMode")} to edit, ${formatShortcut("zenMode")} to exit`, "info");
+    } else {
+      const prev = preZenModeRef.current;
+      preZenModeRef.current = null;
+      if (prev) setMode(prev);
     }
     setZenModeState(!zenMode);
-  }, [zenMode, closeAllPanels, showToast]);
+  }, [zenMode, mode, closeAllPanels, showToast, setMode]);
+  zenToggleRef.current = handleToggleZen;
 
   // Effective zen: the flag alone means nothing on the welcome screen (there
   // is no canvas to isolate), so chrome hides only once a file is open.
   const zenActive = zenMode && hasFile;
-
-  // Invisible drag handle for the frameless window while zen hides the title
-  // bar. Single-drag moves the window, double-click toggles maximize — the
-  // same contract as the title bar. ZEN-01.
-  const handleZenDrag = useCallback(async (event: { button: number; detail: number }) => {
-    if (event.button !== 0) return;
-    try {
-      const w = Window.getCurrent();
-      if (event.detail === 2) await w.toggleMaximize();
-      else await w.startDragging();
-    } catch {/* browser dev mode */}
-  }, []);
 
   // Handle file drop
   const handleFileDrop = useCallback(
@@ -1277,11 +1284,14 @@ function AppContent() {
           {/* Split-aware layout. Both views always mounted; CSS toggles their display
               and width so editor/preview state (scroll, selection) is preserved across
               mode switches. */}
+          {/* Zen top bar: hover-reveal panel with the Normal exit button and
+              the window controls (the frameless window has no title bar in
+              zen). Its invisible hover strip doubles as the drag handle. */}
           {zenActive && (
-            <div
-              onMouseDown={handleZenDrag}
-              title="Drag to move window — press F9 to exit Zen mode"
-              className="h-2.5 shrink-0 bg-transparent"
+            <ZenTopBar
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={toggleFullscreen}
+              onExitZen={handleToggleZen}
             />
           )}
           <div
@@ -1305,7 +1315,7 @@ function AppContent() {
               data-split-left
               className="overflow-hidden flex flex-col"
               style={{
-                display: !zenActive && (mode === "code" || mode === "split") ? "flex" : "none",
+                display: mode === "code" || mode === "split" ? "flex" : "none",
                 flexBasis: mode === "split" ? `${splitRatio * 100}%` : "100%",
                 flexGrow: mode === "split" ? 0 : 1,
                 flexShrink: 0,
@@ -1341,7 +1351,7 @@ function AppContent() {
             <div
               className="overflow-hidden flex flex-col relative"
               style={{
-                display: zenActive || mode === "preview" || mode === "split" ? "flex" : "none",
+                display: mode === "preview" || mode === "split" ? "flex" : "none",
                 flexBasis: mode === "split" ? `${(1 - splitRatio) * 100}%` : "100%",
                 flexGrow: mode === "split" ? 0 : 1,
                 flexShrink: 0,

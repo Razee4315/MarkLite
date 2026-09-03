@@ -387,7 +387,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                         onChange={(v) => { setOpenInReaderLocal(v); setOpenInReader(v); }} />
                                 )}
                                 {matches("zen mode") && (
-                                    <ToggleRow label="Zen mode" description="Reading canvas only — hides every toolbar and panel. Files always open in zen. Press F9 to exit." checked={zenMode}
+                                    <ToggleRow label="Zen mode" description="Just the page. Ctrl+E edits, F9 exits." checked={zenMode}
                                         onChange={(v) => { setZenModeLocal(v); setZenMode(v); fire("paperling:zen-toggle", v); }} />
                                 )}
                             </div>
