@@ -921,6 +921,23 @@ html.touch ::-webkit-scrollbar {
   line-height: var(--line-height);
   font-family: var(--font-body);
   font-size: var(--font-size-base);
+  /* No wide child may pan the document sideways — wide tables scroll inside
+     .table-scroll, code blocks inside their pre, math inside .katex-display;
+     this is the last-resort clip (visible+clip is the legal pair that does
+     NOT turn the element into a scroll container, so vertical flow and the
+     scroll-sync fraction are untouched). */
+  overflow-x: clip;
+}
+
+/* Wide tables: the table keeps its natural width and the WRAPPER scrolls, so
+   the page's vertical reading scroll stays the only page-level scroll (the
+   wrapper is rendered by the preview's table renderer). */
+.markdown-body .table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  /* Reaching the table's right edge must not fling the page itself. */
+  overscroll-behavior-x: contain;
 }
 
 .markdown-body h1 {

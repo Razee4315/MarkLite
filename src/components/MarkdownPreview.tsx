@@ -650,6 +650,16 @@ const H3Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <Heading
 const H4Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={4} {...props} />;
 const H5Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={5} {...props} />;
 const H6Renderer = (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={6} {...props} />;
+// Wide tables scroll left/right INSIDE their own box (like code blocks do)
+// instead of stretching the whole document — a table wider than the column
+// used to make the entire preview pannable sideways, so a vertical reading
+// scroll kept drifting into empty space. Module-scope for renderer identity
+// stability (PREVIEW-06).
+const TableRenderer = ({ node, ...props }: React.HTMLAttributes<HTMLTableElement> & { node?: unknown }) => (
+    <div className="table-scroll">
+        <table {...props} />
+    </div>
+);
 
 function MarkdownPreviewImpl({
     content,
@@ -839,6 +849,7 @@ function MarkdownPreviewImpl({
             );
         },
         pre: PreRenderer,
+        table: TableRenderer,
         h1: H1Renderer,
         h2: H2Renderer,
         h3: H3Renderer,
