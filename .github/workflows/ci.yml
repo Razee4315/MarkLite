@@ -17,12 +17,6 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
 
-    # Temporary while the clippy failure is diagnosed: lets the publish step
-    # below open an issue with the log, because job logs are sign-in-gated.
-    permissions:
-      issues: write
-      contents: read
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,32 +61,9 @@ jobs:
 
       # clippy compiles the crate (so it subsumes `cargo check`) while also
       # failing the build on any lint warning, keeping the Rust side clean.
-      # Diagnostics are re-emitted as ::error annotations because job LOGS are
-      # sign-in-gated while annotations render publicly — temporary while the
-      # current lint failure is being diagnosed.
       - name: Lint Rust (clippy)
         working-directory: src-tauri
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo clippy --all-targets -- -D warnings 2>&1 | tee clippy.log
-          exit "${PIPESTATUS[0]}"
-
-      # Temporary diagnostic while the clippy failure is fixed: job logs are
-      # sign-in-gated and ::error annotations were not registering, so publish
-      # the captured log as a (public) issue instead. Remove once green.
-      - name: Publish clippy log (diagnostic)
-        if: failure()
-        working-directory: src-tauri
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          tail -c 60000 clippy.log > clippy-tail.txt || echo "no log captured" > clippy-tail.txt
-          gh issue create \
-            --repo Razee4315/Paperling \
-            --title "clippy diagnostics (${{ matrix.platform }}) — auto, temporary" \
-            --body-file clippy-tail.txt
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Test Rust
         working-directory: src-tauri
