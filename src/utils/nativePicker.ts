@@ -21,7 +21,9 @@
 
 interface PaperlingBridge {
     openDocument?: () => void;
-    saveToDownloads?: (name: string, content: string) => void;
+    /** mime is optional and defaults to text/markdown on the native side
+        (HTML export passes "text/html" so Downloads opens it in a browser). */
+    saveToDownloads?: (name: string, content: string, mime?: string) => void;
 }
 
 function getBridge(): PaperlingBridge | undefined {
@@ -71,10 +73,14 @@ function waitSaveResult(): Promise<DownloadsSaveResult> {
     });
 }
 
-export async function saveToDownloads(name: string, content: string): Promise<DownloadsSaveResult> {
+export async function saveToDownloads(
+    name: string,
+    content: string,
+    mime: string = "text/markdown",
+): Promise<DownloadsSaveResult> {
     const bridge = getBridge();
     if (!bridge?.saveToDownloads) return { ok: false, error: "not-available" };
-    bridge.saveToDownloads(name, content);
+    bridge.saveToDownloads(name, content, mime);
     return waitSaveResult();
 }
 

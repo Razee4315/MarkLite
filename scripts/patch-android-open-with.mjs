@@ -227,10 +227,10 @@ const ACTIVITY_BODY = `\
       }
 
       @android.webkit.JavascriptInterface
-      fun saveToDownloads(name: String, content: String) {
+      fun saveToDownloads(name: String, content: String, mime: String) {
         // Runs on the JS bridge thread — do the IO here, report on the UI one.
         if (!isAppOrigin(findWebView(window.decorView))) return
-        performSaveToDownloads(name, content)
+        performSaveToDownloads(name, content, mime)
       }
     }, "PaperlingAndroid")
     // Only pages loaded after addJavascriptInterface see it. If the app page
@@ -286,13 +286,16 @@ const ACTIVITY_BODY = `\
   // MediaStore (no storage permission needed for the app's own inserts on
   // API 29+), then mirror the bytes into the app cache so the note has a real
   // path the Rust file commands can read (reopen, recents, autosave).
-  private fun performSaveToDownloads(rawName: String, content: String) {
+  // mime carries the file's type so exported HTML (unlike notes) opens in a
+  // browser; anything blank or odd falls back to text/markdown.
+  private fun performSaveToDownloads(rawName: String, content: String, rawMime: String) {
     try {
       if (android.os.Build.VERSION.SDK_INT < 29) throw IllegalStateException("Needs Android 10+")
       val safe = rawName.replace(Regex("[/\\\\\\\\:*?\\"<>|]"), "_")
+      val mime = rawMime.trim().replace(Regex("[^A-Za-z0-9+./-]"), "").ifBlank { "text/markdown" }
       val values = android.content.ContentValues().apply {
         put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, safe)
-        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/markdown")
+        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
         put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
       }
       val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)

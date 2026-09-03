@@ -145,7 +145,7 @@ const THEME_CHOICES: { id: Theme; label: string }[] = [
 ];
 
 function AppContent() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, font, fontSize, customFont } = useTheme();
 
   // Publishes --keyboard-inset (the on-screen keyboard's height) and keeps
   // focused fields visible. Desktop-safe: without a visualViewport the hook
@@ -1048,6 +1048,38 @@ function AppContent() {
     return "";
   }, []);
 
+  // Mobile "Export as HTML…": the phone's counterpart of the desktop Export
+  // menu (there is no OS save panel to aim it at, so the file lands in the
+  // user-visible Downloads folder via the native MediaStore bridge). The
+  // pipeline is the desktop one verbatim — the preview DOM is captured (it
+  // stays mounted with display:none even in code mode) and pushed through
+  // prepareExportHtml / generateHTML, lazily imported so the export module
+  // stays out of the mobile bundle until first use. This is what makes the
+  // welcome note's "export" promise in this menu true. Defined after
+  // getExportHtml so the dependency below isn't in its temporal dead zone.
+  const handleExportHtml = useCallback(async () => {
+    if (!fileName) return;
+    const raw = getExportHtml();
+    if (!raw) {
+      showToast("Nothing to export yet", "error");
+      return;
+    }
+    try {
+      const { prepareExportHtml, generateHTML } = await import("./utils/exportUtils");
+      const cleaned = await prepareExportHtml(raw);
+      const title = fileName.replace(/\.(md|markdown)$/i, "");
+      const fullHTML = generateHTML(cleaned, title, theme, font, fontSize, true, customFont);
+      const res = await saveToDownloads(`${title}.html`, fullHTML, "text/html");
+      if (!res.ok) {
+        showToast(res.error || "Could not export HTML", "error");
+        return;
+      }
+      showToast(`Exported "${title}.html" to Downloads`, "success");
+    } catch (err) {
+      showToast(errMessage(err) || "Could not export HTML", "error");
+    }
+  }, [fileName, getExportHtml, showToast, theme, font, fontSize, customFont]);
+
   // Open find / find-and-replace from the Edit menu and command palette. In
   // reader mode "find" uses the preview find bar; "replace" only applies to the
   // editor, so from reader mode we switch to code mode first. The editor listens
@@ -1530,6 +1562,7 @@ function AppContent() {
               ? [
                   { id: "save", label: "Save", icon: "save", onSelect: handleSaveFile },
                   { id: "saveas", label: "Save as…", icon: "save_as", onSelect: handleSaveAs },
+                  { id: "export-html", label: "Export as HTML…", icon: "ios_share", onSelect: () => void handleExportHtml() },
                   { id: "find", label: "Find", icon: "search", onSelect: openFind },
                   { id: "replace", label: "Find and replace", icon: "find_replace", onSelect: openReplace },
                   { id: "stats", label: "Document statistics", icon: "analytics", onSelect: () => setShowStats(true) },
