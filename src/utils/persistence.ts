@@ -266,10 +266,15 @@ export const setAIConfig = (cfg: { endpoint: string; model: string; apiKey: stri
     safeSet(KEY_AI_ENDPOINT, cfg.endpoint);
     safeSet(KEY_AI_MODEL, cfg.model);
     cachedAIKey = cfg.apiKey;
-    // Persist the key to the OS keychain; on failure fall back to localStorage so
-    // the setting still survives a restart.
+    // Persist the key to the OS keychain (desktop) or the app-private key
+    // file (mobile). If that fails we deliberately do NOT fall back to
+    // localStorage: a cleartext secret on disk outlives the session and
+    // survives even a later keychain cleanup. The key stays in memory for
+    // this session; the failure is logged so "it didn't save" is visible.
+    // (The one-time legacy MIGRATION read in initAIKey is unaffected — it
+    // moves an existing plaintext key into secure storage and deletes it.)
     import("@tauri-apps/api/core")
         .then(({ invoke }) => invoke("set_ai_key", { key: cfg.apiKey }))
         .then(() => { try { localStorage.removeItem(KEY_AI_API_KEY); } catch {/* ignore */} })
-        .catch(() => safeSet(KEY_AI_API_KEY, cfg.apiKey));
+        .catch((err) => console.error("Could not securely persist the AI API key:", err));
 };
