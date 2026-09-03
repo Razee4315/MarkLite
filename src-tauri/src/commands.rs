@@ -1225,7 +1225,13 @@ pub async fn get_notes_dir(app: tauri::AppHandle) -> Result<NotesDir, String> {
 
     // Seed a first note only on a genuinely fresh folder, mobile only — the
     // command exists cross-platform, but desktop sessions never call it.
-    if created && cfg!(any(target_os = "android", target_os = "ios")) {
+    // This MUST be a #[cfg] attribute block, not `if created && cfg!(...)`:
+    // cfg!() compiles BOTH branches at runtime-bool cost, so the desktop build
+    // would reference the mobile-only NOTES_WELCOME_MD and fail E0425 (exactly
+    // what desktop CI caught after the merge, hidden from android CI, which
+    // compiles only the mobile cfg).
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    if created {
         let welcome = dir.join("Welcome.md");
         if !welcome.exists() {
             tokio::fs::write(&welcome, NOTES_WELCOME_MD)
