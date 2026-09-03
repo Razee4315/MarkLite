@@ -93,6 +93,8 @@ import {
   setTourDone,
   setTypewriterMode,
   setWordWrap,
+  getZenMode,
+  setZenMode,
 } from "./utils/persistence";
 import { getAutoSave } from "./utils/persistence";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
@@ -151,6 +153,7 @@ function AppContent() {
   const [typewriterModeEnabled, setTypewriterModeEnabled] = usePersistedState<boolean>(getTypewriterMode, setTypewriterMode);
   const [toolbarVisible, setToolbarVisible] = usePersistedState<boolean>(getToolbarEnabled, setToolbarEnabled);
   const [wordWrapEnabled, setWordWrapEnabled] = usePersistedState<boolean>(getWordWrap, setWordWrap);
+  const [zenMode, setZenModeState] = usePersistedState<boolean>(getZenMode, setZenMode);
   const [spellCheckEnabled, setSpellCheckEnabled] = usePersistedState<boolean>(getSpellCheck, setSpellCheck);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   // Editor selection range. Collapsed (start === end) means no selection;
@@ -323,6 +326,9 @@ function AppContent() {
       ["paperling:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:wordwrap-toggle", (e) => setWordWrapEnabled(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
+      // Settings → Editor toggle for Zen mode. App owns the flag (persisted
+      // via usePersistedState); the modal only fires this event. ZEN-01.
+      ["paperling:zen-toggle", (e) => setZenModeState(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:autosave-toggle", (e) => setAutoSaveEnabled(!!(e as CustomEvent).detail?.enabled)],
       // Opened from the title-bar settings dropdown's "More settings…" entry.
       ["paperling:open-settings", () => setShowSettings(true)],
@@ -668,6 +674,36 @@ function AppContent() {
     setShowBacklinks(false);
   }, []);
 
+  // Zen mode: hide every toolbar and panel, leaving only the rendered reading
+  // canvas. Entering closes the drawers and the AI panel so exiting zen
+  // returns to a clean state. The flag persists, so read-mostly users stay in
+  // zen across restarts; rendering gates on `zenActive` below. ZEN-01.
+  const handleToggleZen = useCallback(() => {
+    if (!zenMode) {
+      closeAllPanels();
+      setShowAIPanel(false);
+      setPreviewFindOpen(false);
+      showToast("Zen mode — press F9 to exit", "info");
+    }
+    setZenModeState(!zenMode);
+  }, [zenMode, closeAllPanels, showToast]);
+
+  // Effective zen: the flag alone means nothing on the welcome screen (there
+  // is no canvas to isolate), so chrome hides only once a file is open.
+  const zenActive = zenMode && hasFile;
+
+  // Invisible drag handle for the frameless window while zen hides the title
+  // bar. Single-drag moves the window, double-click toggles maximize — the
+  // same contract as the title bar. ZEN-01.
+  const handleZenDrag = useCallback(async (event: { button: number; detail: number }) => {
+    if (event.button !== 0) return;
+    try {
+      const w = Window.getCurrent();
+      if (event.detail === 2) await w.toggleMaximize();
+      else await w.startDragging();
+    } catch {/* browser dev mode */}
+  }, []);
+
   // Handle file drop
   const handleFileDrop = useCallback(
     (path: string) => {
@@ -740,7 +776,7 @@ function AppContent() {
   useGlobalShortcuts({
     handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile,
     handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
-    toggleFullscreen,
+    toggleFullscreen, toggleZen: handleToggleZen,
     openCheatsheet: () => setShowCheatsheet(true),
     openPalette: () => setShowPalette(true),
     openSettings: () => setShowSettings(true),
@@ -894,6 +930,15 @@ function AppContent() {
         section: "View",
         icon: "vertical_split",
         run: handleToggleSplit,
+      });
+      items.push({
+        id: "view.zen",
+        label: zenMode ? "Exit Zen mode" : "Enter Zen mode",
+        hint: formatShortcut("zenMode"),
+        section: "View",
+        icon: "self_improvement",
+        keywords: "zen distraction free focus minimal reading",
+        run: handleToggleZen,
       });
       items.push({
         id: "view.explorer",
@@ -1073,7 +1118,7 @@ function AppContent() {
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, handleToggleBacklinks, toggleFullscreen,
     loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
-    theme, setTheme, openFind, openReplace,
+    theme, setTheme, openFind, openReplace, zenMode, handleToggleZen,
   ]);
 
   // Heading items are recomputed only while the palette is actually open.
@@ -1170,6 +1215,9 @@ function AppContent() {
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
+      {/* Zen mode hides the title bar (and every other toolbar). The thin
+          drag strip below keeps the frameless window movable. ZEN-01. */}
+      {!zenActive && (
       <TitleBar
         fileName={fileName ?? undefined}
         isDirty={isDirty}
@@ -1187,10 +1235,11 @@ function AppContent() {
         onReplace={openReplace}
         onFindInFiles={() => setShowSearch(true)}
       />
+      )}
 
       {/* Tab bar — always shown once a file is open (even with one tab), with a
           + button, so it's clear more files can be opened in tabs. TABS-01. */}
-      {hasFile && tabBarItems.length >= 1 && (
+      {hasFile && !zenActive && tabBarItems.length >= 1 && (
         <TabBar
           tabs={tabBarItems}
           activeId={activeTabId}
@@ -1228,6 +1277,13 @@ function AppContent() {
           {/* Split-aware layout. Both views always mounted; CSS toggles their display
               and width so editor/preview state (scroll, selection) is preserved across
               mode switches. */}
+          {zenActive && (
+            <div
+              onMouseDown={handleZenDrag}
+              title="Drag to move window — press F9 to exit Zen mode"
+              className="h-2.5 shrink-0 bg-transparent"
+            />
+          )}
           <div
             ref={splitContainerRef}
             className="flex-1 overflow-hidden flex flex-row"
@@ -1240,8 +1296,8 @@ function AppContent() {
             // at left-0, so reserve padding-left when one is open so they reflow the
             // editor beside them instead of overlaying it.
             style={{
-                paddingLeft: (showFileExplorer || showTOC || showBacklinks) ? `${SIDEBAR_WIDTH}px` : 0,
-                paddingRight: showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
+                paddingLeft: !zenActive && (showFileExplorer || showTOC || showBacklinks) ? `${SIDEBAR_WIDTH}px` : 0,
+                paddingRight: !zenActive && showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
                 transition: "padding 0.15s ease",
             }}
           >
@@ -1249,7 +1305,7 @@ function AppContent() {
               data-split-left
               className="overflow-hidden flex flex-col"
               style={{
-                display: mode === "code" || mode === "split" ? "flex" : "none",
+                display: !zenActive && (mode === "code" || mode === "split") ? "flex" : "none",
                 flexBasis: mode === "split" ? `${splitRatio * 100}%` : "100%",
                 flexGrow: mode === "split" ? 0 : 1,
                 flexShrink: 0,
@@ -1285,7 +1341,7 @@ function AppContent() {
             <div
               className="overflow-hidden flex flex-col relative"
               style={{
-                display: mode === "preview" || mode === "split" ? "flex" : "none",
+                display: zenActive || mode === "preview" || mode === "split" ? "flex" : "none",
                 flexBasis: mode === "split" ? `${(1 - splitRatio) * 100}%` : "100%",
                 flexGrow: mode === "split" ? 0 : 1,
                 flexShrink: 0,
@@ -1327,11 +1383,13 @@ function AppContent() {
             </div>
           </div>
 
+          {!zenActive && (
           <ModeToggle mode={mode} onSetMode={setMode} aiPanelOpen={showAIPanel} aiPanelWidth={aiPanelWidth} />
+          )}
 
           {/* Sidebar Panels — only mount when actually open so they don't
               load their module until first use. */}
-          {showFileExplorer && (
+          {!zenActive && showFileExplorer && (
             <Suspense fallback={null}>
               <FileExplorer
                 isOpen={showFileExplorer}
@@ -1341,7 +1399,7 @@ function AppContent() {
               />
             </Suspense>
           )}
-          {showTOC && (
+          {!zenActive && showTOC && (
             <Suspense fallback={null}>
               <TableOfContents
                 isOpen={showTOC}
@@ -1351,7 +1409,7 @@ function AppContent() {
               />
             </Suspense>
           )}
-          {showBacklinks && currentDirectory && filePath && (
+          {!zenActive && showBacklinks && currentDirectory && filePath && (
             <Suspense fallback={null}>
               <BacklinksPanel
                 isOpen={showBacklinks}
@@ -1365,7 +1423,7 @@ function AppContent() {
 
           {/* Right-side AI assistant panel. Reads the live document + current
               selection; chat is read-only for now (edit/agent flow is next). */}
-          {aiEnabled && showAIPanel && (
+          {!zenActive && aiEnabled && showAIPanel && (
             <Suspense fallback={null}>
               <AIPanel
                 isOpen={showAIPanel}
@@ -1381,6 +1439,7 @@ function AppContent() {
             </Suspense>
           )}
 
+          {!zenActive && (
 <StatusBar
             isSaved={!isDirty}
             lineNumber={mode === "preview" ? previewLine : cursorPosition.line}
@@ -1398,6 +1457,7 @@ function AppContent() {
             selectionLength={mode !== "preview" ? selectionLength : 0}
             selectionWordCount={selectionWordCount}
           />
+          )}
         </>
       )}
 
@@ -1497,7 +1557,7 @@ function AppContent() {
 
       {/* First-run welcome tour. Gated on hasFile because every spotlight
           target (editor panes, mode toggle) only exists with an open buffer. */}
-      {showTour && hasFile && !booting && (
+      {showTour && hasFile && !booting && !zenActive && (
         <Tour onClose={handleCloseTour} onOpenTutorial={handleOpenTutorial} />
       )}
 
