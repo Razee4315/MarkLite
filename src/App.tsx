@@ -1697,7 +1697,6 @@ function AppContent() {
               mode={mode}
               onSetMode={setMode}
               onOpenFiles={handleOpenFileAction}
-              onNewFile={handleNewFile}
               outlineOpen={showTOC}
               onToggleOutline={handleToggleTOC}
             />

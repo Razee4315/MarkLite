@@ -5,7 +5,6 @@ interface MobileBottomNavProps {
     mode: ViewMode;
     onSetMode: (mode: ViewMode) => void;
     onOpenFiles: () => void;
-    onNewFile: () => void;
     /** Outline (table of contents) sheet state, for the active highlight. */
     outlineOpen?: boolean;
     onToggleOutline?: () => void;
@@ -21,16 +20,15 @@ interface NavButton {
 
 /**
  * The phone's bottom navigation bar: Files (notes browser), Outline (table of
- * contents), New note, and the Read/Edit toggle. Deliberately minimal
- * (feedback round 1): the formatting toolbar is always visible above the
- * editor, and the AI assistant lives in the ☰ menu, so neither needs a nav
- * slot.
+ * contents), and the Read/Edit toggle. Deliberately minimal: new notes are
+ * made from the ☰ menu and the tab bar's + button, so the nav stays at three
+ * slots.
  *
  * ≥48dp targets, safe-area padded, in-flow at the bottom of the shell (like
  * the desktop StatusBar it replaces), and hidden while the on-screen keyboard
  * is open (html.kb-open) so it never sits behind the IME.
  */
-export function MobileBottomNav({ hasFile, mode, onSetMode, onOpenFiles, onNewFile, outlineOpen, onToggleOutline }: MobileBottomNavProps) {
+export function MobileBottomNav({ hasFile, mode, onSetMode, onOpenFiles, onToggleOutline, outlineOpen }: MobileBottomNavProps) {
     const buttons: NavButton[] = [
         { id: "files", icon: "folder_open", label: "Files", onSelect: onOpenFiles },
         // The desktop outline toggle lives in the status bar, which the phone
@@ -39,7 +37,6 @@ export function MobileBottomNav({ hasFile, mode, onSetMode, onOpenFiles, onNewFi
         ...(onToggleOutline
             ? [{ id: "outline", icon: "format_list_bulleted", label: "Outline", active: outlineOpen, onSelect: onToggleOutline }]
             : []),
-        { id: "new", icon: "note_add", label: "New", onSelect: onNewFile },
         ...(hasFile
             ? [
                   {
