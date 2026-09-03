@@ -31,6 +31,17 @@
  *    squircle) clipped the logo's outer strokes. The patch routes the
  *    foreground through an inset drawable that scales it into the safe zone.
  *
+ * 5. Backup/exclusion rules. The AI API key file and the notes folder are
+ *    excluded from cloud and device-to-device backups (Android 12+
+ *    dataExtractionRules, plus legacy fullBackupContent for 10–11): the key
+ *    must never leave the app sandbox, and the notes are local-first by
+ *    design.
+ *
+ * The PaperlingAndroid JS bridge and every evaluateJavascript call are
+ * origin-guarded to the app's tauri.localhost origin: Android's JS interface
+ * has no origin model of its own (unlike Tauri's IPC), and a remote page must
+ * never hold a native bridge or have app JS evaluated over it.
+ *
  * Idempotent via markers; fails loudly (dumping the target file) if the
  * template anchors moved — same contract as patch-android-release-signing.mjs.
  *
@@ -122,6 +133,12 @@ const ACTIVITY_BODY = `\
           finish()
           return
         }
+        // A non-app page must never have app JS evaluated over it — and none
+        // of the app's surfaces exist there anyway — so back simply leaves.
+        if (!isAppOrigin(web)) {
+          finish()
+          return
+        }
         web.evaluateJavascript(
           "(function(){try{if(window.__paperlingBack&&window.__paperlingBack()===true){return '1'}}catch(e){}return '0'})()"
         ) { result ->
@@ -142,6 +159,19 @@ const ACTIVITY_BODY = `\
       }
     }
     return null
+  }
+
+  // True when the given WebView is showing (or about to show) the app's own
+  // content. Tauri serves the app from the tauri.localhost origin; a blank
+  // page counts only while the app page is still committing into a fresh
+  // webview. Every bridge entry point and every evaluateJavascript runs
+  // behind this check: the Android JS interface and JS evaluation have no
+  // origin model of their own, so the guard lives here.
+  private fun isAppOrigin(web: WebView?): Boolean {
+    if (web == null) return false
+    val url = web.url ?: return false
+    if (url == "about:blank") return true
+    return url.startsWith("https://tauri.localhost") || url.startsWith("http://tauri.localhost")
   }
 
   // ==== Web <-> native bridge ====
@@ -176,16 +206,30 @@ const ACTIVITY_BODY = `\
       android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ attachDocumentBridge() }, 150)
       return
     }
+    // addJavascriptInterface is NOT origin-aware (unlike Tauri's IPC): once
+    // attached, ANY page this WebView loads can call it. Only ever attach over
+    // the app's own origin, and give up permanently if foreign content is
+    // showing — a remote page must never hold a native bridge. A null URL
+    // means the first load hasn't committed yet; the retry loop handles it.
+    val currentUrl = web.url
+    if (currentUrl != null && currentUrl != "about:blank" && !isAppOrigin(web)) {
+      documentBridgeGaveUp = true
+      return
+    }
     documentBridgeAttached = true
     web.addJavascriptInterface(object {
       @android.webkit.JavascriptInterface
       fun openDocument() {
+        // Origin re-check at entry: a page that navigated away after attach
+        // must not be able to drive native actions.
+        if (!isAppOrigin(findWebView(window.decorView))) return
         runOnUiThread { launchDocumentPicker() }
       }
 
       @android.webkit.JavascriptInterface
       fun saveToDownloads(name: String, content: String) {
         // Runs on the JS bridge thread — do the IO here, report on the UI one.
+        if (!isAppOrigin(findWebView(window.decorView))) return
         performSaveToDownloads(name, content)
       }
     }, "PaperlingAndroid")
@@ -263,12 +307,12 @@ const ACTIVITY_BODY = `\
       cache.writeText(content, Charsets.UTF_8)
       val js = "window.__paperlingOnSaveResult && window.__paperlingOnSaveResult(true, " +
         JSONObject.quote(cache.absolutePath) + ", " + JSONObject.quote(actualName) + ")"
-      runOnUiThread { findWebView(window.decorView)?.evaluateJavascript(js, null) }
+      runOnUiThread { webviewEval(js) }
     } catch (e: Exception) {
       android.util.Log.e("Paperling", "Save to Downloads failed", e)
       val js = "window.__paperlingOnSaveResult && window.__paperlingOnSaveResult(false, " +
         JSONObject.quote(e.message ?: "Save failed") + ", null)"
-      runOnUiThread { findWebView(window.decorView)?.evaluateJavascript(js, null) }
+      runOnUiThread { webviewEval(js) }
     }
   }
 
@@ -301,8 +345,12 @@ const ACTIVITY_BODY = `\
     }
   }
 
+  // The single JS-injection point for picker/save callbacks. Foreign pages
+  // get nothing evaluated over them (see isAppOrigin).
   private fun webviewEval(js: String) {
-    findWebView(window.decorView)?.evaluateJavascript(js, null)
+    val web = findWebView(window.decorView) ?: return
+    if (!isAppOrigin(web)) return
+    web.evaluateJavascript(js, null)
   }
 
   // A file manager "Open with Paperling" hands us a content:// URI the Rust
@@ -388,6 +436,70 @@ if (manifest.includes(MANIFEST_MARKER)) {
     if (!manifest.includes(MANIFEST_MARKER)) fail("Manifest patch did not apply (marker missing).", manifest, manifestPath);
     writeFileSync(manifestPath, manifest);
     console.log(`Patched ${manifestPath}: + VIEW intent-filter (markdown/text)`);
+}
+
+// ---- 1b. AndroidManifest.xml: keep secrets and notes out of backups ----
+//
+// Android's auto-backup uploads app-private files to the user's Google Drive
+// backup by default. Two things must never ride along:
+//   - the AI API key file (plaintext inside the app sandbox by design — it
+//     must never leave it), and
+//   - the notes folder ("everything lives on this device" is the product's
+//     privacy promise; the welcome note says so).
+// dataExtractionRules governs Android 12+; fullBackupContent covers 10–11
+// (minSdk 24: Android 6–9 don't back up internal app storage at all, so
+// there is nothing to exclude there). The attributes are also what an
+// allowBackup="true" default needs to be safe; the template sets none of
+// them, which is exactly why this patch exists.
+const BACKUP_RULES_MARKER = 'android:dataExtractionRules="@xml/paperling_data_extraction_rules"';
+const BACKUP_RULES_XML = `\
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PAPERLING-BACKUP-RULES: keep the AI key and the private notes out of
+     cloud/device backups — the key must never leave the app sandbox, and
+     the notes are local-first by design. -->
+<full-backup-content>
+    <exclude domain="file" path="ai-key" />
+    <exclude domain="file" path="notes/" />
+</full-backup-content>
+`;
+const EXTRACTION_RULES_XML = `\
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PAPERLING-BACKUP-RULES: Android 12+ counterpart of
+     paperling_backup_rules.xml (cloud backups and device-to-device
+     migration). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="ai-key" />
+        <exclude domain="file" path="notes/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="ai-key" />
+        <exclude domain="file" path="notes/" />
+    </device-transfer>
+</data-extraction-rules>
+`;
+
+manifest = readFileSync(manifestPath, "utf8");
+if (manifest.includes(BACKUP_RULES_MARKER)) {
+    console.log(`${manifestPath}: backup rules already patched`);
+} else {
+    const appTag = /<application\b[^>]*>/;
+    if (!appTag.test(manifest)) {
+        fail("Anchor `<application …>` not found in AndroidManifest.xml — the Tauri template changed; update this script.", manifest, manifestPath);
+    }
+    const backupAttrs =
+        `\n    android:fullBackupContent="@xml/paperling_backup_rules"` +
+        `\n    ${BACKUP_RULES_MARKER}`;
+    manifest = manifest.replace(appTag, (tag) => tag.slice(0, -1) + backupAttrs + ">");
+    if (!manifest.includes(BACKUP_RULES_MARKER)) fail("Manifest backup-rule attributes did not apply.", manifest, manifestPath);
+    writeFileSync(manifestPath, manifest);
+
+    const xmlDir = join(genDir, "app", "src", "main", "res", "xml");
+    mkdirSync(xmlDir, { recursive: true });
+    writeFileSync(join(xmlDir, "paperling_backup_rules.xml"), BACKUP_RULES_XML);
+    writeFileSync(join(xmlDir, "paperling_data_extraction_rules.xml"), EXTRACTION_RULES_XML);
+    console.log(`Patched ${manifestPath}: + backup/extraction rules (ai-key, notes/ excluded)`);
+    console.log("  + res/xml/paperling_backup_rules.xml, res/xml/paperling_data_extraction_rules.xml");
 }
 
 // ---- 2. MainActivity.kt: insets + intent capture ----
