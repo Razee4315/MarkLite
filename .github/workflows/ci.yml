@@ -61,9 +61,22 @@ jobs:
 
       # clippy compiles the crate (so it subsumes `cargo check`) while also
       # failing the build on any lint warning, keeping the Rust side clean.
+      # Diagnostics are re-emitted as ::error annotations because job LOGS are
+      # sign-in-gated while annotations render publicly — temporary while the
+      # current lint failure is being diagnosed.
       - name: Lint Rust (clippy)
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --all-targets -- -D warnings 2>&1 | tee clippy.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -E "^(error|warning)(\[|:)" clippy.log | head -30 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$status"
 
       - name: Test Rust
         working-directory: src-tauri
