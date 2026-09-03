@@ -146,6 +146,14 @@ const KEY_OPEN_IN_READER = "paperling:openInReader";
 export const getOpenInReader = (): boolean => safeGet<boolean>(KEY_OPEN_IN_READER, false);
 export const setOpenInReader = (v: boolean): void => safeSet(KEY_OPEN_IN_READER, v);
 
+// Zen mode: distraction-free reading canvas. Hides the title bar, tab bar,
+// mode toggle, status bar, and all side panels, leaving only the rendered
+// markdown. Toggled via F9, the command palette, or Settings → Editor; the
+// flag persists so read-mostly users stay in zen across restarts. ZEN-01.
+const KEY_ZEN_MODE = "paperling:zenMode";
+export const getZenMode = (): boolean => safeGet<boolean>(KEY_ZEN_MODE, false);
+export const setZenMode = (v: boolean): void => safeSet(KEY_ZEN_MODE, v);
+
 // Master switch for every AI surface (title-bar button, side panel, toolbar
 // sparkle, Alt+J, command palette entry). OFF by default — AI needs an
 // endpoint the user has to configure anyway, and an enabled-by-default

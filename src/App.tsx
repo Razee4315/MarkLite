@@ -10,6 +10,7 @@ import { TitleBar } from "./components/TitleBar";
 import { MobileTopBar, MobileMenu } from "./components/MobileTopBar";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { SaveAsNameModal, type SaveAsChoice } from "./components/SaveAsNameModal";
+import { ZenTopBar } from "./components/ZenTopBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -100,6 +101,8 @@ import {
   setTourDone,
   setTypewriterMode,
   setWordWrap,
+  getZenMode,
+  setZenMode,
 } from "./utils/persistence";
 import { getAutoSave } from "./utils/persistence";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
@@ -163,6 +166,13 @@ function AppContent() {
   const [typewriterModeEnabled, setTypewriterModeEnabled] = usePersistedState<boolean>(getTypewriterMode, setTypewriterMode);
   const [toolbarVisible, setToolbarVisible] = usePersistedState<boolean>(getToolbarEnabled, setToolbarEnabled);
   const [wordWrapEnabled, setWordWrapEnabled] = usePersistedState<boolean>(getWordWrap, setWordWrap);
+  const [zenMode, setZenModeState] = usePersistedState<boolean>(getZenMode, setZenMode);
+  // Live mirrors for the mount-once Settings event listener below, so the
+  // Settings toggle routes through the same toggle (with view-mode
+  // park/restore) as F9 instead of flipping the bare flag. ZEN-01.
+  const zenModeRef = useRef(zenMode);
+  zenModeRef.current = zenMode;
+  const zenToggleRef = useRef<() => void>(() => {});
   const [spellCheckEnabled, setSpellCheckEnabled] = usePersistedState<boolean>(getSpellCheck, setSpellCheck);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   // Editor selection range. Collapsed (start === end) means no selection;
@@ -506,6 +516,12 @@ function AppContent() {
       ["paperling:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:wordwrap-toggle", (e) => setWordWrapEnabled(!!(e as CustomEvent).detail?.enabled)],
       ["paperling:spellcheck-toggle", (e) => setSpellCheckEnabled(!!(e as CustomEvent).detail?.enabled)],
+      // Settings → Editor toggle for Zen mode. Routed through the shared
+      // toggle (a no-op when already in the desired state) so entering via
+      // Settings parks/restores the view mode exactly like F9 does. ZEN-01.
+      ["paperling:zen-toggle", (e) => {
+        if (!!(e as CustomEvent).detail?.enabled !== zenModeRef.current) zenToggleRef.current();
+      }],
       ["paperling:autosave-toggle", (e) => setAutoSaveEnabled(!!(e as CustomEvent).detail?.enabled)],
       // Opened from the title-bar settings dropdown's "More settings…" entry.
       ["paperling:open-settings", () => setShowSettings(true)],
@@ -906,6 +922,36 @@ function AppContent() {
     return () => { delete bridge.__paperlingBack; };
   }, []);
 
+  // Zen mode: hide every toolbar and panel, leaving only the canvas. Entering
+  // closes the drawers and the AI panel and parks the view in Reader; the
+  // pre-zen view mode is restored on exit. Ctrl+E (and the palette view
+  // commands) keep working inside zen, so editing stays one keypress away —
+  // only the chrome stays hidden. ZEN-01.
+  const preZenModeRef = useRef<ViewMode | null>(null);
+  const handleToggleZen = useCallback(() => {
+    if (!zenMode) {
+      preZenModeRef.current = mode;
+      closeAllPanels();
+      setShowAIPanel(false);
+      setPreviewFindOpen(false);
+      setMode("preview");
+      // Touch has no keyboard to advertise: point at the visible exit chip.
+      showToast(IS_MOBILE
+        ? "Zen mode — tap Normal up top to go back"
+        : `Zen mode — ${formatShortcut("toggleMode")} to edit, ${formatShortcut("zenMode")} to exit`, "info");
+    } else {
+      const prev = preZenModeRef.current;
+      preZenModeRef.current = null;
+      if (prev) setMode(prev);
+    }
+    setZenModeState(!zenMode);
+  }, [zenMode, mode, closeAllPanels, showToast, setMode]);
+  zenToggleRef.current = handleToggleZen;
+
+  // Effective zen: the flag alone means nothing on the welcome screen (there
+  // is no canvas to isolate), so chrome hides only once a file is open.
+  const zenActive = zenMode && hasFile;
+
   // Handle file drop
   const handleFileDrop = useCallback(
     (path: string) => {
@@ -978,7 +1024,7 @@ function AppContent() {
   useGlobalShortcuts({
     handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile,
     handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
-    toggleFullscreen,
+    toggleFullscreen, toggleZen: handleToggleZen,
     openCheatsheet: () => setShowCheatsheet(true),
     openPalette: () => setShowPalette(true),
     openSettings: () => setShowSettings(true),
@@ -1135,6 +1181,15 @@ function AppContent() {
         section: "View",
         icon: "vertical_split",
         run: handleToggleSplit,
+      });
+      items.push({
+        id: "view.zen",
+        label: zenMode ? "Exit Zen mode" : "Enter Zen mode",
+        hint: formatShortcut("zenMode"),
+        section: "View",
+        icon: "self_improvement",
+        keywords: "zen distraction free focus minimal reading",
+        run: handleToggleZen,
       });
       items.push({
         id: "view.explorer",
@@ -1326,7 +1381,7 @@ function AppContent() {
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, handleToggleBacklinks, toggleFullscreen,
     loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
-    theme, setTheme, openFind, openReplace,
+    theme, setTheme, openFind, openReplace, zenMode, handleToggleZen,
   ]);
 
   // Heading items are recomputed only while the palette is actually open.
@@ -1423,31 +1478,38 @@ function AppContent() {
 
   return (
     <div className="app-shell h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
+      {/* Zen mode hides the top chrome on BOTH shells: the desktop title bar
+          and the phone's top bar. Above the canvas only the zen top bar
+          remains (desktop hover bar / touch "Normal" chip). ZEN-01. */}
       {IS_MOBILE ? (
-        <MobileTopBar
-          fileName={fileName}
-          isDirty={isDirty}
-          onOpenMenu={() => setMenuOpen(true)}
-          onOpenPalette={() => setShowPalette(true)}
-        />
+        !zenActive && (
+          <MobileTopBar
+            fileName={fileName}
+            isDirty={isDirty}
+            onOpenMenu={() => setMenuOpen(true)}
+            onOpenPalette={() => setShowPalette(true)}
+          />
+        )
       ) : (
-        <TitleBar
-          fileName={fileName ?? undefined}
-          isDirty={isDirty}
-          filePath={filePath ?? undefined}
-          onOpenFile={handleOpenFile}
-          onNewFile={handleNewFile}
-          getExportHtml={getExportHtml}
-          onExportSuccess={handleExportSuccess}
-          onExportError={handleExportError}
-          onToggleAI={aiEnabled ? handleToggleAI : undefined}
-          aiActive={showAIPanel}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={toggleFullscreen}
-          onFind={openFind}
-          onReplace={openReplace}
-          onFindInFiles={() => setShowSearch(true)}
-        />
+        !zenActive && (
+          <TitleBar
+            fileName={fileName ?? undefined}
+            isDirty={isDirty}
+            filePath={filePath ?? undefined}
+            onOpenFile={handleOpenFile}
+            onNewFile={handleNewFile}
+            getExportHtml={getExportHtml}
+            onExportSuccess={handleExportSuccess}
+            onExportError={handleExportError}
+            onToggleAI={aiEnabled ? handleToggleAI : undefined}
+            aiActive={showAIPanel}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
+            onFind={openFind}
+            onReplace={openReplace}
+            onFindInFiles={() => setShowSearch(true)}
+          />
+        )
       )}
 
       {IS_MOBILE && (
@@ -1494,7 +1556,7 @@ function AppContent() {
 
       {/* Tab bar — always shown once a file is open (even with one tab), with a
           + button, so it's clear more files can be opened in tabs. TABS-01. */}
-      {hasFile && tabBarItems.length >= 1 && (
+      {hasFile && !zenActive && tabBarItems.length >= 1 && (
         <TabBar
           tabs={tabBarItems}
           activeId={activeTabId}
@@ -1537,6 +1599,18 @@ function AppContent() {
           {/* Split-aware layout. Both views always mounted; CSS toggles their display
               and width so editor/preview state (scroll, selection) is preserved across
               mode switches. */}
+          {/* Zen top bar: the only chrome left in zen. Desktop = hover-reveal
+              panel with the Normal exit button and the window controls (the
+              frameless window has no title bar in zen; its invisible hover
+              strip doubles as the drag handle). Touch = slim in-flow bar with
+              just the Normal chip, padded below the system status bar. */}
+          {zenActive && (
+            <ZenTopBar
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={toggleFullscreen}
+              onExitZen={handleToggleZen}
+            />
+          )}
           <div
             ref={splitContainerRef}
             className="flex-1 overflow-hidden flex flex-row"
@@ -1551,8 +1625,8 @@ function AppContent() {
             // On mobile there is no reflow: the panels are full-screen sheets
             // (see index.css [data-panel]) and the content keeps the full width.
             style={{
-                paddingLeft: !IS_MOBILE && (showFileExplorer || showTOC || showBacklinks) ? `${SIDEBAR_WIDTH}px` : 0,
-                paddingRight: !IS_MOBILE && showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
+                paddingLeft: !IS_MOBILE && !zenActive && (showFileExplorer || showTOC || showBacklinks) ? `${SIDEBAR_WIDTH}px` : 0,
+                paddingRight: !IS_MOBILE && !zenActive && showAIPanel ? `min(${aiPanelWidth}px, 90vw)` : 0,
                 transition: "padding 0.15s ease",
             }}
           >
@@ -1641,14 +1715,14 @@ function AppContent() {
           </div>
 
           {/* The floating mode pill is a desktop affordance; the phone's bottom
-              nav carries the Read/Edit toggle. */}
-          {!IS_MOBILE && (
+              nav carries the Read/Edit toggle. Zen hides it on both shells. */}
+          {!IS_MOBILE && !zenActive && (
             <ModeToggle mode={mode} onSetMode={setMode} aiPanelOpen={showAIPanel} aiPanelWidth={aiPanelWidth} />
           )}
 
           {/* Sidebar Panels — only mount when actually open so they don't
               load their module until first use. */}
-          {showTOC && (
+          {!zenActive && showTOC && (
             <Suspense fallback={null}>
               <TableOfContents
                 isOpen={showTOC}
@@ -1658,7 +1732,7 @@ function AppContent() {
               />
             </Suspense>
           )}
-          {showBacklinks && currentDirectory && filePath && (
+          {!zenActive && showBacklinks && currentDirectory && filePath && (
             <Suspense fallback={null}>
               <BacklinksPanel
                 isOpen={showBacklinks}
@@ -1672,7 +1746,7 @@ function AppContent() {
 
           {/* Right-side AI assistant panel. Reads the live document + current
               selection; chat is read-only for now (edit/agent flow is next). */}
-          {aiEnabled && showAIPanel && (
+          {!zenActive && aiEnabled && showAIPanel && (
             <Suspense fallback={null}>
               <AIPanel
                 isOpen={showAIPanel}
@@ -1689,9 +1763,9 @@ function AppContent() {
           )}
 
           {/* Bottom navigation — the phone's status bar replacement. Hidden on
-              the welcome screen (its own buttons cover Files/New) and while the
-              keyboard is open (html.kb-open). */}
-          {IS_MOBILE && hasFile && (
+              the welcome screen (its own buttons cover Files/New), while the
+              keyboard is open (html.kb-open), and in zen mode. */}
+          {IS_MOBILE && hasFile && !zenActive && (
             <MobileBottomNav
               hasFile={hasFile}
               mode={mode}
@@ -1704,8 +1778,8 @@ function AppContent() {
 
           {/* Desktop status bar. The phone's bottom nav + top bar dirty dot
               carry the same information (saved state, mode); word count lives
-              in the menu's statistics entry. */}
-          {!IS_MOBILE && (
+              in the menu's statistics entry. Zen hides it on both shells. */}
+          {!IS_MOBILE && !zenActive && (
             <StatusBar
               isSaved={!isDirty}
               lineNumber={mode === "preview" ? previewLine : cursorPosition.line}
@@ -1835,7 +1909,7 @@ function AppContent() {
 
       {/* First-run welcome tour. Gated on hasFile because every spotlight
           target (editor panes, mode toggle) only exists with an open buffer. */}
-      {showTour && hasFile && !booting && (
+      {showTour && hasFile && !booting && !zenActive && (
         <Tour onClose={handleCloseTour} onOpenTutorial={handleOpenTutorial} />
       )}
 

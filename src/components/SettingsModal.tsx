@@ -10,6 +10,7 @@ import {
     getSpellCheck, setSpellCheck,
     getAutoSave, setAutoSave,
     getOpenInReader, setOpenInReader,
+    getZenMode, setZenMode,
     getAIHistoryTurns, setAIHistoryTurns, AI_HISTORY_TURNS_MAX,
     getAIIconAnimation, setAIIconAnimation,
 } from "../utils/persistence";
@@ -104,6 +105,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [spellCheck, setSpellCheckLocal] = useState(getSpellCheck);
     const [autoSave, setAutoSaveLocal] = useState(getAutoSave);
     const [openInReader, setOpenInReaderLocal] = useState(getOpenInReader);
+    const [zenMode, setZenModeLocal] = useState(getZenMode);
 
     // The running app's version for the About panel (#148). Read from the Tauri
     // core API rather than a build-time constant so it always reflects the
@@ -398,6 +400,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     // file open (same pattern as toggle-ai-panel).
                                     <ToggleRow label="Open files in reader mode" description="Every file opens read-first; editing stays one click away" checked={openInReader}
                                         onChange={(v) => { setOpenInReaderLocal(v); setOpenInReader(v); }} />
+                                )}
+                                {matches("zen mode") && (
+                                    <ToggleRow label="Zen mode" description="Just the page. Ctrl+E edits, F9 exits." checked={zenMode}
+                                        onChange={(v) => { setZenModeLocal(v); setZenMode(v); fire("paperling:zen-toggle", v); }} />
                                 )}
                             </div>
                         )}

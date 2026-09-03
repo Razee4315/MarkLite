@@ -54,6 +54,7 @@ const groups: ShortcutGroup[] = [
         items: [
             { keys: formatShortcut("toggleMode"), description: "Toggle Reader / Code" },
             { keys: formatShortcut("toggleSplit"), description: "Toggle split view" },
+            { keys: formatShortcut("zenMode"), description: "Toggle Zen mode (reading canvas only)" },
             { keys: formatShortcut("fullscreen"), description: "Toggle fullscreen" },
             { keys: formatShortcut("toggleFileExplorer"), description: "Toggle file explorer" },
             { keys: formatShortcut("searchInFolder"), description: "Search across files" },
