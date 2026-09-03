@@ -71,10 +71,18 @@ jobs:
           set -o pipefail
           cargo clippy --all-targets -- -D warnings 2>&1 | tee clippy.log
           status=$?
+          echo "::error::MARKER clippy step reached diagnostics, status=$status"
+          echo "::error::LOGSIZE $(wc -c < clippy.log 2>/dev/null || echo missing)"
           if [ "$status" -ne 0 ]; then
-            grep -E "^(error|warning)(\[|:)" clippy.log | head -30 | while IFS= read -r line; do
-              echo "::error::$line"
+            tail -c 900 clippy.log | tr '\n' '\001' | sed 's/\x01/ ~ /g' | cut -c1-800 | while IFS= read -r l; do
+              echo "::error::TAIL>> $l"
             done
+            {
+              echo "### clippy tail"
+              echo '```'
+              tail -40 clippy.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit "$status"
 
